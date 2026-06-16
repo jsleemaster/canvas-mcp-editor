@@ -55,6 +55,17 @@ test("canvas editor MVP supports select, inspect, edit, undo, create, and zoom",
   await page.getByRole("button", { name: "Create rectangle" }).click();
   await expect(page.getByRole("button", { name: "Rectangle 3" })).toBeVisible();
 
+  await page.getByRole("button", { name: "Landing Frame" }).click();
+  await page.getByRole("button", { name: "Create component" }).click();
+  await expect(page.getByRole("button", { name: /Landing Frame .* Component/ })).toBeVisible();
+
+  await page.getByRole("button", { name: "Create instance" }).click();
+  await expect(page.getByRole("button", { name: /Landing Frame Component Instance .* Instance/ })).toBeVisible();
+  await expect(page.getByText("component_instance")).toBeVisible();
+
+  await page.getByRole("button", { name: "Detach instance" }).click();
+  await expect(page.getByText("frame", { exact: true })).toBeVisible();
+
   await page.getByRole("button", { name: "Zoom in" }).click();
   await expect(page.getByText("125%")).toBeVisible();
 
