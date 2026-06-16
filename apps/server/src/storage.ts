@@ -4,8 +4,9 @@ import { sampleDocument } from "./sample-document.js";
 
 export interface DesignNode {
   id: string;
-  kind: "frame" | "rectangle" | "text" | "image";
+  kind: "frame" | "rectangle" | "text" | "image" | "component" | "component_instance";
   name: string;
+  component_instance?: ComponentInstance | null;
   transform: { x: number; y: number; rotation: number };
   size: { width: number; height: number };
   style: {
@@ -21,10 +22,24 @@ export interface DesignNode {
   children: DesignNode[];
 }
 
+export interface ComponentDefinition {
+  id: string;
+  name: string;
+  source_node: DesignNode;
+  variants: Array<{ id: string; name: string; properties: Array<{ name: string; value: string }> }>;
+}
+
+export interface ComponentInstance {
+  definition_id: string;
+  overrides: Array<{ node_id: string; field: string; value: string }>;
+  detached: boolean;
+}
+
 export interface DesignFile {
   id: string;
   name: string;
   version?: number;
+  components?: ComponentDefinition[];
   pages: Array<{ id: string; name: string; children: DesignNode[] }>;
 }
 
@@ -160,6 +175,83 @@ export class FileStorage {
     await this.writeFile(fileId, document);
     return node;
   }
+
+  async listComponents(fileId: string): Promise<ComponentDefinition[]> {
+    const document = await this.readFile(fileId);
+    return document.components ?? [];
+  }
+
+  async createComponent(
+    fileId: string,
+    nodeId: string,
+    input: { componentId: string; name: string }
+  ): Promise<ComponentDefinition> {
+    const document = await this.readFile(fileId);
+    const node = findNodeById(document, nodeId);
+    if (!node) {
+      throw new Error(`node not found: ${nodeId}`);
+    }
+
+    node.kind = "component";
+    node.component_instance = null;
+    const component: ComponentDefinition = {
+      id: input.componentId,
+      name: input.name,
+      source_node: structuredClone(node),
+      variants: [{ id: "default", name: "Default", properties: [] }]
+    };
+    document.components = document.components ?? [];
+    document.components.push(component);
+    await this.writeFile(fileId, document);
+    return component;
+  }
+
+  async createComponentInstance(
+    fileId: string,
+    input: { parentId: string; definitionId: string; instanceId: string; x: number; y: number }
+  ): Promise<DesignNode> {
+    const document = await this.readFile(fileId);
+    const parent = findParentChildren(document, input.parentId);
+    if (!parent) {
+      throw new Error(`parent not found: ${input.parentId}`);
+    }
+
+    const definition = (document.components ?? []).find((component) => component.id === input.definitionId);
+    if (!definition) {
+      throw new Error(`component not found: ${input.definitionId}`);
+    }
+
+    const node = structuredClone(definition.source_node);
+    renameInstanceTree(node, input.instanceId);
+    node.id = input.instanceId;
+    node.name = `${definition.name} Instance`;
+    node.kind = "component_instance";
+    node.transform = { ...node.transform, x: input.x, y: input.y };
+    node.component_instance = {
+      definition_id: input.definitionId,
+      overrides: [],
+      detached: false
+    };
+    parent.children.push(node);
+    await this.writeFile(fileId, document);
+    return node;
+  }
+
+  async detachInstance(fileId: string, nodeId: string): Promise<DesignNode> {
+    const document = await this.readFile(fileId);
+    const node = findNodeById(document, nodeId);
+    if (!node) {
+      throw new Error(`node not found: ${nodeId}`);
+    }
+    if (!node.component_instance) {
+      throw new Error(`node is not component instance: ${nodeId}`);
+    }
+
+    node.kind = "frame";
+    node.component_instance = null;
+    await this.writeFile(fileId, document);
+    return node;
+  }
 }
 
 function findNodeById(document: DesignFile, nodeId: string): DesignNode | null {
@@ -198,4 +290,11 @@ function findParentChildren(document: DesignFile, parentId: string): { children:
 
   const node = findNodeById(document, parentId);
   return node ? { children: node.children } : null;
+}
+
+function renameInstanceTree(node: DesignNode, instanceId: string) {
+  for (const child of node.children) {
+    child.id = `${instanceId}__${child.id}`;
+    renameInstanceTree(child, instanceId);
+  }
 }

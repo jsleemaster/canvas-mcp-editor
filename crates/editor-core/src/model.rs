@@ -8,6 +8,8 @@ pub struct DesignFile {
     pub id: String,
     pub name: String,
     pub version: u32,
+    #[serde(default)]
+    pub components: Vec<ComponentDefinition>,
     pub pages: Vec<Page>,
 }
 
@@ -25,11 +27,53 @@ pub struct Node {
     pub id: String,
     pub kind: NodeKind,
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub component_instance: Option<ComponentInstance>,
     pub children: Vec<Node>,
     pub transform: Transform,
     pub size: Size,
     pub style: Style,
     pub content: NodeContent,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct ComponentDefinition {
+    pub id: String,
+    pub name: String,
+    pub source_node: Node,
+    pub variants: Vec<ComponentVariant>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct ComponentVariant {
+    pub id: String,
+    pub name: String,
+    pub properties: Vec<ComponentProperty>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct ComponentProperty {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct ComponentInstance {
+    pub definition_id: String,
+    pub overrides: Vec<ComponentOverride>,
+    pub detached: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct ComponentOverride {
+    pub node_id: String,
+    pub field: String,
+    pub value: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
@@ -40,6 +84,8 @@ pub enum NodeKind {
     Rectangle,
     Text,
     Image,
+    Component,
+    ComponentInstance,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
@@ -72,6 +118,7 @@ impl DesignFile {
             id: "sample-file".to_string(),
             name: "Sample File".to_string(),
             version: 1,
+            components: vec![],
             pages: vec![Page {
                 id: "page-1".to_string(),
                 name: "Page 1".to_string(),
@@ -79,10 +126,12 @@ impl DesignFile {
                     id: "frame-1".to_string(),
                     kind: NodeKind::Frame,
                     name: "Landing Frame".to_string(),
+                    component_instance: None,
                     children: vec![Node {
                         id: "text-1".to_string(),
                         kind: NodeKind::Text,
                         name: "Headline".to_string(),
+                        component_instance: None,
                         children: vec![],
                         transform: Transform {
                             x: 32.0,

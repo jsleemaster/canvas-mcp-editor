@@ -264,6 +264,124 @@ export function createMcpServer(storage = new FileStorage()) {
     }
   );
 
+  server.registerTool(
+    "list_components",
+    {
+      description: "List component definitions stored in a local design file.",
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files")
+      }
+    },
+    async ({ fileId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              components: await storage.listComponents(fileId)
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "create_component",
+    {
+      description: "Convert an existing node into a reusable component definition.",
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files"),
+        nodeId: z.string().describe("Existing node id to convert into a component"),
+        componentId: z.string().describe("Stable component definition id"),
+        name: z.string().describe("Component definition name")
+      }
+    },
+    async ({ fileId, nodeId, componentId, name }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              nodeId,
+              component: await storage.createComponent(fileId, nodeId, { componentId, name })
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "create_component_instance",
+    {
+      description: "Create a linked component instance from an existing component definition.",
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files"),
+        parentId: z.string().describe("Page or frame parent id"),
+        definitionId: z.string().describe("Component definition id"),
+        instanceId: z.string().describe("Stable instance root node id"),
+        x: z.number().default(520),
+        y: z.number().default(140)
+      }
+    },
+    async ({ fileId, parentId, definitionId, instanceId, x, y }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              parentId,
+              node: await storage.createComponentInstance(fileId, {
+                parentId,
+                definitionId,
+                instanceId,
+                x,
+                y
+              })
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "detach_instance",
+    {
+      description: "Detach a component instance node so it becomes a normal editable frame.",
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files"),
+        nodeId: z.string().describe("Component instance root node id")
+      }
+    },
+    async ({ fileId, nodeId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              nodeId,
+              node: await storage.detachInstance(fileId, nodeId)
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
   return server;
 }
 

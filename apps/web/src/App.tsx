@@ -254,6 +254,10 @@ export function App() {
     () => (editor?.selection.nodeId ? findNodeById(editor.document, editor.selection.nodeId) : null),
     [editor]
   );
+  const components = editor?.document.components ?? [];
+  const selectedComponent = selectedNode
+    ? components.find((component) => component.source_node.id === selectedNode.id)
+    : undefined;
 
   const dispatch = (command: Parameters<typeof executeEditorCommand>[1]) => {
     setEditor((current) => (current ? executeEditorCommand(current, command) : current));
@@ -285,6 +289,47 @@ export function App() {
           ? createRectangleNode(nodes.length + 1)
           : createTextNode(nodes.length + 1)
     });
+  };
+
+  const createComponent = () => {
+    if (!selectedNode || selectedNode.kind === "component_instance") {
+      return;
+    }
+
+    dispatch({
+      type: "create_component",
+      nodeId: selectedNode.id,
+      componentId: `component-${components.length + 1}`,
+      name: `${selectedNode.name} Component`
+    });
+  };
+
+  const createInstance = () => {
+    if (!editor || !selectedComponent) {
+      return;
+    }
+
+    const firstPage = editor.document.pages[0];
+    if (!firstPage) {
+      return;
+    }
+
+    dispatch({
+      type: "create_component_instance",
+      parentId: firstPage.id,
+      definitionId: selectedComponent.id,
+      instanceId: `instance-${nodes.length + 1}`,
+      x: selectedNode ? selectedNode.transform.x + 440 : 520,
+      y: selectedNode ? selectedNode.transform.y + 40 : 140
+    });
+  };
+
+  const detachInstance = () => {
+    if (!selectedNode?.component_instance) {
+      return;
+    }
+
+    dispatch({ type: "detach_instance", nodeId: selectedNode.id });
   };
 
   const finishResize = (event: KonvaEventObject<MouseEvent> | KonvaEventObject<TouchEvent>) => {
@@ -365,6 +410,8 @@ export function App() {
               onClick={() => selectNode(node.id)}
             >
               {node.name}
+              {node.kind === "component" ? " · Component" : ""}
+              {node.kind === "component_instance" ? " · Instance" : ""}
             </button>
           ))}
         </div>
@@ -376,6 +423,30 @@ export function App() {
           </button>
           <button type="button" aria-label="Create text" onClick={() => createNode("text")}>
             T
+          </button>
+          <button
+            type="button"
+            aria-label="Create component"
+            disabled={!selectedNode || selectedNode.kind === "component_instance"}
+            onClick={createComponent}
+          >
+            C
+          </button>
+          <button
+            type="button"
+            aria-label="Create instance"
+            disabled={!selectedComponent}
+            onClick={createInstance}
+          >
+            I
+          </button>
+          <button
+            type="button"
+            aria-label="Detach instance"
+            disabled={!selectedNode?.component_instance}
+            onClick={detachInstance}
+          >
+            D
           </button>
           <button
             type="button"

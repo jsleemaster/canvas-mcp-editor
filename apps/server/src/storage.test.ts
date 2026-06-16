@@ -86,4 +86,30 @@ describe("FileStorage", () => {
     expect(node.id).toBe("rectangle-99");
     expect(JSON.stringify(document)).toContain("Rectangle 99");
   });
+
+  test("creates components, instances, and detaches instances", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
+    const storage = new FileStorage(tempRoot);
+
+    const component = await storage.createComponent("sample-file", "frame-1", {
+      componentId: "component-1",
+      name: "Card"
+    });
+    const instance = await storage.createComponentInstance("sample-file", {
+      parentId: "page-1",
+      definitionId: "component-1",
+      instanceId: "instance-1",
+      x: 520,
+      y: 140
+    });
+    const detached = await storage.detachInstance("sample-file", "instance-1");
+    const components = await storage.listComponents("sample-file");
+
+    expect(component.id).toBe("component-1");
+    expect(components).toHaveLength(1);
+    expect(instance.kind).toBe("component_instance");
+    expect(instance.component_instance?.definition_id).toBe("component-1");
+    expect(detached.kind).toBe("frame");
+    expect(detached.component_instance).toBeNull();
+  });
 });
