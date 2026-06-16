@@ -80,4 +80,42 @@ describe("HTTP server", () => {
     expect(created.statusCode).toBe(200);
     expect(created.json().node.id).toBe("rectangle-99");
   });
+
+  test("serves component creation, instancing, listing, and detach routes", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
+    const server = createHttpServer(new FileStorage(tempRoot));
+
+    const component = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/components",
+      payload: { nodeId: "frame-1", componentId: "component-1", name: "Card" }
+    });
+    expect(component.statusCode).toBe(200);
+    expect(component.json().component.id).toBe("component-1");
+
+    const instance = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/component-instances",
+      payload: {
+        parentId: "page-1",
+        definitionId: "component-1",
+        instanceId: "instance-1",
+        x: 520,
+        y: 140
+      }
+    });
+    expect(instance.statusCode).toBe(200);
+    expect(instance.json().node.kind).toBe("component_instance");
+
+    const list = await server.inject({ method: "GET", url: "/files/sample-file/components" });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().components[0].name).toBe("Card");
+
+    const detached = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/nodes/instance-1/detach"
+    });
+    expect(detached.statusCode).toBe(200);
+    expect(detached.json().node.kind).toBe("frame");
+  });
 });

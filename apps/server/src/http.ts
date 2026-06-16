@@ -70,5 +70,39 @@ export function createHttpServer(storage = new FileStorage()) {
     }
   );
 
+  server.get<{ Params: { fileId: string } }>("/files/:fileId/components", async (request) => {
+    return { components: await storage.listComponents(request.params.fileId) };
+  });
+
+  server.post<{
+    Params: { fileId: string };
+    Body: { nodeId: string; componentId: string; name: string };
+  }>("/files/:fileId/components", async (request) => {
+    return {
+      component: await storage.createComponent(request.params.fileId, request.body.nodeId, {
+        componentId: request.body.componentId,
+        name: request.body.name
+      })
+    };
+  });
+
+  server.post<{
+    Params: { fileId: string };
+    Body: { parentId: string; definitionId: string; instanceId: string; x: number; y: number };
+  }>("/files/:fileId/component-instances", async (request) => {
+    return {
+      node: await storage.createComponentInstance(request.params.fileId, request.body)
+    };
+  });
+
+  server.post<{ Params: { fileId: string; nodeId: string } }>(
+    "/files/:fileId/nodes/:nodeId/detach",
+    async (request) => {
+      return {
+        node: await storage.detachInstance(request.params.fileId, request.params.nodeId)
+      };
+    }
+  );
+
   return server;
 }
