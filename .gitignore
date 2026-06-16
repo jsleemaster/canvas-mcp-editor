@@ -8,3 +8,4 @@ pkg/
 .env.*
 !.env.example
 .canvas-mcp-editor/
+.worktrees/
