@@ -9,3 +9,5 @@ pkg/
 !.env.example
 .canvas-mcp-editor/
 .worktrees/
+test-results/
+playwright-report/
