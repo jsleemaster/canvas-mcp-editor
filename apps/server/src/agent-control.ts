@@ -179,7 +179,7 @@ export function findNodes(document: DesignFile, query: AgentFindQuery): AgentNod
 
 export function validateDocument(document: DesignFile): DocumentValidation {
   const issues: DocumentValidationIssue[] = [];
-  const ids = new Map<string, string[]>();
+  const ids = new Map<string, string[][]>();
   const componentIds = new Set<string>();
 
   for (const component of document.components ?? []) {

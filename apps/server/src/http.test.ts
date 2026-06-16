@@ -118,4 +118,87 @@ describe("HTTP server", () => {
     expect(detached.statusCode).toBe(200);
     expect(detached.json().node.kind).toBe("frame");
   });
+
+  test("serves agent inspect, find, command, validate, and change-summary routes", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
+    const server = createHttpServer(new FileStorage(tempRoot));
+
+    const before = await server.inject({ method: "GET", url: "/files/sample-file" });
+    const inspect = await server.inject({ method: "GET", url: "/files/sample-file/agent/inspect" });
+    expect(inspect.statusCode).toBe(200);
+    expect(inspect.json().inspection).toMatchObject({
+      nodeCount: 2,
+      componentCount: 0
+    });
+
+    const find = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/agent/find",
+      payload: { text: "Canvas" }
+    });
+    expect(find.statusCode).toBe(200);
+    expect(find.json().nodes.map((node: { id: string }) => node.id)).toEqual(["text-1"]);
+
+    const dryRun = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/agent/commands",
+      payload: {
+        dryRun: true,
+        commands: [
+          {
+            type: "create_text",
+            parentId: "page-1",
+            id: "agent-http-note",
+            name: "Agent HTTP Note",
+            value: "HTTP agent edit",
+            x: 112,
+            y: 380,
+            width: 260,
+            height: 48
+          }
+        ]
+      }
+    });
+    expect(dryRun.statusCode).toBe(200);
+    expect(dryRun.json().result.persisted).toBe(false);
+
+    const afterDryRun = await server.inject({ method: "GET", url: "/files/sample-file" });
+    expect(JSON.stringify(afterDryRun.json().file)).not.toContain("HTTP agent edit");
+
+    const persisted = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/agent/commands",
+      payload: {
+        dryRun: false,
+        commands: [
+          {
+            type: "create_text",
+            parentId: "page-1",
+            id: "agent-http-note",
+            name: "Agent HTTP Note",
+            value: "HTTP agent edit",
+            x: 112,
+            y: 380,
+            width: 260,
+            height: 48
+          }
+        ]
+      }
+    });
+    expect(persisted.statusCode).toBe(200);
+    expect(persisted.json().result.audit.changedNodeIds).toEqual(["agent-http-note"]);
+
+    const validate = await server.inject({ method: "GET", url: "/files/sample-file/agent/validate" });
+    expect(validate.statusCode).toBe(200);
+    expect(validate.json().validation.issueCount).toBe(0);
+
+    const after = await server.inject({ method: "GET", url: "/files/sample-file" });
+    const summary = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/agent/change-summary",
+      payload: { before: before.json().file, after: after.json().file }
+    });
+    expect(summary.statusCode).toBe(200);
+    expect(summary.json().summary.createdNodeIds).toEqual(["agent-http-note"]);
+  });
 });
