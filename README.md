@@ -82,8 +82,11 @@ Design files can be exported into generated code artifacts:
 
 - Full-canvas CSS under `.canvas-export-root`
 - Full-canvas HTML with stable `data-node-id` attributes
-- Per-root-element artifacts with `id`, `name`, `className`, `html`, `css`, and an importable `.mjs` module body
+- Per-root-element artifacts with `id`, `name`, `className`, `html`, `css`, `structure`, `implementation`, and an importable `.mjs` module body
+- A codegen-ready `implementationSpec` with element structures, component definitions, component instance references, implementation hints, and token candidates
 - An `indexModule` that imports each element module from a configurable `moduleBasePath`
+
+The structured export is intended for agent-driven implementation work. `structure` is a recursive node tree with geometry, style, text content, and `componentRef` metadata. `implementation` provides a suggested component name, text prop candidates, CSS class names, and source node ids so an agent can implement the element without reverse-engineering HTML strings.
 
 HTTP:
 
