@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import type { AgentBatchInput, AgentFindQuery } from "./agent-control.js";
 import { FileStorage, type DesignNode, type GeometryPatch } from "./storage.js";
 
 export function createHttpServer(storage = new FileStorage()) {
@@ -69,6 +70,49 @@ export function createHttpServer(storage = new FileStorage()) {
       };
     }
   );
+
+  server.get<{ Params: { fileId: string } }>("/files/:fileId/agent/inspect", async (request) => {
+    return {
+      inspection: await storage.inspectCanvas(request.params.fileId)
+    };
+  });
+
+  server.post<{ Params: { fileId: string }; Body: AgentFindQuery }>(
+    "/files/:fileId/agent/find",
+    async (request) => {
+      return {
+        nodes: await storage.findNodes(request.params.fileId, request.body)
+      };
+    }
+  );
+
+  server.post<{ Params: { fileId: string }; Body: AgentBatchInput }>(
+    "/files/:fileId/agent/commands",
+    async (request) => {
+      return {
+        result: await storage.applyAgentCommands(request.params.fileId, request.body)
+      };
+    }
+  );
+
+  server.get<{ Params: { fileId: string } }>("/files/:fileId/agent/validate", async (request) => {
+    return {
+      validation: await storage.validateDocument(request.params.fileId)
+    };
+  });
+
+  server.post<{
+    Params: { fileId: string };
+    Body: { before: Awaited<ReturnType<FileStorage["readFile"]>>; after: Awaited<ReturnType<FileStorage["readFile"]>> };
+  }>("/files/:fileId/agent/change-summary", async (request) => {
+    return {
+      summary: await storage.getChangeSummary(
+        request.params.fileId,
+        request.body.before,
+        request.body.after
+      )
+    };
+  });
 
   server.get<{ Params: { fileId: string } }>("/files/:fileId/components", async (request) => {
     return { components: await storage.listComponents(request.params.fileId) };

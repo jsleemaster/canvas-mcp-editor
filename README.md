@@ -1,8 +1,8 @@
 # Canvas MCP Editor
 
-Canvas MCP Editor is an open-source, local-first design editor experiment built around a Rust document engine, a TypeScript editor shell, and a read-only Model Context Protocol interface for AI tools.
+Canvas MCP Editor is an open-source, local-first design editor experiment built around a Rust document engine, a TypeScript editor shell, and a Model Context Protocol interface for AI tools.
 
-The project goal is not to clone Figma feature-for-feature. The first milestone is a small personal design editor with a stable document model that AI agents can inspect through MCP.
+The project goal is not to clone Figma feature-for-feature. The first milestone is a small personal design editor with a stable document model that AI agents can inspect and edit through deterministic MCP and HTTP tools.
 
 ## Planned MVP
 
@@ -10,7 +10,7 @@ The project goal is not to clone Figma feature-for-feature. The first milestone 
 - React/TypeScript editor UI for panels, tools, keyboard shortcuts, and app state.
 - Replaceable renderer adapter, starting with a TypeScript/Konva implementation.
 - Local server for document JSON and asset storage.
-- Read-only MCP tools for file metadata, node trees, design context, variables, and snapshots.
+- MCP and HTTP tools for file metadata, node trees, design context, components, deterministic edits, validation, and change summaries.
 
 ## Architecture Direction
 
@@ -75,3 +75,28 @@ Run the MCP server over stdio:
 ```bash
 pnpm --filter @canvas-mcp-editor/server mcp
 ```
+
+## Agent Control Workflow
+
+Agents should use MCP or HTTP for deterministic document edits, then use Playwright CLI for visual verification in the local web editor.
+
+Recommended sequence:
+
+1. Inspect the canvas: `inspect_canvas` or `GET /files/:fileId/agent/inspect`
+2. Find target nodes: `find_nodes` or `POST /files/:fileId/agent/find`
+3. Preview edits: `apply_agent_commands` or `POST /files/:fileId/agent/commands` with `dryRun: true`
+4. Persist edits: `apply_agent_commands` or `POST /files/:fileId/agent/commands` with `dryRun: false`
+5. Validate structure: `validate_document` or `GET /files/:fileId/agent/validate`
+6. Summarize changes: `get_change_summary` or `POST /files/:fileId/agent/change-summary`
+7. Verify in browser with Playwright CLI against `http://127.0.0.1:5173/`
+
+The first agent command batch supports:
+
+- `update_geometry`
+- `set_fill`
+- `update_text`
+- `create_rectangle`
+- `create_text`
+- `create_component`
+- `create_component_instance`
+- `detach_instance`

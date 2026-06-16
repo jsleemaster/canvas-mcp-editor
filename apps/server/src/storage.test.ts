@@ -112,4 +112,91 @@ describe("FileStorage", () => {
     expect(detached.kind).toBe("frame");
     expect(detached.component_instance).toBeNull();
   });
+
+  test("inspects and searches canvas nodes for agent workflows", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
+    const storage = new FileStorage(tempRoot);
+
+    const inspection = await storage.inspectCanvas("sample-file");
+    const matches = await storage.findNodes("sample-file", { text: "Canvas" });
+
+    expect(inspection.file.id).toBe("sample-file");
+    expect(inspection.nodeCount).toBe(2);
+    expect(inspection.pages[0]).toMatchObject({ id: "page-1", name: "Page 1", nodeCount: 2 });
+    expect(inspection.componentCount).toBe(0);
+    expect(inspection.validation.issueCount).toBe(0);
+    expect(matches.map((node) => node.id)).toEqual(["text-1"]);
+    expect(matches[0]).toMatchObject({
+      name: "Headline",
+      kind: "text",
+      text: "Canvas MCP Editor",
+      path: ["page-1", "frame-1", "text-1"]
+    });
+  });
+
+  test("dry-runs and persists agent command batches with audit summaries", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
+    const storage = new FileStorage(tempRoot);
+
+    const before = await storage.readFile("sample-file");
+    const dryRun = await storage.applyAgentCommands("sample-file", {
+      dryRun: true,
+      commands: [
+        {
+          type: "create_text",
+          parentId: "page-1",
+          id: "agent-note",
+          name: "Agent Note",
+          value: "Edited by agent",
+          x: 96,
+          y: 360,
+          width: 240,
+          height: 48,
+          fill: "#111827",
+          fontSize: 20,
+          fontFamily: "Inter"
+        }
+      ]
+    });
+    const afterDryRun = await storage.readFile("sample-file");
+
+    expect(JSON.stringify(dryRun.preview)).toContain("Edited by agent");
+    expect(JSON.stringify(afterDryRun)).not.toContain("Edited by agent");
+    expect(dryRun.audit).toMatchObject({
+      fileId: "sample-file",
+      dryRun: true,
+      commandCount: 1,
+      commandTypes: ["create_text"],
+      changedNodeIds: ["agent-note"]
+    });
+
+    const persisted = await storage.applyAgentCommands("sample-file", {
+      dryRun: false,
+      commands: [
+        {
+          type: "create_text",
+          parentId: "page-1",
+          id: "agent-note",
+          name: "Agent Note",
+          value: "Edited by agent",
+          x: 96,
+          y: 360,
+          width: 240,
+          height: 48,
+          fill: "#111827",
+          fontSize: 20,
+          fontFamily: "Inter"
+        }
+      ]
+    });
+    const after = await storage.readFile("sample-file");
+    const validation = await storage.validateDocument("sample-file");
+    const summary = await storage.getChangeSummary("sample-file", before, after);
+
+    expect(JSON.stringify(after)).toContain("Edited by agent");
+    expect(persisted.persisted).toBe(true);
+    expect(validation.issueCount).toBe(0);
+    expect(summary.createdNodeIds).toEqual(["agent-note"]);
+    expect(summary.updatedNodeIds).toEqual([]);
+  });
 });
