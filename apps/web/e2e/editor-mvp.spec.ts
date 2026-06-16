@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { rm } from "node:fs/promises";
 
 test("canvas editor MVP supports select, inspect, edit, undo, create, and zoom", async ({ page }) => {
+  await rm(".canvas-mcp-editor/files/sample-file.json", { force: true });
+  await rm("apps/server/.canvas-mcp-editor/files/sample-file.json", { force: true });
+
   await page.goto("http://127.0.0.1:5173/");
 
   await page.getByRole("button", { name: "Headline" }).click();
@@ -68,6 +72,42 @@ test("canvas editor MVP supports select, inspect, edit, undo, create, and zoom",
 
   await page.getByRole("button", { name: "Zoom in" }).click();
   await expect(page.getByText("125%")).toBeVisible();
+
+  const agentId = `agent-note-${Date.now()}`;
+  const agentName = `Agent Note ${Date.now()}`;
+  const agentValue = "Verified agent-created text";
+  const agentResponse = await page.request.post(
+    "http://127.0.0.1:4317/files/sample-file/agent/commands",
+    {
+      data: {
+        dryRun: false,
+        commands: [
+          {
+            type: "create_text",
+            parentId: "page-1",
+            id: agentId,
+            name: agentName,
+            value: agentValue,
+            x: 96,
+            y: 360,
+            width: 280,
+            height: 48,
+            fill: "#111827",
+            fontSize: 20,
+            fontFamily: "Inter"
+          }
+        ]
+      }
+    }
+  );
+  expect(agentResponse.ok()).toBeTruthy();
+  const agentResult = await agentResponse.json();
+  expect(agentResult.result.audit.changedNodeIds).toEqual([agentId]);
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: agentName })).toBeVisible();
+  await page.getByRole("button", { name: agentName }).click();
+  await expect(page.getByTestId("inspector-text")).toHaveValue(agentValue);
 
   await page.screenshot({ path: "/tmp/canvas-mcp-editor-mvp-verified.png", fullPage: true });
 });
