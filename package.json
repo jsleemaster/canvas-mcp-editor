@@ -1,0 +1,14 @@
+{
+  "name": "canvas-mcp-editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm --parallel --filter @canvas-mcp-editor/server --filter @canvas-mcp-editor/web dev",
+    "test": "pnpm -r test && cargo test --workspace",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint"
+  },
+  "packageManager": "pnpm@10.13.1"
+}

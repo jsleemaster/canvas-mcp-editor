@@ -1,0 +1,11 @@
+[workspace]
+members = [
+  "crates/editor-core",
+  "crates/editor-wasm"
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/jsleemaster/canvas-mcp-editor"
