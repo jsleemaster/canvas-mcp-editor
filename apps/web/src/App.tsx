@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { KonvaEventObject } from "konva/lib/Node";
 import { Group, Layer, Rect, Stage, Text } from "react-konva";
 import {
@@ -14,6 +14,7 @@ import {
   createTextNode,
   executeEditorCommand,
   findNodeById,
+  getNodeAbsolutePosition,
   panViewport,
   redo,
   setSelection,
@@ -31,15 +32,22 @@ function renderNode({
   node,
   selectedNodeId,
   onSelect,
-  onGeometryChange
+  onGeometryChange,
+  onResizeStart
 }: {
   node: RendererNode;
   selectedNodeId: string | null;
   onSelect: (nodeId: string) => void;
   onGeometryChange: (nodeId: string, patch: GeometryPatch) => void;
+  onResizeStart: (nodeId: string) => void;
 }) {
   const isSelected = node.id === selectedNodeId;
   const handleSize = editorKonvaTokens.selection.handleSize;
+  const resizeHitSize = editorKonvaTokens.selection.resizeHitSize;
+  const startResize = (event: KonvaEventObject<MouseEvent> | KonvaEventObject<TouchEvent>) => {
+    event.cancelBubble = true;
+    onResizeStart(node.id);
+  };
 
   const body =
     node.kind === "text" && node.content.type === "text" ? (
@@ -62,10 +70,6 @@ function renderNode({
         cornerRadius={node.kind === "frame" ? editorKonvaTokens.radius.frame : editorKonvaTokens.radius.none}
       />
     );
-
-  const stopDragBubble = (event: KonvaEventObject<DragEvent>) => {
-    event.cancelBubble = true;
-  };
 
   return (
     <Group
@@ -100,6 +104,16 @@ function renderNode({
             listening={false}
           />
           <Rect
+            x={node.size.width - resizeHitSize}
+            y={node.size.height - resizeHitSize}
+            width={resizeHitSize}
+            height={resizeHitSize}
+            fill={editorKonvaTokens.selection.handleFill}
+            opacity={0.01}
+            onMouseDown={startResize}
+            onTouchStart={startResize}
+          />
+          <Rect
             x={node.size.width - handleSize}
             y={node.size.height - handleSize}
             width={handleSize}
@@ -107,16 +121,8 @@ function renderNode({
             fill={editorKonvaTokens.selection.handleFill}
             stroke={editorKonvaTokens.selection.stroke}
             strokeWidth={editorKonvaTokens.selection.strokeWidth}
-            draggable
-            onDragStart={stopDragBubble}
-            onDragMove={stopDragBubble}
-            onDragEnd={(event) => {
-              event.cancelBubble = true;
-              onGeometryChange(node.id, {
-                width: Math.round(event.target.x() + handleSize),
-                height: Math.round(event.target.y() + handleSize)
-              });
-            }}
+            onMouseDown={startResize}
+            onTouchStart={startResize}
           />
         </>
       ) : null}
@@ -125,7 +131,8 @@ function renderNode({
           node: child,
           selectedNodeId,
           onSelect,
-          onGeometryChange
+          onGeometryChange,
+          onResizeStart
         })
       )}
     </Group>
@@ -229,6 +236,8 @@ function Inspector({
 
 export function App() {
   const [editor, setEditor] = useState<EditorState | null>(null);
+  const [resizeSession, setResizeSession] = useState<{ nodeId: string } | null>(null);
+  const resizeSessionRef = useRef<{ nodeId: string } | null>(null);
 
   useEffect(() => {
     fetch("http://127.0.0.1:4317/files/sample-file")
@@ -276,6 +285,70 @@ export function App() {
           ? createRectangleNode(nodes.length + 1)
           : createTextNode(nodes.length + 1)
     });
+  };
+
+  const finishResize = (event: KonvaEventObject<MouseEvent> | KonvaEventObject<TouchEvent>) => {
+    const activeResize = resizeSessionRef.current ?? resizeSession;
+    if (!editor || !activeResize) {
+      return;
+    }
+
+    const stage = event.target.getStage();
+    const pointer = stage?.getPointerPosition();
+    const absolute = getNodeAbsolutePosition(editor.document, activeResize.nodeId);
+    if (!pointer || !absolute) {
+      resizeSessionRef.current = null;
+      setResizeSession(null);
+      return;
+    }
+
+    const stagePoint = {
+      x: (pointer.x - editor.viewport.x) / editor.viewport.scale,
+      y: (pointer.y - editor.viewport.y) / editor.viewport.scale
+    };
+
+    updateGeometry(activeResize.nodeId, {
+      width: Math.round(stagePoint.x - absolute.x),
+      height: Math.round(stagePoint.y - absolute.y)
+    });
+    resizeSessionRef.current = null;
+    setResizeSession(null);
+  };
+
+  const startResizeFromPointer = (event: KonvaEventObject<MouseEvent>) => {
+    if (!editor || !selectedNode) {
+      return false;
+    }
+
+    const stage = event.target.getStage();
+    const pointer = stage?.getPointerPosition();
+    const absolute = getNodeAbsolutePosition(editor.document, selectedNode.id);
+    if (!pointer || !absolute) {
+      return false;
+    }
+
+    const stagePoint = {
+      x: (pointer.x - editor.viewport.x) / editor.viewport.scale,
+      y: (pointer.y - editor.viewport.y) / editor.viewport.scale
+    };
+    const hitSize = editorKonvaTokens.selection.resizeHitSize;
+    const handleLeft = absolute.x + selectedNode.size.width - hitSize;
+    const handleTop = absolute.y + selectedNode.size.height - hitSize;
+
+    if (
+      stagePoint.x >= handleLeft &&
+      stagePoint.x <= absolute.x + selectedNode.size.width &&
+      stagePoint.y >= handleTop &&
+      stagePoint.y <= absolute.y + selectedNode.size.height
+    ) {
+      event.cancelBubble = true;
+      const nextResizeSession = { nodeId: selectedNode.id };
+      resizeSessionRef.current = nextResizeSession;
+      setResizeSession(nextResizeSession);
+      return true;
+    }
+
+    return false;
   };
 
   return (
@@ -360,10 +433,16 @@ export function App() {
               x={editor?.viewport.x ?? 0}
               y={editor?.viewport.y ?? 0}
               onMouseDown={(event) => {
+                if (startResizeFromPointer(event)) {
+                  return;
+                }
+
                 if (event.target === event.target.getStage()) {
                   setEditor((current) => (current ? setSelection(current, null) : current));
                 }
               }}
+              onMouseUp={finishResize}
+              onTouchEnd={finishResize}
             >
               <Layer>
                 {editor?.document.pages[0]?.children.map((node) =>
@@ -371,7 +450,12 @@ export function App() {
                     node,
                     selectedNodeId: editor.selection.nodeId,
                     onSelect: selectNode,
-                    onGeometryChange: updateGeometry
+                    onGeometryChange: updateGeometry,
+                    onResizeStart: (nodeId) => {
+                      const nextResizeSession = { nodeId };
+                      resizeSessionRef.current = nextResizeSession;
+                      setResizeSession(nextResizeSession);
+                    }
                   })
                 )}
               </Layer>

@@ -88,6 +88,22 @@ export function findNodeById(document: RendererDocument, nodeId: string): Render
   return null;
 }
 
+export function getNodeAbsolutePosition(
+  document: RendererDocument,
+  nodeId: string
+): { x: number; y: number } | null {
+  for (const page of document.pages) {
+    for (const node of page.children) {
+      const found = absolutePositionInNode(node, nodeId, { x: 0, y: 0 });
+      if (found) {
+        return found;
+      }
+    }
+  }
+
+  return null;
+}
+
 export function executeEditorCommand(state: EditorState, command: EditorCommand): EditorState {
   const result = applyCommand(state.document, command);
   if (!result.inverse) {
@@ -329,6 +345,30 @@ function findInNode(node: RendererNode, nodeId: string): RendererNode | null {
 
   for (const child of node.children) {
     const found = findInNode(child, nodeId);
+    if (found) {
+      return found;
+    }
+  }
+
+  return null;
+}
+
+function absolutePositionInNode(
+  node: RendererNode,
+  nodeId: string,
+  parent: { x: number; y: number }
+): { x: number; y: number } | null {
+  const current = {
+    x: parent.x + node.transform.x,
+    y: parent.y + node.transform.y
+  };
+
+  if (node.id === nodeId) {
+    return current;
+  }
+
+  for (const child of node.children) {
+    const found = absolutePositionInNode(child, nodeId, current);
     if (found) {
       return found;
     }

@@ -6,6 +6,7 @@ import {
   findNodeById,
   createRectangleNode,
   createTextNode,
+  getNodeAbsolutePosition,
   panViewport,
   redo,
   setSelection,
@@ -175,5 +176,11 @@ describe("editor state commands", () => {
 
     expect(panned.viewport).toEqual({ scale: 1, x: 24, y: -16 });
     expect(zoomed.viewport.scale).toBe(1.5);
+  });
+
+  test("calculates absolute node position through parent transforms", () => {
+    expect(getNodeAbsolutePosition(sampleDocument(), "frame-1")).toEqual({ x: 120, y: 80 });
+    expect(getNodeAbsolutePosition(sampleDocument(), "text-1")).toEqual({ x: 152, y: 120 });
+    expect(getNodeAbsolutePosition(sampleDocument(), "missing")).toBeNull();
   });
 });
