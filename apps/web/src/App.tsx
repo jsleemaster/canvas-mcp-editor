@@ -6,8 +6,22 @@ import {
   type RendererDocument,
   type RendererNode
 } from "@canvas-mcp-editor/renderer";
+import {
+  createTeamManifest,
+  type CollaborationPresence,
+  type TeamManifest
+} from "@canvas-mcp-editor/collaboration";
 import { parseDocumentPayload } from "./document-api";
 import { editorKonvaTokens } from "./design-tokens";
+import {
+  createCollabDocumentSession,
+  type CollabDocumentSession
+} from "./collaboration/collab-session";
+import {
+  createIndexedDbTeamStore,
+  exportTeamManifest,
+  importTeamManifest
+} from "./collaboration/team-store";
 import {
   createEditorState,
   createRectangleNode,
@@ -27,6 +41,9 @@ import {
 function numericInputValue(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
+
+const teamStore = createIndexedDbTeamStore();
+const LOCAL_USER_COLOR = "var(--editor-color-selection)";
 
 function renderNode({
   node,
@@ -237,7 +254,14 @@ function Inspector({
 export function App() {
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [resizeSession, setResizeSession] = useState<{ nodeId: string } | null>(null);
+  const [teamName, setTeamName] = useState("Design Team");
+  const [relayUrl, setRelayUrl] = useState("");
+  const [relayToken, setRelayToken] = useState("");
+  const [manifestText, setManifestText] = useState("");
+  const [collabSession, setCollabSession] = useState<CollabDocumentSession | null>(null);
+  const [presence, setPresence] = useState<CollaborationPresence[]>([]);
   const resizeSessionRef = useRef<{ nodeId: string } | null>(null);
+  const collabSessionRef = useRef<CollabDocumentSession | null>(null);
 
   useEffect(() => {
     fetch("http://127.0.0.1:4317/files/sample-file")
@@ -245,6 +269,13 @@ export function App() {
       .then((payload) => setEditor(createEditorState(parseDocumentPayload(payload))))
       .catch(() => setEditor(null));
   }, []);
+
+  useEffect(
+    () => () => {
+      collabSessionRef.current?.destroy();
+    },
+    []
+  );
 
   const nodes = useMemo(
     () => (editor ? flattenRendererNodes(editor.document) : []),
@@ -260,11 +291,32 @@ export function App() {
     : undefined;
 
   const dispatch = (command: Parameters<typeof executeEditorCommand>[1]) => {
-    setEditor((current) => (current ? executeEditorCommand(current, command) : current));
+    setEditor((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const activeSession = collabSessionRef.current;
+      if (!activeSession) {
+        return executeEditorCommand(current, command);
+      }
+
+      let nextState = current;
+      activeSession.transact("editor-command", (document) => {
+        nextState = executeEditorCommand({ ...current, document }, command);
+        return nextState.document;
+      });
+      setPresence(activeSession.getPresence());
+      return nextState;
+    });
   };
 
   const selectNode = (nodeId: string) => {
     setEditor((current) => (current ? setSelection(current, nodeId) : current));
+    collabSessionRef.current?.updatePresence({ selectedNodeId: nodeId, activeTool: "select" });
+    if (collabSessionRef.current) {
+      setPresence(collabSessionRef.current.getPresence());
+    }
   };
 
   const updateGeometry = (nodeId: string, patch: GeometryPatch) => {
@@ -330,6 +382,94 @@ export function App() {
     }
 
     dispatch({ type: "detach_instance", nodeId: selectedNode.id });
+  };
+
+  const activateTeam = async (team: TeamManifest) => {
+    if (!editor) {
+      return;
+    }
+
+    await teamStore.saveTeam(team);
+    await teamStore.setCurrentTeam(team.teamId);
+    collabSessionRef.current?.destroy();
+
+    const session = createCollabDocumentSession({
+      team,
+      documentId: editor.document.id,
+      initialDocument: editor.document
+    });
+    session.subscribe((document) => {
+      setEditor((current) => {
+        if (!current) {
+          return createEditorState(document);
+        }
+
+        return {
+          ...current,
+          document,
+          selection: {
+            nodeId:
+              current.selection.nodeId && findNodeById(document, current.selection.nodeId)
+                ? current.selection.nodeId
+                : null
+          }
+        };
+      });
+      setPresence(session.getPresence());
+    });
+    collabSessionRef.current = session;
+    setCollabSession(session);
+    setPresence(session.getPresence());
+  };
+
+  const createLocalTeam = () => {
+    void activateTeam(
+      createTeamManifest({
+        name: teamName,
+        currentUser: {
+          userId: "local-user",
+          displayName: "Local user",
+          color: LOCAL_USER_COLOR
+        }
+      })
+    );
+  };
+
+  const createRelayTeam = () => {
+    if (!relayUrl.trim()) {
+      return;
+    }
+
+    void activateTeam(
+      createTeamManifest({
+        name: teamName,
+        currentUser: {
+          userId: "local-user",
+          displayName: "Local user",
+          color: LOCAL_USER_COLOR
+        },
+        sync: {
+          mode: "websocket",
+          roomPrefix: "canvas-mcp-editor",
+          relayUrl: relayUrl.trim(),
+          token: relayToken.trim() || undefined
+        }
+      })
+    );
+  };
+
+  const exportCurrentTeam = () => {
+    if (collabSession) {
+      setManifestText(exportTeamManifest(collabSession.team));
+    }
+  };
+
+  const importTeam = () => {
+    if (!manifestText.trim()) {
+      return;
+    }
+
+    void activateTeam(importTeamManifest(manifestText));
   };
 
   const finishResize = (event: KonvaEventObject<MouseEvent> | KonvaEventObject<TouchEvent>) => {
@@ -510,6 +650,10 @@ export function App() {
 
                 if (event.target === event.target.getStage()) {
                   setEditor((current) => (current ? setSelection(current, null) : current));
+                  collabSessionRef.current?.updatePresence({ selectedNodeId: null });
+                  if (collabSessionRef.current) {
+                    setPresence(collabSessionRef.current.getPresence());
+                  }
                 }
               }}
               onMouseUp={finishResize}
@@ -540,6 +684,67 @@ export function App() {
         onFillChange={(nodeId, fill) => dispatch({ type: "set_fill", nodeId, fill })}
         onTextChange={(nodeId, value) => dispatch({ type: "update_text", nodeId, value })}
       />
+      <aside className="team-panel" aria-label="Team collaboration">
+        <h2>Team</h2>
+        <div className="team-fields">
+          <label>
+            Name
+            <input
+              data-testid="team-name"
+              value={teamName}
+              onChange={(event) => setTeamName(event.currentTarget.value)}
+            />
+          </label>
+          <label>
+            Relay
+            <input
+              data-testid="relay-url"
+              value={relayUrl}
+              placeholder="ws://127.0.0.1:4327"
+              onChange={(event) => setRelayUrl(event.currentTarget.value)}
+            />
+          </label>
+          <label>
+            Token
+            <input
+              data-testid="relay-token"
+              value={relayToken}
+              onChange={(event) => setRelayToken(event.currentTarget.value)}
+            />
+          </label>
+        </div>
+        <div className="team-actions">
+          <button type="button" onClick={createLocalTeam} disabled={!editor}>
+            Local
+          </button>
+          <button type="button" onClick={createRelayTeam} disabled={!editor || !relayUrl.trim()}>
+            Relay
+          </button>
+          <button type="button" onClick={exportCurrentTeam} disabled={!collabSession}>
+            Export
+          </button>
+          <button type="button" onClick={importTeam} disabled={!editor || !manifestText.trim()}>
+            Import
+          </button>
+        </div>
+        <div className="team-status" data-testid="team-status">
+          {collabSession ? `${collabSession.team.name} · ${collabSession.status}` : "No team"}
+        </div>
+        <div className="presence-list" data-testid="presence-list">
+          {presence.map((member) => (
+            <span key={member.userId} className="presence-member">
+              <span style={{ backgroundColor: member.color }} />
+              {member.displayName}
+              {member.selectedNodeId ? ` · ${member.selectedNodeId}` : ""}
+            </span>
+          ))}
+        </div>
+        <textarea
+          data-testid="team-manifest"
+          value={manifestText}
+          onChange={(event) => setManifestText(event.currentTarget.value)}
+        />
+      </aside>
     </main>
   );
 }
