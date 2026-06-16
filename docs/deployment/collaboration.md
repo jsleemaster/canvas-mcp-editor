@@ -81,9 +81,29 @@ COLLAB_RELAY_HOST=0.0.0.0
 COLLAB_RELAY_PORT=4327
 COLLAB_ALLOWED_ROOM_PREFIX=canvas-mcp-editor:
 COLLAB_ROOM_TOKEN=
+COLLAB_MEMBER_TOKENS=[]
 ```
 
 Publish the websocket URL to team members through the team manifest. The project maintainers do not operate this relay for users.
+
+`COLLAB_MEMBER_TOKENS` is an optional JSON array for member-level relay authorization:
+
+```json
+[
+  {
+    "userId": "owner-1",
+    "role": "owner",
+    "tokenHash": "sha256-hex-token"
+  },
+  {
+    "userId": "viewer-1",
+    "role": "viewer",
+    "tokenHash": "sha256-hex-token"
+  }
+]
+```
+
+`owner` and `editor` members can request document sync access. `viewer` members can connect with awareness-only access so they can participate in presence without mutating the shared document. Plain `token` fields are accepted for local testing, but production relay config should prefer `tokenHash`.
 
 ## Trusted network relay
 
@@ -96,9 +116,10 @@ COLLAB_RELAY_HOST=127.0.0.1
 COLLAB_RELAY_PORT=4327
 COLLAB_ALLOWED_ROOM_PREFIX=canvas-mcp-editor:
 COLLAB_ROOM_TOKEN=
+COLLAB_MEMBER_TOKENS=[]
 ```
 
-If `COLLAB_ROOM_TOKEN` is set, clients must pass the same token as a websocket query parameter. This is a lightweight relay gate, not full user authentication.
+If `COLLAB_ROOM_TOKEN` is set, clients must pass the same token as a websocket query parameter. This is a lightweight relay gate, not full user authentication. If `COLLAB_MEMBER_TOKENS` is set, clients must also pass `userId` and `memberToken`; the relay validates member identity and role before opening the websocket.
 
 ## Agent Commands
 
@@ -130,4 +151,6 @@ The server connects to the relay room, applies the command to the Yjs-backed doc
 
 - No account system is included.
 - Relay tokens are not end-to-end encryption.
+- Team manifests store member roles and token hashes, not plaintext relay/member tokens.
+- Viewer write blocking is enforced at relay connection and sync-message handling; the current Yjs protocol layer is not a full document permission engine.
 - Sensitive teams should run relays inside a trusted network until encrypted Yjs updates are added.

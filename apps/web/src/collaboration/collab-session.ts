@@ -18,6 +18,9 @@ export interface CollaborationProviderInput {
   relayUrl: string;
   roomId: string;
   token?: string;
+  userId: string;
+  memberToken?: string;
+  access: "sync" | "awareness";
   ydoc: Y.Doc;
   initialPresence: CollaborationPresence;
 }
@@ -50,6 +53,8 @@ export interface CreateCollabDocumentSessionInput {
   team: TeamManifest;
   documentId: string;
   initialDocument: RendererDocument;
+  relayToken?: string;
+  memberToken?: string;
   enablePersistence?: boolean;
   providerFactory?: CollaborationProviderFactory;
 }
@@ -62,6 +67,8 @@ export function createCollabDocumentSession(
     ...input.team.members.find((member) => member.userId === input.team.currentUserId),
     userId: input.team.currentUserId
   });
+  const currentMember = input.team.members.find((member) => member.userId === input.team.currentUserId);
+  const access = currentMember?.role === "viewer" ? "awareness" : "sync";
   const localPresenceState = { current: localPresence };
   let status: CollabConnectionStatus = input.team.sync.mode === "websocket" ? "connecting" : "offline";
   let provider: CollaborationProvider | null = null;
@@ -86,7 +93,10 @@ export function createCollabDocumentSession(
     provider = (input.providerFactory ?? createDefaultProvider)({
       relayUrl: input.team.sync.relayUrl,
       roomId: createDocumentRoomId(input.team.teamId, input.documentId),
-      token: input.team.sync.token,
+      token: input.relayToken,
+      userId: input.team.currentUserId,
+      memberToken: input.memberToken,
+      access,
       ydoc: document.ydoc,
       initialPresence: localPresence
     });
@@ -153,7 +163,12 @@ function createDefaultProvider(input: CollaborationProviderInput): Collaboration
   awareness.setLocalState(input.initialPresence);
   const provider = new WebsocketProvider(input.relayUrl, input.roomId, input.ydoc, {
     awareness,
-    params: input.token ? { token: input.token } : undefined
+    params: {
+      ...(input.token ? { token: input.token } : {}),
+      userId: input.userId,
+      ...(input.memberToken ? { memberToken: input.memberToken } : {}),
+      access: input.access
+    }
   });
   const statusListeners = new Set<(status: CollabConnectionStatus) => void>();
   const presenceListeners = new Set<() => void>();

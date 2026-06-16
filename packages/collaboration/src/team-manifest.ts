@@ -4,7 +4,10 @@ export interface TeamMember {
   userId: string;
   displayName: string;
   color: string;
+  role: TeamRole;
 }
+
+export type TeamRole = "owner" | "editor" | "viewer";
 
 export interface TeamDocumentSummary {
   documentId: string;
@@ -21,12 +24,31 @@ export type TeamSyncConfig =
       mode: "websocket";
       roomPrefix: string;
       relayUrl: string;
-      token?: string;
     };
 
 export interface TeamPermissions {
   canEdit: boolean;
   canInvite: boolean;
+}
+
+export interface RelayMemberTokenHash {
+  userId: string;
+  tokenHash: string;
+  role: TeamRole;
+}
+
+export interface RelayInviteTokenHash {
+  inviteId: string;
+  tokenHash: string;
+  role: Exclude<TeamRole, "owner">;
+  expiresAt?: string;
+}
+
+export interface TeamAuthMetadata {
+  relay: {
+    memberTokenHashes: RelayMemberTokenHash[];
+    inviteTokenHashes: RelayInviteTokenHash[];
+  };
 }
 
 export interface TeamManifest {
@@ -39,22 +61,29 @@ export interface TeamManifest {
   documents: TeamDocumentSummary[];
   sync: TeamSyncConfig;
   permissions: TeamPermissions;
+  auth: TeamAuthMetadata;
 }
 
 export interface CreateTeamManifestInput {
   name: string;
-  currentUser: TeamMember;
+  currentUser: Omit<TeamMember, "role"> & { role?: TeamRole };
+  members?: Array<Omit<TeamMember, "role"> & { role?: TeamRole }>;
   teamId?: string;
   createdAt?: string;
   documents?: TeamDocumentSummary[];
-  sync?: Partial<TeamSyncConfig> & { mode: TeamSyncConfig["mode"] };
+  sync?: (Partial<TeamSyncConfig> & { mode: TeamSyncConfig["mode"] }) & {
+    token?: string;
+    memberTokenHashes?: RelayMemberTokenHash[];
+    inviteTokenHashes?: RelayInviteTokenHash[];
+  };
   permissions?: Partial<TeamPermissions>;
 }
 
 const teamMemberSchema = z.object({
   userId: z.string().trim().min(1),
   displayName: z.string().trim().min(1),
-  color: z.string().trim().min(1)
+  color: z.string().trim().min(1),
+  role: z.enum(["owner", "editor", "viewer"])
 });
 
 const teamDocumentSummarySchema = z.object({
@@ -71,10 +100,29 @@ const teamSyncConfigSchema = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("websocket"),
     roomPrefix: z.string().trim().min(1),
-    relayUrl: z.string().trim().min(1),
-    token: z.string().trim().min(1).optional()
+    relayUrl: z.string().trim().min(1)
   })
 ]);
+
+const relayMemberTokenHashSchema = z.object({
+  userId: z.string().trim().min(1),
+  tokenHash: z.string().trim().min(1),
+  role: z.enum(["owner", "editor", "viewer"])
+});
+
+const relayInviteTokenHashSchema = z.object({
+  inviteId: z.string().trim().min(1),
+  tokenHash: z.string().trim().min(1),
+  role: z.enum(["editor", "viewer"]),
+  expiresAt: z.string().trim().min(1).optional()
+});
+
+const teamAuthMetadataSchema = z.object({
+  relay: z.object({
+    memberTokenHashes: z.array(relayMemberTokenHashSchema),
+    inviteTokenHashes: z.array(relayInviteTokenHashSchema)
+  })
+});
 
 const teamManifestSchema = z.object({
   schemaVersion: z.literal(1),
@@ -88,7 +136,8 @@ const teamManifestSchema = z.object({
   permissions: z.object({
     canEdit: z.boolean(),
     canInvite: z.boolean()
-  })
+  }),
+  auth: teamAuthMetadataSchema
 });
 
 const DEFAULT_ROOM_PREFIX = "canvas-mcp-editor";
@@ -100,18 +149,29 @@ export function createTeamManifest(input: CreateTeamManifestInput): TeamManifest
   }
 
   const sync = normalizeSyncConfig(input.sync);
+  const currentUser = normalizeTeamMember(input.currentUser, "owner");
+  const members = [
+    currentUser,
+    ...(input.members ?? []).map((member) => normalizeTeamMember(member, "editor"))
+  ];
   const team: TeamManifest = {
     schemaVersion: 1,
     teamId: input.teamId ?? createId("team"),
     name,
     createdAt: input.createdAt ?? new Date().toISOString(),
-    currentUserId: input.currentUser.userId,
-    members: [input.currentUser],
+    currentUserId: currentUser.userId,
+    members: dedupeMembers(members),
     documents: input.documents ?? [],
     sync,
     permissions: {
-      canEdit: input.permissions?.canEdit ?? true,
-      canInvite: input.permissions?.canInvite ?? true
+      canEdit: input.permissions?.canEdit ?? currentUser.role !== "viewer",
+      canInvite: input.permissions?.canInvite ?? currentUser.role === "owner"
+    },
+    auth: {
+      relay: {
+        memberTokenHashes: input.sync?.memberTokenHashes ?? [],
+        inviteTokenHashes: input.sync?.inviteTokenHashes ?? []
+      }
     }
   };
 
@@ -125,7 +185,7 @@ export function parseTeamManifest(input: unknown): TeamManifest {
     throw new Error(`invalid team manifest: ${issues.join(", ")}`);
   }
 
-  return parsed.data;
+    return parsed.data;
 }
 
 function normalizeSyncConfig(input: CreateTeamManifestInput["sync"]): TeamSyncConfig {
@@ -143,9 +203,29 @@ function normalizeSyncConfig(input: CreateTeamManifestInput["sync"]): TeamSyncCo
   return {
     mode: "websocket",
     roomPrefix: input.roomPrefix ?? DEFAULT_ROOM_PREFIX,
-    relayUrl: input.relayUrl,
-    token: input.token
+    relayUrl: input.relayUrl
   };
+}
+
+function normalizeTeamMember(
+  member: Omit<TeamMember, "role"> & { role?: TeamRole },
+  defaultRole: TeamRole
+): TeamMember {
+  return {
+    ...member,
+    role: member.role ?? defaultRole
+  };
+}
+
+function dedupeMembers(members: TeamMember[]): TeamMember[] {
+  const seen = new Set<string>();
+  return members.filter((member) => {
+    if (seen.has(member.userId)) {
+      return false;
+    }
+    seen.add(member.userId);
+    return true;
+  });
 }
 
 function createId(prefix: string): string {

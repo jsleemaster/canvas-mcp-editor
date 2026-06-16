@@ -175,6 +175,7 @@ COLLAB_RELAY_HOST=127.0.0.1
 COLLAB_RELAY_PORT=4327
 COLLAB_ALLOWED_ROOM_PREFIX=canvas-mcp-editor:
 COLLAB_ROOM_TOKEN=
+COLLAB_MEMBER_TOKENS=[]
 ```
 
-The MVP token is a relay gate, not account authentication. End-to-end encryption is not implemented yet.
+The MVP relay gate token is not account authentication. For member authorization, the relay can also validate `COLLAB_MEMBER_TOKENS` entries with `owner`, `editor`, or `viewer` roles. Viewers are limited to awareness-only connections; document sync/write access is reserved for owners and editors. End-to-end encryption is not implemented yet.
