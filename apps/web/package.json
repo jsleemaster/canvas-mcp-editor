@@ -11,6 +11,7 @@
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@canvas-mcp-editor/collaboration": "workspace:*",
     "@canvas-mcp-editor/renderer": "workspace:*",
     "@vitejs/plugin-react": "^5.0.0",
     "konva": "^10.0.0",
