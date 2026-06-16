@@ -1,5 +1,20 @@
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  applyAgentCommandsToDocument,
+  createAgentBatchResult,
+  findNodes as findAgentNodes,
+  getChangeSummary as summarizeChanges,
+  inspectCanvas as inspectDesignFile,
+  validateDocument as validateDesignFile,
+  type AgentBatchInput,
+  type AgentBatchResult,
+  type AgentFindQuery,
+  type AgentNodeSummary,
+  type CanvasInspection,
+  type ChangeSummary,
+  type DocumentValidation
+} from "./agent-control.js";
 import { sampleDocument } from "./sample-document.js";
 
 export interface DesignNode {
@@ -251,6 +266,39 @@ export class FileStorage {
     node.component_instance = null;
     await this.writeFile(fileId, document);
     return node;
+  }
+
+  async inspectCanvas(fileId: string): Promise<CanvasInspection> {
+    return inspectDesignFile(await this.readFile(fileId));
+  }
+
+  async findNodes(fileId: string, query: AgentFindQuery): Promise<AgentNodeSummary[]> {
+    return findAgentNodes(await this.readFile(fileId), query);
+  }
+
+  async validateDocument(fileId: string): Promise<DocumentValidation> {
+    return validateDesignFile(await this.readFile(fileId));
+  }
+
+  async getChangeSummary(fileId: string, before: DesignFile, after: DesignFile): Promise<ChangeSummary> {
+    void fileId;
+    return summarizeChanges(before, after);
+  }
+
+  async applyAgentCommands(fileId: string, input: AgentBatchInput): Promise<AgentBatchResult> {
+    const before = await this.readFile(fileId);
+    const { document: preview, changedNodeIds } = applyAgentCommandsToDocument(
+      before,
+      input.commands
+    );
+    const persisted = !(input.dryRun ?? false);
+    const result = createAgentBatchResult(fileId, before, preview, input, persisted, changedNodeIds);
+
+    if (persisted) {
+      await this.writeFile(fileId, preview);
+    }
+
+    return result;
   }
 }
 
