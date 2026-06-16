@@ -1,0 +1,10 @@
+.DS_Store
+node_modules/
+dist/
+build/
+target/
+pkg/
+.env
+.env.*
+!.env.example
+.canvas-mcp-editor/
