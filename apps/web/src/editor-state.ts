@@ -54,6 +54,31 @@ export type EditorCommand =
       type: "delete_node";
       parentId: string;
       node: RendererNode;
+    }
+  | {
+      type: "create_component";
+      nodeId: string;
+      componentId: string;
+      name: string;
+    }
+  | {
+      type: "delete_component";
+      nodeId: string;
+      componentId: string;
+      previousNode: RendererNode;
+    }
+  | {
+      type: "create_component_instance";
+      parentId: string;
+      definitionId: string;
+      instanceId: string;
+      x: number;
+      y: number;
+    }
+  | {
+      type: "detach_instance";
+      nodeId: string;
+      previousNode?: RendererNode;
     };
 
 interface CommandResult {
@@ -335,6 +360,93 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         selectedNodeId: null
       };
     }
+    case "create_component": {
+      const node = findNodeById(next, command.nodeId);
+      if (!node) {
+        return { document, inverse: null };
+      }
+
+      const previousNode = structuredClone(node);
+      node.kind = "component";
+      node.component_instance = null;
+      next.components = next.components ?? [];
+      next.components.push({
+        id: command.componentId,
+        name: command.name,
+        source_node: structuredClone(node),
+        variants: [{ id: "default", name: "Default", properties: [] }]
+      });
+
+      return {
+        document: next,
+        inverse: {
+          type: "delete_component",
+          nodeId: command.nodeId,
+          componentId: command.componentId,
+          previousNode
+        },
+        selectedNodeId: command.nodeId
+      };
+    }
+    case "delete_component": {
+      replaceNodeById(next, command.nodeId, structuredClone(command.previousNode));
+      next.components = (next.components ?? []).filter((component) => component.id !== command.componentId);
+
+      return {
+        document: next,
+        inverse: {
+          type: "create_component",
+          nodeId: command.nodeId,
+          componentId: command.componentId,
+          name: command.previousNode.name
+        },
+        selectedNodeId: command.nodeId
+      };
+    }
+    case "create_component_instance": {
+      const parent = findParentChildren(next, command.parentId);
+      const definition = (next.components ?? []).find(
+        (component) => component.id === command.definitionId
+      );
+      if (!parent || !definition) {
+        return { document, inverse: null };
+      }
+
+      const node = structuredClone(definition.source_node);
+      renameInstanceTree(node, command.instanceId);
+      node.id = command.instanceId;
+      node.kind = "component_instance";
+      node.name = `${definition.name} Instance`;
+      node.transform = { ...node.transform, x: command.x, y: command.y };
+      node.component_instance = {
+        definition_id: command.definitionId,
+        overrides: [],
+        detached: false
+      };
+      parent.children.push(node);
+
+      return {
+        document: next,
+        inverse: { type: "delete_node", parentId: command.parentId, node },
+        selectedNodeId: node.id
+      };
+    }
+    case "detach_instance": {
+      const node = findNodeById(next, command.nodeId);
+      if (!node || !node.component_instance) {
+        return { document, inverse: null };
+      }
+
+      const previousNode = command.previousNode ?? structuredClone(node);
+      node.kind = "frame";
+      node.component_instance = null;
+
+      return {
+        document: next,
+        inverse: { type: "detach_instance", nodeId: command.nodeId, previousNode },
+        selectedNodeId: command.nodeId
+      };
+    }
   }
 }
 
@@ -388,6 +500,47 @@ function findParentChildren(
 
   const node = findNodeById(document, parentId);
   return node ? { children: node.children } : null;
+}
+
+function replaceNodeById(document: RendererDocument, nodeId: string, replacement: RendererNode): boolean {
+  for (const page of document.pages) {
+    const index = page.children.findIndex((node) => node.id === nodeId);
+    if (index !== -1) {
+      page.children[index] = replacement;
+      return true;
+    }
+
+    for (const node of page.children) {
+      if (replaceInNode(node, nodeId, replacement)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function replaceInNode(node: RendererNode, nodeId: string, replacement: RendererNode): boolean {
+  const index = node.children.findIndex((child) => child.id === nodeId);
+  if (index !== -1) {
+    node.children[index] = replacement;
+    return true;
+  }
+
+  for (const child of node.children) {
+    if (replaceInNode(child, nodeId, replacement)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function renameInstanceTree(node: RendererNode, instanceId: string) {
+  for (const child of node.children) {
+    child.id = `${instanceId}__${child.id}`;
+    renameInstanceTree(child, instanceId);
+  }
 }
 
 function clampSize(value: number): number {

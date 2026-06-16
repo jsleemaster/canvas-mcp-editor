@@ -1,7 +1,8 @@
 export interface RendererNode {
   id: string;
-  kind: "frame" | "rectangle" | "text" | "image";
+  kind: "frame" | "rectangle" | "text" | "image" | "component" | "component_instance";
   name: string;
+  component_instance?: ComponentInstance | null;
   transform: { x: number; y: number; rotation: number };
   size: { width: number; height: number };
   style: {
@@ -17,9 +18,29 @@ export interface RendererNode {
   children: RendererNode[];
 }
 
+export interface ComponentDefinition {
+  id: string;
+  name: string;
+  source_node: RendererNode;
+  variants: ComponentVariant[];
+}
+
+export interface ComponentVariant {
+  id: string;
+  name: string;
+  properties: Array<{ name: string; value: string }>;
+}
+
+export interface ComponentInstance {
+  definition_id: string;
+  overrides: Array<{ node_id: string; field: string; value: string }>;
+  detached: boolean;
+}
+
 export interface RendererDocument {
   id: string;
   name: string;
+  components?: ComponentDefinition[];
   pages: Array<{ id: string; name: string; children: RendererNode[] }>;
 }
 

@@ -183,4 +183,67 @@ describe("editor state commands", () => {
     expect(getNodeAbsolutePosition(sampleDocument(), "text-1")).toEqual({ x: 152, y: 120 });
     expect(getNodeAbsolutePosition(sampleDocument(), "missing")).toBeNull();
   });
+
+  test("creates a component definition from a selected node", () => {
+    const initial = createEditorState(sampleDocument());
+
+    const component = executeEditorCommand(initial, {
+      type: "create_component",
+      nodeId: "frame-1",
+      componentId: "component-1",
+      name: "Card"
+    });
+
+    expect(component.document.components).toHaveLength(1);
+    expect(component.document.components?.[0]).toMatchObject({
+      id: "component-1",
+      name: "Card",
+      variants: [{ id: "default", name: "Default", properties: [] }]
+    });
+    expect(findNodeById(component.document, "frame-1")?.kind).toBe("component");
+
+    const undone = undo(component);
+    expect(undone.document.components).toEqual([]);
+    expect(findNodeById(undone.document, "frame-1")?.kind).toBe("frame");
+  });
+
+  test("creates and detaches a component instance", () => {
+    const component = executeEditorCommand(createEditorState(sampleDocument()), {
+      type: "create_component",
+      nodeId: "frame-1",
+      componentId: "component-1",
+      name: "Card"
+    });
+
+    const instance = executeEditorCommand(component, {
+      type: "create_component_instance",
+      parentId: "page-1",
+      definitionId: "component-1",
+      instanceId: "instance-1",
+      x: 520,
+      y: 140
+    });
+
+    const instanceNode = findNodeById(instance.document, "instance-1");
+    expect(instanceNode).toMatchObject({
+      id: "instance-1",
+      kind: "component_instance",
+      component_instance: {
+        definition_id: "component-1",
+        detached: false,
+        overrides: []
+      }
+    });
+    expect(instance.selection.nodeId).toBe("instance-1");
+
+    const detached = executeEditorCommand(instance, {
+      type: "detach_instance",
+      nodeId: "instance-1"
+    });
+
+    expect(findNodeById(detached.document, "instance-1")).toMatchObject({
+      kind: "frame",
+      component_instance: null
+    });
+  });
 });

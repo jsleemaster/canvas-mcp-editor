@@ -6,4 +6,7 @@ pub mod model;
 pub use commands::{Command, CommandError};
 pub use context::{DesignContext, NodeSummary};
 pub use geometry::{Bounds, Point, Size, Transform};
-pub use model::{DesignFile, Node, NodeContent, NodeKind, Page, Style};
+pub use model::{
+    ComponentDefinition, ComponentInstance, ComponentOverride, ComponentProperty, ComponentVariant,
+    DesignFile, Node, NodeContent, NodeKind, Page, Style,
+};
