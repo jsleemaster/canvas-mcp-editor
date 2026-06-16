@@ -23,9 +23,11 @@ test("relay Docker artifacts expose team-owned relay configuration", async () =>
   assert.match(dockerfile, /EXPOSE 4327/);
   assert.match(compose, /COLLAB_RELAY_HOST/);
   assert.match(compose, /COLLAB_RELAY_PORT/);
+  assert.match(compose, /COLLAB_MEMBER_TOKENS/);
   assert.match(compose, /\/health/);
   assert.match(env, /COLLAB_ALLOWED_ROOM_PREFIX=canvas-mcp-editor:/);
   assert.match(env, /COLLAB_ROOM_TOKEN=/);
+  assert.match(env, /COLLAB_MEMBER_TOKENS=\[\]/);
 });
 
 test("deployment docs keep web hosting and relay hosting separate", async () => {

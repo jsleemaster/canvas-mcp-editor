@@ -30,8 +30,83 @@ describe("team manifests", () => {
       }
     });
     expect(team.teamId).toMatch(/^team-/);
-    expect(team.members).toHaveLength(1);
+    expect(team.members).toEqual([
+      {
+        userId: "user-1",
+        displayName: "Lee",
+        color: "#2563eb",
+        role: "owner"
+      }
+    ]);
     expect(team.documents).toEqual([]);
+    expect(team.auth).toEqual({
+      relay: {
+        memberTokenHashes: [],
+        inviteTokenHashes: []
+      }
+    });
+  });
+
+  test("creates websocket auth metadata without storing plaintext relay tokens", () => {
+    const team = createTeamManifest({
+      name: "Relay Team",
+      currentUser: {
+        userId: "owner-1",
+        displayName: "Owner",
+        color: "#2563eb"
+      },
+      members: [
+        {
+          userId: "viewer-1",
+          displayName: "Viewer",
+          color: "#16a34a",
+          role: "viewer"
+        }
+      ],
+      sync: {
+        mode: "websocket",
+        relayUrl: "ws://127.0.0.1:4327",
+        token: "runtime-secret",
+        memberTokenHashes: [
+          {
+            userId: "owner-1",
+            tokenHash: "sha256-owner",
+            role: "owner"
+          },
+          {
+            userId: "viewer-1",
+            tokenHash: "sha256-viewer",
+            role: "viewer"
+          }
+        ]
+      }
+    });
+
+    expect(team.sync).toEqual({
+      mode: "websocket",
+      roomPrefix: "canvas-mcp-editor",
+      relayUrl: "ws://127.0.0.1:4327"
+    });
+    expect(team.members.map((member) => [member.userId, member.role])).toEqual([
+      ["owner-1", "owner"],
+      ["viewer-1", "viewer"]
+    ]);
+    expect(team.permissions).toEqual({
+      canEdit: true,
+      canInvite: true
+    });
+    expect(team.auth.relay.memberTokenHashes).toEqual([
+      {
+        userId: "owner-1",
+        tokenHash: "sha256-owner",
+        role: "owner"
+      },
+      {
+        userId: "viewer-1",
+        tokenHash: "sha256-viewer",
+        role: "viewer"
+      }
+    ]);
   });
 
   test("rejects empty team names", () => {
@@ -75,7 +150,8 @@ describe("team manifests", () => {
         {
           userId: "user-2",
           displayName: "Kim",
-          color: "#16a34a"
+          color: "#16a34a",
+          role: "editor"
         }
       ],
       documents: [
@@ -88,12 +164,23 @@ describe("team manifests", () => {
       sync: {
         mode: "websocket",
         roomPrefix: "canvas-mcp-editor",
-        relayUrl: "ws://127.0.0.1:4327",
-        token: "secret"
+        relayUrl: "ws://127.0.0.1:4327"
       },
       permissions: {
         canEdit: true,
         canInvite: false
+      },
+      auth: {
+        relay: {
+          memberTokenHashes: [
+            {
+              userId: "user-2",
+              tokenHash: "sha256-user-2",
+              role: "editor"
+            }
+          ],
+          inviteTokenHashes: []
+        }
       }
     };
 

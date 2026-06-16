@@ -52,13 +52,23 @@ describe("web collaboration session", () => {
     session.destroy();
   });
 
-  test("creates websocket provider only for websocket teams", () => {
-    const calls: Array<{ relayUrl: string; roomId: string; token?: string }> = [];
+  test("creates websocket provider with runtime credentials only for websocket teams", () => {
+    const calls: Array<{
+      relayUrl: string;
+      roomId: string;
+      token?: string;
+      userId: string;
+      memberToken?: string;
+      access: "sync" | "awareness";
+    }> = [];
     const providerFactory: CollaborationProviderFactory = (input) => {
       calls.push({
         relayUrl: input.relayUrl,
         roomId: input.roomId,
-        token: input.token
+        token: input.token,
+        userId: input.userId,
+        memberToken: input.memberToken,
+        access: input.access
       });
       return {
         onStatus(listener) {
@@ -84,8 +94,64 @@ describe("web collaboration session", () => {
       sync: {
         mode: "websocket",
         roomPrefix: "canvas-mcp-editor",
+        relayUrl: "ws://127.0.0.1:4327"
+      }
+    });
+
+    const session = createCollabDocumentSession({
+      team,
+      documentId: "sample-file",
+      initialDocument: sampleDocument(),
+      relayToken: "relay-secret",
+      memberToken: "member-secret",
+      enablePersistence: false,
+      providerFactory
+    });
+
+    expect(calls).toEqual([
+      {
         relayUrl: "ws://127.0.0.1:4327",
-        token: "secret"
+        roomId: createDocumentRoomId(team.teamId, "sample-file"),
+        token: "relay-secret",
+        userId: "user-1",
+        memberToken: "member-secret",
+        access: "sync"
+      }
+    ]);
+    expect(session.status).toBe("synced");
+
+    session.destroy();
+  });
+
+  test("uses awareness-only access for viewer members", () => {
+    const calls: Array<{ access: "sync" | "awareness" }> = [];
+    const providerFactory: CollaborationProviderFactory = (input) => {
+      calls.push({ access: input.access });
+      return {
+        onStatus(listener) {
+          listener("synced");
+        },
+        onPresence() {
+          return () => {};
+        },
+        updatePresence() {},
+        getPresence() {
+          return [];
+        },
+        destroy() {}
+      };
+    };
+    const team = createTeamManifest({
+      name: "Viewer Team",
+      currentUser: {
+        userId: "viewer-1",
+        displayName: "Viewer",
+        color: "#16a34a",
+        role: "viewer"
+      },
+      sync: {
+        mode: "websocket",
+        relayUrl: "ws://127.0.0.1:4327"
       }
     });
 
@@ -97,15 +163,7 @@ describe("web collaboration session", () => {
       providerFactory
     });
 
-    expect(calls).toEqual([
-      {
-        relayUrl: "ws://127.0.0.1:4327",
-        roomId: createDocumentRoomId(team.teamId, "sample-file"),
-        token: "secret"
-      }
-    ]);
-    expect(session.status).toBe("synced");
-
+    expect(calls).toEqual([{ access: "awareness" }]);
     session.destroy();
   });
 

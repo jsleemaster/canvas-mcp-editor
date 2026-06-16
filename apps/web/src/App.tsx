@@ -257,6 +257,7 @@ export function App() {
   const [teamName, setTeamName] = useState("Design Team");
   const [relayUrl, setRelayUrl] = useState("");
   const [relayToken, setRelayToken] = useState("");
+  const [memberToken, setMemberToken] = useState("");
   const [manifestText, setManifestText] = useState("");
   const [collabSession, setCollabSession] = useState<CollabDocumentSession | null>(null);
   const [collabStatus, setCollabStatus] = useState("offline");
@@ -384,7 +385,10 @@ export function App() {
     dispatch({ type: "detach_instance", nodeId: selectedNode.id });
   };
 
-  const activateTeam = async (team: TeamManifest) => {
+  const activateTeam = async (
+    team: TeamManifest,
+    credentials: { relayToken?: string; memberToken?: string } = {}
+  ) => {
     if (!editor) {
       return;
     }
@@ -396,7 +400,9 @@ export function App() {
     const session = createCollabDocumentSession({
       team,
       documentId: editor.document.id,
-      initialDocument: editor.document
+      initialDocument: editor.document,
+      relayToken: credentials.relayToken,
+      memberToken: credentials.memberToken
     });
     session.subscribe((document) => {
       setEditor((current) => {
@@ -458,10 +464,13 @@ export function App() {
         sync: {
           mode: "websocket",
           roomPrefix: "canvas-mcp-editor",
-          relayUrl: relayUrl.trim(),
-          token: relayToken.trim() || undefined
+          relayUrl: relayUrl.trim()
         }
-      })
+      }),
+      {
+        relayToken: relayToken.trim() || undefined,
+        memberToken: memberToken.trim() || undefined
+      }
     );
   };
 
@@ -583,11 +592,19 @@ export function App() {
               />
             </label>
             <label>
-              Token
+              Relay token
               <input
                 data-testid="relay-token"
                 value={relayToken}
                 onChange={(event) => setRelayToken(event.currentTarget.value)}
+              />
+            </label>
+            <label>
+              Member token
+              <input
+                data-testid="member-token"
+                value={memberToken}
+                onChange={(event) => setMemberToken(event.currentTarget.value)}
               />
             </label>
           </div>

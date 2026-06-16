@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
+import { createHash } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
@@ -12,6 +13,16 @@ export interface CollabRelayConfig {
   port: number;
   allowedRoomPrefix: string;
   token?: string;
+  memberTokens?: RelayMemberToken[];
+}
+
+export type RelayMemberRole = "owner" | "editor" | "viewer";
+
+export interface RelayMemberToken {
+  userId: string;
+  role: RelayMemberRole;
+  token?: string;
+  tokenHash?: string;
 }
 
 export interface RelayValidationInput {
@@ -19,11 +30,24 @@ export interface RelayValidationInput {
   allowedRoomPrefix: string;
   expectedToken?: string;
   token?: string | null;
+  userId?: string | null;
+  memberToken?: string | null;
+  requestedAccess?: "sync" | "awareness";
+  memberTokens?: RelayMemberToken[];
 }
 
 export type RelayValidationResult =
-  | { ok: true }
-  | { ok: false; reason: "room prefix is not allowed" | "relay token is invalid" };
+  | { ok: true; role?: RelayMemberRole; canWriteDocument: boolean }
+  | {
+      ok: false;
+      reason:
+        | "room prefix is not allowed"
+        | "relay token is invalid"
+        | "member is required"
+        | "member is not allowed"
+        | "member token is invalid"
+        | "member is not allowed to edit document";
+    };
 
 export interface CollabRelayServer {
   readonly httpUrl: string;
@@ -40,6 +64,7 @@ const messageQueryAwareness = 3;
 interface RelayConnection {
   socket: WebSocket;
   awarenessClientIds: Set<number>;
+  canWriteDocument: boolean;
 }
 
 interface RelayRoom {
@@ -59,7 +84,29 @@ export function validateRelayConnection(input: RelayValidationInput): RelayValid
     return { ok: false, reason: "relay token is invalid" };
   }
 
-  return { ok: true };
+  if (!input.memberTokens?.length) {
+    return { ok: true, canWriteDocument: true };
+  }
+
+  if (!input.userId || !input.memberToken) {
+    return { ok: false, reason: "member is required" };
+  }
+
+  const member = input.memberTokens.find((candidate) => candidate.userId === input.userId);
+  if (!member) {
+    return { ok: false, reason: "member is not allowed" };
+  }
+
+  if (!matchesMemberToken(member, input.memberToken)) {
+    return { ok: false, reason: "member token is invalid" };
+  }
+
+  const canWriteDocument = member.role === "owner" || member.role === "editor";
+  if ((input.requestedAccess ?? "sync") === "sync" && !canWriteDocument) {
+    return { ok: false, reason: "member is not allowed to edit document" };
+  }
+
+  return { ok: true, role: member.role, canWriteDocument };
 }
 
 export function createCollabRelayServer(config: CollabRelayConfig): CollabRelayServer {
@@ -84,7 +131,11 @@ export function createCollabRelayServer(config: CollabRelayConfig): CollabRelayS
       roomId: target.roomId,
       allowedRoomPrefix: config.allowedRoomPrefix,
       expectedToken: config.token,
-      token: target.token
+      token: target.token,
+      userId: target.userId,
+      memberToken: target.memberToken,
+      requestedAccess: target.access,
+      memberTokens: config.memberTokens
     });
 
     if (!validation.ok) {
@@ -94,7 +145,7 @@ export function createCollabRelayServer(config: CollabRelayConfig): CollabRelayS
     }
 
     websocketServer.handleUpgrade(request, socket, head, (websocket) => {
-      connectToRoom(getRoom(rooms, target.roomId), websocket);
+      connectToRoom(getRoom(rooms, target.roomId), websocket, validation.canWriteDocument);
     });
   });
 
@@ -140,14 +191,24 @@ export function createCollabRelayServer(config: CollabRelayConfig): CollabRelayS
   };
 }
 
-function parseUpgradeRequest(request: IncomingMessage, host: string): { roomId: string; token: string | null } {
+function parseUpgradeRequest(request: IncomingMessage, host: string): {
+  roomId: string;
+  token: string | null;
+  userId: string | null;
+  memberToken: string | null;
+  access: "sync" | "awareness";
+} {
   const url = new URL(request.url ?? "/", `http://${host}`);
   const roomId = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
   const header = request.headers.authorization;
   const bearerToken = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : null;
+  const access = url.searchParams.get("access") === "awareness" ? "awareness" : "sync";
   return {
     roomId,
-    token: bearerToken ?? url.searchParams.get("token")
+    token: bearerToken ?? url.searchParams.get("token"),
+    userId: url.searchParams.get("userId"),
+    memberToken: url.searchParams.get("memberToken"),
+    access
   };
 }
 
@@ -184,10 +245,11 @@ function getRoom(rooms: Map<string, RelayRoom>, roomId: string): RelayRoom {
   return room;
 }
 
-function connectToRoom(room: RelayRoom, socket: WebSocket) {
+function connectToRoom(room: RelayRoom, socket: WebSocket, canWriteDocument: boolean) {
   const connection: RelayConnection = {
     socket,
-    awarenessClientIds: new Set()
+    awarenessClientIds: new Set(),
+    canWriteDocument
   };
   room.connections.add(connection);
 
@@ -213,6 +275,9 @@ function handleMessage(room: RelayRoom, connection: RelayConnection, data: Uint8
   const messageType = decoding.readVarUint(decoder);
 
   if (messageType === messageSync) {
+    if (!connection.canWriteDocument) {
+      return;
+    }
     const encoder = encoding.createEncoder();
     encoding.writeVarUint(encoder, messageSync);
     syncProtocol.readSyncMessage(decoder, encoder, room.doc, connection);
@@ -238,6 +303,31 @@ function handleMessage(room: RelayRoom, connection: RelayConnection, data: Uint8
   if (messageType === messageQueryAwareness) {
     sendAwareness(room, connection.socket);
   }
+}
+
+function matchesMemberToken(member: RelayMemberToken, token: string): boolean {
+  if (member.token && member.token === token) {
+    return true;
+  }
+  if (member.tokenHash && member.tokenHash === hashToken(token)) {
+    return true;
+  }
+  return false;
+}
+
+function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function parseMemberTokens(input: string | undefined): RelayMemberToken[] | undefined {
+  if (!input) {
+    return undefined;
+  }
+  const parsed = JSON.parse(input) as RelayMemberToken[];
+  if (!Array.isArray(parsed)) {
+    throw new Error("COLLAB_MEMBER_TOKENS must be a JSON array");
+  }
+  return parsed;
 }
 
 function sendSyncStep1(room: RelayRoom, socket: WebSocket) {
@@ -286,7 +376,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     host: process.env.COLLAB_RELAY_HOST ?? "127.0.0.1",
     port: Number(process.env.COLLAB_RELAY_PORT ?? 4327),
     allowedRoomPrefix: process.env.COLLAB_ALLOWED_ROOM_PREFIX ?? "canvas-mcp-editor:",
-    token: process.env.COLLAB_ROOM_TOKEN || undefined
+    token: process.env.COLLAB_ROOM_TOKEN || undefined,
+    memberTokens: parseMemberTokens(process.env.COLLAB_MEMBER_TOKENS)
   });
   await relay.listen();
   console.log(`Canvas collaboration relay listening at ${relay.wsUrl}`);

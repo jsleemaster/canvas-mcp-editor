@@ -29,7 +29,12 @@ export async function applyAgentCommandsToCollaboration(input: {
   const provider = new WebsocketProvider(input.target.relayUrl, roomId, ydoc, {
     WebSocketPolyfill: WebSocket as unknown as typeof globalThis.WebSocket,
     disableBc: true,
-    params: input.target.token ? { token: input.target.token } : undefined
+    params: {
+      ...(input.target.token ? { token: input.target.token } : {}),
+      ...(input.target.userId ? { userId: input.target.userId } : {}),
+      ...(input.target.memberToken ? { memberToken: input.target.memberToken } : {}),
+      access: "sync"
+    }
   });
   const document = createCollaborativeDesignDocument({ ydoc });
 

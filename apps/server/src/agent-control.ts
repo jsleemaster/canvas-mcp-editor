@@ -107,6 +107,8 @@ export interface AgentCollaborationTarget {
   documentId: string;
   relayUrl: string;
   token?: string;
+  userId?: string;
+  memberToken?: string;
 }
 
 export interface AgentBatchAudit {

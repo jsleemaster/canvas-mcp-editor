@@ -46,4 +46,37 @@ describe("indexeddb team store", () => {
 
     expect(importTeamManifest(exportTeamManifest(team))).toEqual(team);
   });
+
+  test("redacts runtime relay credentials from exported manifests", () => {
+    const team = createTeamManifest({
+      name: "Secret Team",
+      currentUser: {
+        userId: "user-1",
+        displayName: "Lee",
+        color: "#2563eb"
+      },
+      sync: {
+        mode: "websocket",
+        relayUrl: "ws://127.0.0.1:4327",
+        token: "plain-runtime-token",
+        memberTokenHashes: [
+          {
+            userId: "user-1",
+            tokenHash: "sha256-user-1",
+            role: "owner"
+          }
+        ]
+      }
+    });
+
+    const exported = exportTeamManifest(team);
+
+    expect(exported).not.toContain("plain-runtime-token");
+    expect(exported).toContain("sha256-user-1");
+    expect(importTeamManifest(exported).sync).toEqual({
+      mode: "websocket",
+      roomPrefix: "canvas-mcp-editor",
+      relayUrl: "ws://127.0.0.1:4327"
+    });
+  });
 });

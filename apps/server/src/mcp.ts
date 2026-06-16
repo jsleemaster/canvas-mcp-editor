@@ -87,7 +87,9 @@ const agentCollaborationSchema = z.object({
   teamId: z.string().describe("Team manifest id for the collaboration room"),
   documentId: z.string().describe("Document id in the collaboration room"),
   relayUrl: z.string().describe("Self-hosted collaboration relay websocket URL"),
-  token: z.string().optional().describe("Optional relay token")
+  token: z.string().optional().describe("Optional relay gate token"),
+  userId: z.string().optional().describe("Optional team member id for relay member authorization"),
+  memberToken: z.string().optional().describe("Optional team member token for relay member authorization")
 });
 
 export function createMcpServer(storage = new FileStorage()) {
