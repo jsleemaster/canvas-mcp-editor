@@ -8,6 +8,81 @@ function countNodes(nodes: DesignNode[] = []): number {
   return nodes.reduce((total, node) => total + 1 + countNodes(node.children), 0);
 }
 
+const agentFindSchema = {
+  id: z.string().optional().describe("Node id substring to match"),
+  name: z.string().optional().describe("Node name substring to match"),
+  kind: z
+    .enum(["frame", "rectangle", "text", "image", "component", "component_instance"])
+    .optional()
+    .describe("Node kind to match"),
+  text: z.string().optional().describe("Text content substring to match"),
+  componentDefinitionId: z.string().optional().describe("Component definition id to match")
+};
+
+const agentCommandSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("update_geometry"),
+    nodeId: z.string(),
+    x: z.number().optional(),
+    y: z.number().optional(),
+    width: z.number().optional(),
+    height: z.number().optional()
+  }),
+  z.object({
+    type: z.literal("set_fill"),
+    nodeId: z.string(),
+    fill: z.string()
+  }),
+  z.object({
+    type: z.literal("update_text"),
+    nodeId: z.string(),
+    value: z.string()
+  }),
+  z.object({
+    type: z.literal("create_rectangle"),
+    parentId: z.string(),
+    id: z.string(),
+    name: z.string().optional(),
+    x: z.number().optional(),
+    y: z.number().optional(),
+    width: z.number().optional(),
+    height: z.number().optional(),
+    fill: z.string().optional()
+  }),
+  z.object({
+    type: z.literal("create_text"),
+    parentId: z.string(),
+    id: z.string(),
+    name: z.string().optional(),
+    value: z.string().optional(),
+    x: z.number().optional(),
+    y: z.number().optional(),
+    width: z.number().optional(),
+    height: z.number().optional(),
+    fill: z.string().optional(),
+    fontSize: z.number().optional(),
+    fontFamily: z.string().optional()
+  }),
+  z.object({
+    type: z.literal("create_component"),
+    nodeId: z.string(),
+    componentId: z.string(),
+    name: z.string()
+  }),
+  z.object({
+    type: z.literal("create_component_instance"),
+    parentId: z.string(),
+    definitionId: z.string(),
+    instanceId: z.string(),
+    x: z.number().optional(),
+    y: z.number().optional()
+  }),
+  z.object({
+    type: z.literal("detach_instance"),
+    nodeId: z.string()
+  })
+]);
+
 export function createMcpServer(storage = new FileStorage()) {
   const server = new McpServer({
     name: "canvas-mcp-editor",
@@ -75,6 +150,140 @@ export function createMcpServer(storage = new FileStorage()) {
         {
           type: "text",
           text: JSON.stringify(await storage.readFile(fileId), null, 2)
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "inspect_canvas",
+    {
+      description: "Return an agent-friendly canvas summary, component summary, node summaries, and validation status.",
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files")
+      }
+    },
+    async ({ fileId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              inspection: await storage.inspectCanvas(fileId)
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "find_nodes",
+    {
+      description: "Find canvas nodes by id, name, kind, text content, or component definition id.",
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files"),
+        ...agentFindSchema
+      }
+    },
+    async ({ fileId, id, name, kind, text, componentDefinitionId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              nodes: await storage.findNodes(fileId, { id, name, kind, text, componentDefinitionId })
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "apply_agent_commands",
+    {
+      description: "Dry-run or persist a batch of deterministic agent edit commands.",
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files"),
+        dryRun: z.boolean().default(true).describe("When true, return preview without writing"),
+        commands: z.array(agentCommandSchema).min(1).describe("Agent edit commands to apply in order")
+      }
+    },
+    async ({ fileId, dryRun, commands }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              result: await storage.applyAgentCommands(fileId, { dryRun, commands })
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "validate_document",
+    {
+      description: "Validate a design file for agent-safe structural invariants.",
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files")
+      }
+    },
+    async ({ fileId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              validation: await storage.validateDocument(fileId)
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "get_change_summary",
+    {
+      description: "Compare two design document snapshots and summarize changed node ids.",
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files"),
+        before: z.unknown().describe("DesignFile JSON snapshot before edits"),
+        after: z.unknown().describe("DesignFile JSON snapshot after edits")
+      }
+    },
+    async ({ fileId, before, after }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              summary: await storage.getChangeSummary(
+                fileId,
+                before as DesignFile,
+                after as DesignFile
+              )
+            },
+            null,
+            2
+          )
         }
       ]
     })
