@@ -1,4 +1,4 @@
-import type { DesignFile, DesignNode } from "./storage";
+import type { ComponentDefinition, DesignFile, DesignNode } from "./storage";
 
 export interface CodeExportOptions {
   moduleBasePath?: string;
@@ -11,13 +11,81 @@ export interface ElementCodeArtifact {
   html: string;
   css: string;
   jsModule: string;
+  structure: CodeStructureNode;
+  implementation: ElementImplementationSpec;
 }
 
 export interface CodeExportResult {
   css: string;
   html: string;
   elements: ElementCodeArtifact[];
+  implementationSpec: CodeImplementationSpec;
   indexModule: string;
+}
+
+export interface CodeStructureNode {
+  id: string;
+  name: string;
+  kind: DesignNode["kind"];
+  className: string;
+  bounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rotation: number;
+  };
+  style: {
+    fill: string;
+    stroke: string | null;
+    strokeWidth: number;
+    opacity: number;
+  };
+  content:
+    | { type: "empty" }
+    | { type: "text"; value: string; fontSize: number; fontFamily: string }
+    | { type: "image"; assetId: string };
+  componentRef?: {
+    definitionId: string;
+    detached: boolean;
+    overrides: Array<{ nodeId: string; field: string; value: string }>;
+  };
+  children: CodeStructureNode[];
+}
+
+export interface ElementImplementationSpec {
+  componentName: string;
+  suggestedProps: Array<{
+    name: string;
+    type: "string";
+    sourceNodeId: string;
+    defaultValue: string;
+  }>;
+  slots: Array<{ name: string; sourceNodeIds: string[] }>;
+  cssClassNames: string[];
+  sourceNodeIds: string[];
+}
+
+export interface ComponentImplementationArtifact {
+  id: string;
+  name: string;
+  sourceNodeId: string;
+  structure: CodeStructureNode;
+  implementation: ElementImplementationSpec;
+  variants: Array<{ id: string; name: string; properties: Array<{ name: string; value: string }> }>;
+}
+
+export interface TokenCandidateSummary {
+  colors: string[];
+  fontFamilies: string[];
+  fontSizes: number[];
+  spacings: number[];
+}
+
+export interface CodeImplementationSpec {
+  elements: ElementCodeArtifact[];
+  components: ComponentImplementationArtifact[];
+  tokenCandidates: TokenCandidateSummary;
 }
 
 export function exportDesignToCode(
@@ -27,6 +95,7 @@ export function exportDesignToCode(
   const roots = document.pages.flatMap((page) => page.children);
   const elements = roots.map((root) => exportElement(root));
   const moduleBasePath = options.moduleBasePath ?? ".";
+  const components = (document.components ?? []).map((component) => exportComponent(component));
 
   return {
     css: [
@@ -40,6 +109,14 @@ export function exportDesignToCode(
     ].join("\n"),
     html: `<div class="canvas-export-root">\n${roots.map((root) => renderNode(root, 1)).join("\n")}\n</div>`,
     elements,
+    implementationSpec: {
+      elements,
+      components,
+      tokenCandidates: collectTokenCandidates([
+        ...roots,
+        ...(document.components ?? []).map((component) => component.source_node)
+      ])
+    },
     indexModule: buildIndexModule(elements, moduleBasePath)
   };
 }
@@ -48,6 +125,8 @@ function exportElement(root: DesignNode): ElementCodeArtifact {
   const className = classNameFor(root.id);
   const css = nodeCss(root).join("\n");
   const html = renderNode(root, 0);
+  const structure = structureFor(root);
+  const implementation = implementationFor(root);
 
   return {
     id: root.id,
@@ -55,6 +134,8 @@ function exportElement(root: DesignNode): ElementCodeArtifact {
     className,
     html,
     css,
+    structure,
+    implementation,
     jsModule: [
       `export default ${JSON.stringify(
         {
@@ -62,7 +143,9 @@ function exportElement(root: DesignNode): ElementCodeArtifact {
           name: root.name,
           className,
           html,
-          css
+          css,
+          structure,
+          implementation
         },
         null,
         2
@@ -70,6 +153,154 @@ function exportElement(root: DesignNode): ElementCodeArtifact {
       ""
     ].join("\n")
   };
+}
+
+function exportComponent(component: ComponentDefinition): ComponentImplementationArtifact {
+  return {
+    id: component.id,
+    name: component.name,
+    sourceNodeId: component.source_node.id,
+    structure: structureFor(component.source_node),
+    implementation: implementationFor(component.source_node, component.name),
+    variants: component.variants.map((variant) => ({
+      id: variant.id,
+      name: variant.name,
+      properties: variant.properties.map((property) => ({
+        name: property.name,
+        value: property.value
+      }))
+    }))
+  };
+}
+
+function structureFor(node: DesignNode): CodeStructureNode {
+  const base: CodeStructureNode = {
+    id: node.id,
+    name: node.name,
+    kind: node.kind,
+    className: classNameFor(node.id),
+    bounds: {
+      x: node.transform.x,
+      y: node.transform.y,
+      width: node.size.width,
+      height: node.size.height,
+      rotation: node.transform.rotation
+    },
+    style: {
+      fill: node.style.fill,
+      stroke: node.style.stroke,
+      strokeWidth: node.style.stroke_width,
+      opacity: node.style.opacity
+    },
+    content: contentFor(node),
+    children: node.children.map((child) => structureFor(child))
+  };
+
+  if (node.component_instance) {
+    base.componentRef = {
+      definitionId: node.component_instance.definition_id,
+      detached: node.component_instance.detached,
+      overrides: node.component_instance.overrides.map((override) => ({
+        nodeId: override.node_id,
+        field: override.field,
+        value: override.value
+      }))
+    };
+  }
+
+  return base;
+}
+
+function contentFor(node: DesignNode): CodeStructureNode["content"] {
+  if (node.content.type === "text") {
+    return {
+      type: "text",
+      value: node.content.value,
+      fontSize: node.content.font_size,
+      fontFamily: node.content.font_family
+    };
+  }
+
+  if (node.content.type === "image") {
+    return {
+      type: "image",
+      assetId: node.content.asset_id
+    };
+  }
+
+  return { type: "empty" };
+}
+
+function implementationFor(root: DesignNode, explicitName?: string): ElementImplementationSpec {
+  return {
+    componentName: componentNameFor(root, explicitName),
+    suggestedProps: textPropsFor(root),
+    slots: [],
+    cssClassNames: collectNodeIds(root).map((nodeId) => classNameFor(nodeId)),
+    sourceNodeIds: collectNodeIds(root)
+  };
+}
+
+function textPropsFor(root: DesignNode): ElementImplementationSpec["suggestedProps"] {
+  const props: ElementImplementationSpec["suggestedProps"] = [];
+  const usedNames = new Map<string, number>();
+
+  for (const node of collectNodes(root)) {
+    if (node.content.type !== "text") {
+      continue;
+    }
+
+    const baseName = propNameFor(node.name || node.id);
+    const count = usedNames.get(baseName) ?? 0;
+    usedNames.set(baseName, count + 1);
+    props.push({
+      name: count === 0 ? baseName : `${baseName}${count + 1}`,
+      type: "string",
+      sourceNodeId: node.id,
+      defaultValue: node.content.value
+    });
+  }
+
+  return props;
+}
+
+function collectTokenCandidates(nodes: DesignNode[]): TokenCandidateSummary {
+  const colors: string[] = [];
+  const fontFamilies: string[] = [];
+  const fontSizes: number[] = [];
+  const spacings: number[] = [];
+
+  for (const node of nodes.flatMap((root) => collectNodes(root))) {
+    pushUnique(colors, node.style.fill);
+    if (node.style.stroke) {
+      pushUnique(colors, node.style.stroke);
+    }
+    pushUnique(spacings, node.transform.x);
+    pushUnique(spacings, node.transform.y);
+    pushUnique(spacings, node.size.width);
+    pushUnique(spacings, node.size.height);
+
+    if (node.content.type === "text") {
+      pushUnique(fontFamilies, node.content.font_family);
+      pushUnique(fontSizes, node.content.font_size);
+    }
+  }
+
+  return { colors, fontFamilies, fontSizes, spacings };
+}
+
+function collectNodes(root: DesignNode): DesignNode[] {
+  return [root, ...root.children.flatMap((child) => collectNodes(child))];
+}
+
+function collectNodeIds(root: DesignNode): string[] {
+  return collectNodes(root).map((node) => node.id);
+}
+
+function pushUnique<T>(values: T[], value: T): void {
+  if (!values.includes(value)) {
+    values.push(value);
+  }
 }
 
 function renderNode(node: DesignNode, depth: number): string {
@@ -135,6 +366,42 @@ function buildIndexModule(elements: ElementCodeArtifact[], moduleBasePath: strin
 
 function classNameFor(nodeId: string): string {
   return `node-${nodeId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
+function componentNameFor(root: DesignNode, explicitName?: string): string {
+  const source = explicitName ?? (root.id.startsWith("tds-") ? root.id : root.name);
+  return pascalCase(source);
+}
+
+function propNameFor(value: string): string {
+  const name = camelCase(value);
+  return name || "text";
+}
+
+function pascalCase(value: string): string {
+  return wordsFor(value)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join("");
+}
+
+function camelCase(value: string): string {
+  const [first, ...rest] = wordsFor(value);
+  if (!first) {
+    return "";
+  }
+
+  return [
+    first,
+    ...rest.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+  ].join("");
+}
+
+function wordsFor(value: string): string[] {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map((word) => word.toLowerCase());
 }
 
 function formatPx(value: number): string {

@@ -217,6 +217,24 @@ describe("HTTP server", () => {
     expect(body.export.html).toContain('data-node-id="frame-1"');
     expect(body.export.elements.map((element: { id: string }) => element.id)).toEqual(["frame-1"]);
     expect(body.export.elements[0].jsModule).toContain("export default");
+    expect(body.export.elements[0].structure).toMatchObject({
+      id: "frame-1",
+      kind: "frame",
+      children: [{ id: "text-1", kind: "text" }]
+    });
+    expect(body.export.elements[0].implementation).toMatchObject({
+      componentName: "LandingFrame",
+      suggestedProps: [
+        {
+          name: "headline",
+          type: "string",
+          sourceNodeId: "text-1",
+          defaultValue: "Canvas MCP Editor"
+        }
+      ]
+    });
+    expect(body.export.implementationSpec.elements[0].id).toBe("frame-1");
+    expect(body.export.implementationSpec.tokenCandidates.fontFamilies).toContain("Inter");
     expect(body.export.indexModule).toContain('from "./elements/frame-1.mjs"');
   });
 });
