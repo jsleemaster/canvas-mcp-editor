@@ -39,3 +39,36 @@ See `docs/superpowers/specs/2026-06-16-rust-design-editor-mvp-design.md` for the
 ## License
 
 MIT
+
+## Development
+
+Install dependencies:
+
+```bash
+pnpm install
+```
+
+Run the local server:
+
+```bash
+pnpm --filter @canvas-mcp-editor/server dev
+```
+
+Run the web editor:
+
+```bash
+pnpm --filter @canvas-mcp-editor/web dev
+```
+
+Run checks:
+
+```bash
+pnpm typecheck
+cargo test --workspace
+```
+
+Run the MCP server over stdio:
+
+```bash
+pnpm --filter @canvas-mcp-editor/server mcp
+```
