@@ -140,17 +140,35 @@ impl RelayConfig {
         {
             let parsed = serde_json::from_str::<Vec<MemberTokenInput>>(raw_members)
                 .map_err(|error| ConfigError::InvalidMemberTokens(error.to_string()))?;
-            config.member_tokens = parsed
-                .into_iter()
-                .map(|member| MemberToken {
-                    user_id: member.user_id,
-                    token_hash: member
+            let mut member_tokens = Vec::new();
+            for member in parsed {
+                let token_hash = match (
+                    member
                         .token_hash
-                        .map(|value| value.to_ascii_lowercase())
-                        .unwrap_or_else(|| sha256_hex(member.token.as_deref().unwrap_or(""))),
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty()),
+                    member
+                        .token
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty()),
+                ) {
+                    (Some(token_hash), _) => token_hash.to_ascii_lowercase(),
+                    (None, Some(token)) => sha256_hex(token),
+                    (None, None) => {
+                        return Err(ConfigError::InvalidMemberTokens(
+                            "member token or tokenHash is required".to_string(),
+                        ));
+                    }
+                };
+                member_tokens.push(MemberToken {
+                    user_id: member.user_id,
+                    token_hash,
                     role: member.role.into(),
-                })
-                .collect();
+                });
+            }
+            config.member_tokens = member_tokens;
         }
 
         Ok(config)
@@ -294,5 +312,16 @@ mod tests {
             .expect("viewer can connect");
 
         assert!(!auth.can_write_document);
+    }
+
+    #[test]
+    fn rejects_member_token_entries_without_token_material() {
+        let error = RelayConfig::from_env_vars([(
+            "COLLAB_MEMBER_TOKENS".to_string(),
+            r#"[{"userId":"viewer-1","role":"viewer"}]"#.to_string(),
+        )])
+        .expect_err("token or tokenHash is required");
+
+        assert!(matches!(error, ConfigError::InvalidMemberTokens(_)));
     }
 }
