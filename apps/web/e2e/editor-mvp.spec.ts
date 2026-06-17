@@ -112,7 +112,7 @@ test("canvas editor MVP supports Korean-first select, inspect, edit, undo, creat
   await page.screenshot({ path: "/tmp/canvas-mcp-editor-mvp-verified.png", fullPage: true });
 });
 
-test("web editor keeps laptop viewport overflow inside the canvas area", async ({ page }) => {
+test("web editor fills the available work area with a white canvas", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("http://127.0.0.1:5173/");
   await expect(page.getByTestId("stage-frame")).toBeVisible();
@@ -134,7 +134,11 @@ test("web editor keeps laptop viewport overflow inside the canvas area", async (
       documentScrollWidth: document.documentElement.scrollWidth,
       viewportWidth: window.innerWidth,
       canvasClientWidth: canvas.clientWidth,
+      canvasClientHeight: canvas.clientHeight,
       canvasScrollWidth: canvas.scrollWidth,
+      canvasScrollHeight: canvas.scrollHeight,
+      canvasBackground: getComputedStyle(canvas).backgroundColor,
+      stageBackground: getComputedStyle(stage).backgroundColor,
       stageWidth: Math.round(stage.getBoundingClientRect().width),
       stageHeight: Math.round(stage.getBoundingClientRect().height)
     };
@@ -142,9 +146,12 @@ test("web editor keeps laptop viewport overflow inside the canvas area", async (
 
   expect(metrics.pageScrollXAfterAttempt).toBe(0);
   expect(metrics.documentScrollWidth).toBe(metrics.viewportWidth);
-  expect(metrics.canvasScrollWidth).toBeGreaterThan(metrics.canvasClientWidth);
-  expect(metrics.stageWidth).toBe(960);
-  expect(metrics.stageHeight).toBe(640);
+  expect(metrics.canvasScrollWidth).toBe(metrics.canvasClientWidth);
+  expect(metrics.canvasScrollHeight).toBe(metrics.canvasClientHeight);
+  expect(metrics.canvasBackground).toBe("rgb(255, 255, 255)");
+  expect(metrics.stageBackground).toBe("rgb(255, 255, 255)");
+  expect(metrics.stageWidth).toBe(metrics.canvasClientWidth);
+  expect(metrics.stageHeight).toBe(metrics.canvasClientHeight);
 });
 
 test("component instances drag as a single selected object from nested content", async ({ page }) => {

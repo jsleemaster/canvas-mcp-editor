@@ -577,6 +577,8 @@ export function App() {
   const remotePresenceSignatureRef = useRef(new Map<string, string>());
   const remotePresenceSeenAtRef = useRef(new Map<string, number>());
   const manifestFileInputRef = useRef<HTMLInputElement | null>(null);
+  const stageFrameRef = useRef<HTMLDivElement | null>(null);
+  const [stageSize, setStageSize] = useState<{ width: number; height: number }>(editorKonvaTokens.stage);
 
   useEffect(() => {
     fetch("http://127.0.0.1:4317/files/sample-file")
@@ -591,6 +593,28 @@ export function App() {
     },
     []
   );
+
+  useEffect(() => {
+    const stageFrame = stageFrameRef.current;
+    if (!stageFrame) {
+      return undefined;
+    }
+
+    const updateStageSize = () => {
+      const nextWidth = Math.max(1, Math.round(stageFrame.clientWidth));
+      const nextHeight = Math.max(1, Math.round(stageFrame.clientHeight));
+      setStageSize((current) =>
+        current.width === nextWidth && current.height === nextHeight
+          ? current
+          : { width: nextWidth, height: nextHeight }
+      );
+    };
+
+    updateStageSize();
+    const observer = new ResizeObserver(updateStageSize);
+    observer.observe(stageFrame);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!collabSession) {
@@ -1338,10 +1362,15 @@ export function App() {
           </button>
         </div>
         <div className="canvas-area" data-testid="canvas-area">
-          <div className="stage-frame" data-testid="stage-frame" onMouseLeave={clearCursorPresence}>
+          <div
+            ref={stageFrameRef}
+            className="stage-frame"
+            data-testid="stage-frame"
+            onMouseLeave={clearCursorPresence}
+          >
             <Stage
-              width={editorKonvaTokens.stage.width}
-              height={editorKonvaTokens.stage.height}
+              width={stageSize.width}
+              height={stageSize.height}
               scaleX={editor?.viewport.scale ?? 1}
               scaleY={editor?.viewport.scale ?? 1}
               x={editor?.viewport.x ?? 0}
