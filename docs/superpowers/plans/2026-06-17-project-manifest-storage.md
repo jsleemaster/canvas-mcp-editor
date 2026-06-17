@@ -16,7 +16,7 @@
 - Modify: `apps/server/src/storage.ts`
 - Modify: `apps/server/src/storage.test.ts`
 
-- [ ] **Step 1: Write failing storage tests**
+- [x] **Step 1: Write failing storage tests**
 
 Add these tests near the top of `apps/server/src/storage.test.ts`, after the sample document read test:
 
@@ -111,7 +111,7 @@ Add these tests near the top of `apps/server/src/storage.test.ts`, after the sam
   });
 ```
 
-- [ ] **Step 2: Run storage tests and verify they fail**
+- [x] **Step 2: Run storage tests and verify they fail**
 
 Run:
 
@@ -121,7 +121,7 @@ pnpm --filter @canvas-mcp-editor/server test -- src/storage.test.ts
 
 Expected: FAIL because `FileStorage` does not yet have `listProjects`, `createProject`, `updateProject`, `createProjectDocument`, or `setProjectSharing`.
 
-- [ ] **Step 3: Add project types and storage methods**
+- [x] **Step 3: Add project types and storage methods**
 
 In `apps/server/src/storage.ts`, add these exports after `StoredFileSummary`:
 
@@ -375,7 +375,7 @@ function parseProjectManifest(input: unknown): ProjectManifest {
 }
 ```
 
-- [ ] **Step 4: Run storage tests and verify they pass**
+- [x] **Step 4: Run storage tests and verify they pass**
 
 Run:
 
