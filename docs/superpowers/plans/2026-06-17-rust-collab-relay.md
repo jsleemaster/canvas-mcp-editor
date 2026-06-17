@@ -81,7 +81,7 @@ cargo test -p collab-relay frame
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit frame codec**
+- [x] **Step 5: Commit frame codec**
 
 Run:
 
@@ -104,7 +104,7 @@ git commit -m "feat: add rust relay frame codec"
 - Produces: `RelayConfig::from_env_vars(vars: impl IntoIterator<Item = (String, String)>) -> Result<RelayConfig, ConfigError>`
 - Produces: `RelayConfig::validate_upgrade(&self, target: &UpgradeTarget) -> Result<Authorization, AuthError>`
 
-- [ ] **Step 1: Write failing config/auth tests**
+- [x] **Step 1: Write failing config/auth tests**
 
 Add tests in `crates/collab-relay/src/config.rs`:
 
@@ -172,7 +172,7 @@ fn viewer_members_are_awareness_only() {
 }
 ```
 
-- [ ] **Step 2: Verify config/auth RED**
+- [x] **Step 2: Verify config/auth RED**
 
 Run:
 
@@ -182,11 +182,11 @@ cargo test -p collab-relay config
 
 Expected: FAIL because `config.rs` does not exist.
 
-- [ ] **Step 3: Implement config/auth**
+- [x] **Step 3: Implement config/auth**
 
 Implement env parsing, SHA-256 hex token hash checks, member role parsing, room prefix validation, encrypted-only validation, and viewer write blocking. Keep default host `127.0.0.1`, port `4327`, and prefix `canvas-mcp-editor`.
 
-- [ ] **Step 4: Verify config/auth GREEN**
+- [x] **Step 4: Verify config/auth GREEN**
 
 Run:
 
