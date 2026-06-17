@@ -201,3 +201,27 @@ test("unselected component instances move on the first drag gesture", async ({ p
   await expect(page.getByTestId("inspector-x")).toHaveValue("620");
   await expect(page.getByTestId("inspector-y")).toHaveValue("150");
 });
+
+test("inspector auto layout stacks children inside a selected frame", async ({ page }) => {
+  await rm(".canvas-mcp-editor/files/sample-file.json", { force: true });
+  await rm("apps/server/.canvas-mcp-editor/files/sample-file.json", { force: true });
+
+  await page.goto("http://127.0.0.1:5173/");
+  await page.getByRole("button", { name: "Landing Frame" }).click();
+  await page.getByTestId("inspector-layout-mode").selectOption("auto");
+  await page.getByTestId("inspector-layout-direction").selectOption("vertical");
+  await page.getByTestId("inspector-layout-gap").fill("12");
+  await page.getByTestId("inspector-layout-padding-top").fill("20");
+  await page.getByTestId("inspector-layout-padding-left").fill("24");
+
+  await page.getByRole("button", { name: "Create rectangle" }).click();
+  await expect(page.getByRole("button", { name: "Rectangle 3" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Headline" }).click();
+  await expect(page.getByTestId("inspector-x")).toHaveValue("24");
+  await expect(page.getByTestId("inspector-y")).toHaveValue("20");
+
+  await page.getByRole("button", { name: "Rectangle 3" }).click();
+  await expect(page.getByTestId("inspector-x")).toHaveValue("24");
+  await expect(page.getByTestId("inspector-y")).toHaveValue("80");
+});

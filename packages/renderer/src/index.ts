@@ -1,8 +1,27 @@
+export interface NodeLayout {
+  mode: "none" | "auto";
+  direction: "horizontal" | "vertical";
+  gap: number;
+  padding: {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+  };
+}
+
+export interface NodeConstraints {
+  horizontal: "left" | "right" | "left_right" | "center" | "scale";
+  vertical: "top" | "bottom" | "top_bottom" | "center" | "scale";
+}
+
 export interface RendererNode {
   id: string;
   kind: "frame" | "rectangle" | "text" | "image" | "component" | "component_instance";
   name: string;
   component_instance?: ComponentInstance | null;
+  layout?: NodeLayout | null;
+  constraints?: NodeConstraints | null;
   transform: { x: number; y: number; rotation: number };
   size: { width: number; height: number };
   style: {

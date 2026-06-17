@@ -142,8 +142,27 @@ The first agent command batch supports:
 - `create_rectangle`
 - `create_text`
 - `create_component`
+- `set_layout`
+- `set_constraints`
 - `create_component_instance`
 - `detach_instance`
+
+`set_layout` accepts Figma-like layout metadata:
+
+```json
+{
+  "type": "set_layout",
+  "nodeId": "frame-1",
+  "layout": {
+    "mode": "auto",
+    "direction": "vertical",
+    "gap": 12,
+    "padding": { "top": 20, "right": 24, "bottom": 20, "left": 24 }
+  }
+}
+```
+
+`set_constraints` accepts horizontal values `left`, `right`, `left_right`, `center`, or `scale`, and vertical values `top`, `bottom`, `top_bottom`, `center`, or `scale`.
 
 For an active team-owned relay room, `apply_agent_commands` also accepts:
 

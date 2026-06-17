@@ -114,6 +114,34 @@ describe("code export", () => {
     });
   });
 
+  test("exports layout and constraints metadata for agents", () => {
+    const fixture = tossFixture();
+    fixture.pages[0].children[0].layout = {
+      mode: "auto",
+      direction: "vertical",
+      gap: 8,
+      padding: { top: 12, right: 16, bottom: 12, left: 16 }
+    };
+    fixture.pages[0].children[0].children[0].constraints = {
+      horizontal: "left_right",
+      vertical: "top"
+    };
+
+    const result = exportDesignToCode(fixture);
+    const button = result.elements.find((element) => element.id === "tds-button-primary");
+
+    expect(button?.structure.layout).toEqual({
+      mode: "auto",
+      direction: "vertical",
+      gap: 8,
+      padding: { top: 12, right: 16, bottom: 12, left: 16 }
+    });
+    expect(button?.structure.children[0].constraints).toEqual({
+      horizontal: "left_right",
+      vertical: "top"
+    });
+  });
+
   test("exports separate element modules that can be imported directly", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-code-export-"));
     const result = exportDesignToCode(tossFixture(), { moduleBasePath: "./elements" });

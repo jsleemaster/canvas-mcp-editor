@@ -1,4 +1,10 @@
-import type { ComponentDefinition, DesignFile, DesignNode } from "./storage";
+import type {
+  ComponentDefinition,
+  DesignFile,
+  DesignNode,
+  NodeConstraints,
+  NodeLayout
+} from "./storage";
 
 export interface CodeExportOptions {
   moduleBasePath?: string;
@@ -50,6 +56,8 @@ export interface CodeStructureNode {
     detached: boolean;
     overrides: Array<{ nodeId: string; field: string; value: string }>;
   };
+  layout?: NodeLayout;
+  constraints?: NodeConstraints;
   children: CodeStructureNode[];
 }
 
@@ -206,6 +214,12 @@ function structureFor(node: DesignNode): CodeStructureNode {
         value: override.value
       }))
     };
+  }
+  if (node.layout) {
+    base.layout = node.layout;
+  }
+  if (node.constraints) {
+    base.constraints = node.constraints;
   }
 
   return base;

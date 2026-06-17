@@ -21,13 +21,36 @@ import {
   type CodeExportResult
 } from "./code-export.js";
 import { applyAgentCommandsToCollaboration } from "./collaboration-agent.js";
+import {
+  applyConstraintsAfterParentResize,
+  relayoutDesignFile
+} from "./layout.js";
 import { sampleDocument } from "./sample-document.js";
+
+export interface NodeLayout {
+  mode: "none" | "auto";
+  direction: "horizontal" | "vertical";
+  gap: number;
+  padding: {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+  };
+}
+
+export interface NodeConstraints {
+  horizontal: "left" | "right" | "left_right" | "center" | "scale";
+  vertical: "top" | "bottom" | "top_bottom" | "center" | "scale";
+}
 
 export interface DesignNode {
   id: string;
   kind: "frame" | "rectangle" | "text" | "image" | "component" | "component_instance";
   name: string;
   component_instance?: ComponentInstance | null;
+  layout?: NodeLayout | null;
+  constraints?: NodeConstraints | null;
   transform: { x: number; y: number; rotation: number };
   size: { width: number; height: number };
   style: {
@@ -143,6 +166,7 @@ export class FileStorage {
       throw new Error(`node not found: ${nodeId}`);
     }
 
+    const previousSize = { ...node.size };
     node.transform = {
       ...node.transform,
       x: patch.x ?? node.transform.x,
@@ -152,6 +176,8 @@ export class FileStorage {
       width: Math.max(1, patch.width ?? node.size.width),
       height: Math.max(1, patch.height ?? node.size.height)
     };
+    applyConstraintsAfterParentResize(node, previousSize);
+    relayoutDesignFile(document);
 
     await this.writeFile(fileId, document);
     return node;
@@ -165,6 +191,7 @@ export class FileStorage {
     }
 
     node.style = { ...node.style, fill };
+    relayoutDesignFile(document);
     await this.writeFile(fileId, document);
     return node;
   }
@@ -181,6 +208,7 @@ export class FileStorage {
     }
 
     node.content = { ...node.content, value };
+    relayoutDesignFile(document);
     await this.writeFile(fileId, document);
     return node;
   }
@@ -193,6 +221,7 @@ export class FileStorage {
     }
 
     parent.children.push(node);
+    relayoutDesignFile(document);
     await this.writeFile(fileId, document);
     return node;
   }
@@ -223,6 +252,7 @@ export class FileStorage {
     };
     document.components = document.components ?? [];
     document.components.push(component);
+    relayoutDesignFile(document);
     await this.writeFile(fileId, document);
     return component;
   }
@@ -254,6 +284,7 @@ export class FileStorage {
       detached: false
     };
     parent.children.push(node);
+    relayoutDesignFile(document);
     await this.writeFile(fileId, document);
     return node;
   }
@@ -270,6 +301,7 @@ export class FileStorage {
 
     node.kind = "frame";
     node.component_instance = null;
+    relayoutDesignFile(document);
     await this.writeFile(fileId, document);
     return node;
   }

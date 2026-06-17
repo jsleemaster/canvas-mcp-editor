@@ -1,4 +1,16 @@
-import type { ComponentDefinition, DesignFile, DesignNode } from "./storage";
+import {
+  applyConstraintsAfterParentResize,
+  normalizeNodeConstraints,
+  normalizeNodeLayout,
+  relayoutDesignFile
+} from "./layout.js";
+import type {
+  ComponentDefinition,
+  DesignFile,
+  DesignNode,
+  NodeConstraints,
+  NodeLayout
+} from "./storage";
 
 export interface AgentNodeSummary {
   id: string;
@@ -7,6 +19,8 @@ export interface AgentNodeSummary {
   path: string[];
   text?: string;
   componentDefinitionId?: string;
+  layout?: NodeLayout;
+  constraints?: NodeConstraints;
   bounds: { x: number; y: number; width: number; height: number };
 }
 
@@ -86,6 +100,8 @@ export type AgentCommand =
       fontFamily?: string;
     }
   | { type: "create_component"; nodeId: string; componentId: string; name: string }
+  | { type: "set_layout"; nodeId: string; layout: NodeLayout }
+  | { type: "set_constraints"; nodeId: string; constraints: NodeConstraints }
   | {
       type: "create_component_instance";
       parentId: string;
@@ -275,6 +291,7 @@ export function applyAgentCommandsToDocument(
 
   for (const command of commands) {
     changedNodeIds.push(applyAgentCommand(draft, command));
+    relayoutDesignFile(draft);
   }
 
   return {
@@ -334,6 +351,8 @@ function collectSummary(node: DesignNode, path: string[], nodes: AgentNodeSummar
     path,
     text: node.content.type === "text" ? node.content.value : undefined,
     componentDefinitionId: node.component_instance?.definition_id,
+    layout: node.layout ?? undefined,
+    constraints: node.constraints ?? undefined,
     bounds: {
       x: node.transform.x,
       y: node.transform.y,
@@ -437,6 +456,7 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
   switch (command.type) {
     case "update_geometry": {
       const node = requireNode(document, command.nodeId);
+      const previousSize = { ...node.size };
       node.transform = {
         ...node.transform,
         x: command.x ?? node.transform.x,
@@ -446,6 +466,7 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
         width: Math.max(1, command.width ?? node.size.width),
         height: Math.max(1, command.height ?? node.size.height)
       };
+      applyConstraintsAfterParentResize(node, previousSize);
       return node.id;
     }
     case "set_fill": {
@@ -516,6 +537,16 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
       };
       document.components = document.components ?? [];
       document.components.push(component);
+      return node.id;
+    }
+    case "set_layout": {
+      const node = requireNode(document, command.nodeId);
+      node.layout = normalizeNodeLayout(command.layout);
+      return node.id;
+    }
+    case "set_constraints": {
+      const node = requireNode(document, command.nodeId);
+      node.constraints = normalizeNodeConstraints(command.constraints);
       return node.id;
     }
     case "create_component_instance": {

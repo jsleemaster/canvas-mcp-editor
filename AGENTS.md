@@ -128,6 +128,10 @@ This project is currently an MVP foundation, not a finished professional design 
 
 If a request does not fit one of these lanes, document the product tradeoff before expanding scope.
 
+For Figma-parity work, read `docs/product/figma-feature-inventory.md` and
+`docs/product/figma-migration-roadmap.md` before implementation. Treat those
+files as the current feature audit and migration boundary.
+
 ## Plan Status
 
 Use `docs/superpowers/PLAN_STATUS.md` before resuming any file under `docs/superpowers/plans`. The plan directory is mostly historical implementation evidence now; new product work should start from a new plan unless `PLAN_STATUS.md` explicitly marks an existing plan active.

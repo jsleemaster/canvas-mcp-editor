@@ -29,6 +29,10 @@ pub struct Node {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub component_instance: Option<ComponentInstance>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<NodeLayout>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub constraints: Option<NodeConstraints>,
     pub children: Vec<Node>,
     pub transform: Transform,
     pub size: Size,
@@ -74,6 +78,69 @@ pub struct ComponentOverride {
     pub node_id: String,
     pub field: String,
     pub value: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct NodeLayout {
+    pub mode: LayoutMode,
+    pub direction: LayoutDirection,
+    pub gap: f64,
+    pub padding: LayoutPadding,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct LayoutPadding {
+    pub top: f64,
+    pub right: f64,
+    pub bottom: f64,
+    pub left: f64,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum LayoutMode {
+    None,
+    Auto,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum LayoutDirection {
+    Horizontal,
+    Vertical,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct NodeConstraints {
+    pub horizontal: HorizontalConstraint,
+    pub vertical: VerticalConstraint,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum HorizontalConstraint {
+    Left,
+    Right,
+    LeftRight,
+    Center,
+    Scale,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum VerticalConstraint {
+    Top,
+    Bottom,
+    TopBottom,
+    Center,
+    Scale,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
@@ -127,11 +194,15 @@ impl DesignFile {
                     kind: NodeKind::Frame,
                     name: "Landing Frame".to_string(),
                     component_instance: None,
+                    layout: None,
+                    constraints: None,
                     children: vec![Node {
                         id: "text-1".to_string(),
                         kind: NodeKind::Text,
                         name: "Headline".to_string(),
                         component_instance: None,
+                        layout: None,
+                        constraints: None,
                         children: vec![],
                         transform: Transform {
                             x: 32.0,

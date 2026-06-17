@@ -199,4 +199,77 @@ describe("FileStorage", () => {
     expect(summary.createdNodeIds).toEqual(["agent-note"]);
     expect(summary.updatedNodeIds).toEqual([]);
   });
+
+  test("agent commands apply auto layout and constraints deterministically", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
+    const storage = new FileStorage(tempRoot);
+
+    const autoLayout = await storage.applyAgentCommands("sample-file", {
+      dryRun: true,
+      commands: [
+        {
+          type: "set_layout",
+          nodeId: "frame-1",
+          layout: {
+            mode: "auto",
+            direction: "vertical",
+            gap: 12,
+            padding: { top: 20, right: 24, bottom: 20, left: 24 }
+          }
+        },
+        {
+          type: "create_rectangle",
+          parentId: "frame-1",
+          id: "layout-rectangle",
+          name: "Layout Rectangle",
+          width: 160,
+          height: 96
+        }
+      ] as any
+    });
+
+    const autoFrame = autoLayout.preview.pages[0].children[0];
+    expect(autoFrame.children.find((node) => node.id === "text-1")?.transform).toMatchObject({
+      x: 24,
+      y: 20
+    });
+    expect(autoFrame.children.find((node) => node.id === "layout-rectangle")?.transform).toMatchObject({
+      x: 24,
+      y: 80
+    });
+    expect(autoLayout.audit.commandTypes).toEqual(["set_layout", "create_rectangle"]);
+
+    const constrained = await storage.applyAgentCommands("sample-file", {
+      dryRun: true,
+      commands: [
+        {
+          type: "create_rectangle",
+          parentId: "frame-1",
+          id: "badge-1",
+          name: "Badge",
+          x: 300,
+          y: 220,
+          width: 80,
+          height: 32
+        },
+        {
+          type: "set_constraints",
+          nodeId: "badge-1",
+          constraints: { horizontal: "right", vertical: "bottom" }
+        },
+        {
+          type: "update_geometry",
+          nodeId: "frame-1",
+          width: 520,
+          height: 340
+        }
+      ] as any
+    });
+    const resizedFrame = constrained.preview.pages[0].children[0];
+
+    expect(resizedFrame.children.find((node) => node.id === "badge-1")?.transform).toMatchObject({
+      x: 400,
+      y: 280
+    });
+  });
 });
