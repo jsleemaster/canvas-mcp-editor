@@ -54,7 +54,24 @@ describe("collaborative design document", () => {
     }));
 
     expect(document.getDocument().name).toBe("Renamed File");
-    expect(updates.map((update) => update.name)).toEqual(["Renamed File"]);
+    expect(updates.map((update) => update.name)).toEqual(["Sample File", "Renamed File"]);
+
+    unsubscribe();
+    document.destroy();
+  });
+
+  test("publishes the current document when subscribing after an earlier update", () => {
+    const document = createCollaborativeDesignDocument({ document: sampleDocument() });
+    const updates: RendererDocument[] = [];
+
+    document.transact("rename", (current) => ({
+      ...current,
+      name: "Updated File"
+    }));
+
+    const unsubscribe = document.subscribe((nextDocument) => updates.push(nextDocument));
+
+    expect(updates.map((update) => update.name)).toEqual(["Updated File"]);
 
     unsubscribe();
     document.destroy();

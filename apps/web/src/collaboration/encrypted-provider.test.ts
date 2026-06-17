@@ -89,6 +89,32 @@ describe("encrypted collaboration provider", () => {
     provider.destroy();
   });
 
+  test("applies encrypted document snapshots over competing local seed documents", async () => {
+    MockWebSocket.instances = [];
+    const local = new Y.Doc();
+    setClientId(local, 2);
+    local.getMap("design").set("documentJson", { name: "Local Seed" });
+    const receiver = createTestProvider({ ydoc: local, resetSockets: false });
+    const receiverSocket = await waitForSocket(0);
+
+    const remote = new Y.Doc();
+    setClientId(remote, 1);
+    remote.getMap("design").set("documentJson", { name: "Remote Seed" });
+    const sender = createTestProvider({ ydoc: remote, resetSockets: false });
+    const senderSocket = await waitForSocket(1);
+    await waitFor(() => senderSocket.sent.length > 0);
+    senderSocket.sent.length = 0;
+
+    remote.getMap("design").set("documentJson", { name: "Remote Update" });
+    await waitFor(() => senderSocket.sent.some((frame) => frame[0] === 10));
+    receiverSocket.emitMessage(senderSocket.sent.find((frame) => frame[0] === 10) as Uint8Array);
+
+    await waitFor(() => getDocumentName(local) === "Remote Update");
+    expect(getDocumentName(local)).toBe("Remote Update");
+    receiver.destroy();
+    sender.destroy();
+  });
+
   test("responds to encrypted sync queries with encrypted full state", async () => {
     const ydoc = new Y.Doc();
     ydoc.getMap("design").set("documentJson", { name: "Full State Secret" });
@@ -127,8 +153,11 @@ function createTestProvider(input: {
   ydoc: Y.Doc;
   encryption?: SharedKeyEncryptionConfig;
   passphrase?: string;
+  resetSockets?: boolean;
 }) {
-  MockWebSocket.instances = [];
+  if (input.resetSockets ?? true) {
+    MockWebSocket.instances = [];
+  }
   return createEncryptedProvider({
     relayUrl: "ws://127.0.0.1:4327",
     roomId: "canvas-mcp-editor:team-1:sample-file",
@@ -153,6 +182,14 @@ function createTestProvider(input: {
   });
 }
 
+function setClientId(ydoc: Y.Doc, clientId: number) {
+  (ydoc as Y.Doc & { clientID: number }).clientID = clientId;
+}
+
+function getDocumentName(ydoc: Y.Doc): string | undefined {
+  return (ydoc.getMap("design").get("documentJson") as { name?: string } | undefined)?.name;
+}
+
 function testEncryptionConfig(): SharedKeyEncryptionConfig {
   return createSharedKeyEncryptionConfig({
     salt: "fixed-test-salt",
@@ -160,9 +197,9 @@ function testEncryptionConfig(): SharedKeyEncryptionConfig {
   });
 }
 
-async function waitForSocket(): Promise<MockWebSocket> {
-  await waitFor(() => MockWebSocket.instances.length > 0);
-  return MockWebSocket.instances[0];
+async function waitForSocket(index = 0): Promise<MockWebSocket> {
+  await waitFor(() => MockWebSocket.instances.length > index);
+  return MockWebSocket.instances[index];
 }
 
 async function waitFor(assertion: () => boolean): Promise<void> {

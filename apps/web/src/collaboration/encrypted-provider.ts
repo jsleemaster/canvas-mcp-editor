@@ -27,6 +27,14 @@ const messageQueryAwareness = 3;
 const messageEncryptedSync = 10;
 const messageEncryptedSyncQuery = 11;
 const remoteEncryptedOrigin = Symbol("remote-encrypted-update");
+const documentMapName = "design";
+const documentJsonKey = "documentJson";
+
+interface EncryptedDocumentSnapshot {
+  version: 1;
+  kind: "document-snapshot";
+  document: unknown;
+}
 
 export function createEncryptedProvider(input: EncryptedProviderInput): CollaborationProvider {
   const statusListeners = new Set<(status: CollabConnectionStatus) => void>();
@@ -56,17 +64,22 @@ export function createEncryptedProvider(input: EncryptedProviderInput): Collabor
     }
     outboundQueue.push(frame);
   };
-  const sendEncryptedUpdate = async (update: Uint8Array) => {
+  const sendEncryptedSnapshot = async () => {
     if (!key || input.access !== "sync") {
       return;
     }
-    sendFrame(encodeEncryptedSyncFrame(await encryptYjsUpdate(update, key)));
+    const document = getCurrentDocumentSnapshot(input.ydoc);
+    if (!document) {
+      return;
+    }
+    sendFrame(encodeEncryptedSyncFrame(await encryptYjsUpdate(encodeDocumentSnapshot(document), key)));
   };
   const onDocumentUpdate = (update: Uint8Array, origin: unknown) => {
     if (origin === remoteEncryptedOrigin) {
       return;
     }
-    void sendEncryptedUpdate(update).catch(() => emitStatus("error"));
+    void update;
+    void sendEncryptedSnapshot().catch(() => emitStatus("error"));
   };
   const sendAwarenessUpdate = () => {
     sendFrame(
@@ -116,12 +129,16 @@ export function createEncryptedProvider(input: EncryptedProviderInput): Collabor
         return;
       }
       const encrypted = JSON.parse(new TextDecoder().decode(frame.payload)) as EncryptedYjsUpdate;
-      Y.applyUpdate(input.ydoc, await decryptYjsUpdate(encrypted, key), remoteEncryptedOrigin);
+      const update = await decryptYjsUpdate(encrypted, key);
+      if (applyDocumentSnapshot(input.ydoc, update)) {
+        return;
+      }
+      Y.applyUpdate(input.ydoc, update, remoteEncryptedOrigin);
       return;
     }
 
     if (frame.type === messageEncryptedSyncQuery) {
-      await sendEncryptedUpdate(Y.encodeStateAsUpdate(input.ydoc));
+      await sendEncryptedSnapshot();
       return;
     }
 
@@ -179,6 +196,39 @@ export function encodeEncryptedSyncFrame(update: EncryptedYjsUpdate): Uint8Array
 
 export function encodeEncryptedSyncQueryFrame(): Uint8Array {
   return encodeTypeFrame(messageEncryptedSyncQuery);
+}
+
+function getCurrentDocumentSnapshot(ydoc: Y.Doc): unknown | null {
+  const document = ydoc.getMap(documentMapName).get(documentJsonKey);
+  return document === undefined ? null : structuredClone(document);
+}
+
+function encodeDocumentSnapshot(document: unknown): Uint8Array {
+  return new TextEncoder().encode(
+    JSON.stringify({
+      version: 1,
+      kind: "document-snapshot",
+      document
+    } satisfies EncryptedDocumentSnapshot)
+  );
+}
+
+function applyDocumentSnapshot(ydoc: Y.Doc, bytes: Uint8Array): boolean {
+  let snapshot: EncryptedDocumentSnapshot;
+  try {
+    snapshot = JSON.parse(new TextDecoder().decode(bytes)) as EncryptedDocumentSnapshot;
+  } catch {
+    return false;
+  }
+
+  if (snapshot.version !== 1 || snapshot.kind !== "document-snapshot") {
+    return false;
+  }
+
+  ydoc.transact(() => {
+    ydoc.getMap(documentMapName).set(documentJsonKey, structuredClone(snapshot.document));
+  }, remoteEncryptedOrigin);
+  return true;
 }
 
 function encodeAwarenessFrame(update: Uint8Array): Uint8Array {

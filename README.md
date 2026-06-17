@@ -160,6 +160,7 @@ The web app can be shared as a static build. Real-time collaboration is optional
 - The browser stores team manifests and local document state in IndexedDB.
 - `packages/collaboration` stores document state in a Yjs map and uses awareness for presence and selected-node state.
 - `apps/collab-relay` relays Yjs sync and awareness messages for rooms named `canvas-mcp-editor:{teamId}:{documentId}`.
+- Relay teams can enable passphrase-based E2EE for document updates. The exported team manifest stores only encryption metadata, never the passphrase or derived key. Encrypted v1 sync sends whole-document snapshots for editor document changes.
 - The project does not require a maintainer-operated production collaboration server.
 
 ## Deployment
@@ -178,4 +179,4 @@ COLLAB_ROOM_TOKEN=
 COLLAB_MEMBER_TOKENS=[]
 ```
 
-The MVP relay gate token is not account authentication. For member authorization, the relay can also validate `COLLAB_MEMBER_TOKENS` entries with `owner`, `editor`, or `viewer` roles. Viewers are limited to awareness-only connections; document sync/write access is reserved for owners and editors. End-to-end encryption is not implemented yet.
+The MVP relay gate token is not account authentication. For member authorization, the relay can also validate `COLLAB_MEMBER_TOKENS` entries with `owner`, `editor`, or `viewer` roles. Viewers are limited to awareness-only connections; document sync/write access is reserved for owners and editors. E2EE encrypts document snapshots through the relay, but presence, cursor, selection, room ids, and auth metadata remain visible to the relay in this v1.

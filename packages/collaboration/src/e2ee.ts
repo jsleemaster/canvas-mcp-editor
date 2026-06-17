@@ -54,7 +54,7 @@ export async function encryptYjsUpdate(
       iv
     },
     key,
-    update
+    toArrayBuffer(update)
   );
 
   return {
@@ -72,10 +72,10 @@ export async function decryptYjsUpdate(
     const plaintext = await getSubtleCrypto(crypto).decrypt(
       {
         name: "AES-GCM",
-        iv: base64UrlDecode(encrypted.iv)
+        iv: toArrayBuffer(base64UrlDecode(encrypted.iv))
       },
       key,
-      base64UrlDecode(encrypted.ciphertext)
+      toArrayBuffer(base64UrlDecode(encrypted.ciphertext))
     );
     return new Uint8Array(plaintext);
   } catch (error) {
@@ -89,6 +89,10 @@ function getSubtleCrypto(crypto: Crypto): SubtleCrypto {
     throw new Error("Web Crypto subtle API is not available");
   }
   return crypto.subtle;
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
 function base64UrlEncode(bytes: Uint8Array): string {

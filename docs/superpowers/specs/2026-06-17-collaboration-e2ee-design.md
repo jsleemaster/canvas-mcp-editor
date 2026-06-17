@@ -4,7 +4,7 @@ Objective 2 adds relay-safe end-to-end encryption for collaborative document upd
 
 ## Scope
 
-- Encrypt Yjs document update payloads before they leave the browser.
+- Encrypt collaborative document payloads before they leave the browser.
 - Keep the relay unable to parse or apply encrypted document updates into a `Y.Doc`.
 - Keep awareness and presence metadata unencrypted in this v1 so remote cursors, selections, and viewer awareness keep working.
 - Keep passphrases and derived keys out of exported team manifests and IndexedDB team records.
@@ -37,7 +37,7 @@ The exported manifest may include `encryption` metadata, but never a passphrase 
 
 ## Crypto
 
-The web client derives an AES-GCM key from a user-entered passphrase with PBKDF2-SHA-256 using the manifest salt and iteration count. Each encrypted Yjs update gets a fresh 96-bit IV and is encoded as a binary frame containing the IV and ciphertext. Decryption failures are surfaced as connection errors and the invalid update is discarded.
+The web client derives an AES-GCM key from a user-entered passphrase with PBKDF2-SHA-256 using the manifest salt and iteration count. Each encrypted payload gets a fresh 96-bit IV and is encoded as a binary frame containing the IV and ciphertext. Decryption failures are surfaced as connection errors and the invalid update is discarded.
 
 ## Relay Protocol
 
@@ -50,10 +50,10 @@ The websocket URL includes `e2ee=true` when `team.encryption.mode === "shared-ke
 
 Encrypted document frames:
 
-- `messageEncryptedSync = 10`: contains one encrypted Yjs update.
-- `messageEncryptedSyncQuery = 11`: asks connected editors to send their current encrypted state update.
+- `messageEncryptedSync = 10`: contains one encrypted document sync payload.
+- `messageEncryptedSyncQuery = 11`: asks connected editors to send their current encrypted document snapshot.
 
-When an encrypted client connects, it sends a query frame. Existing encrypted editor clients respond with an encrypted `Y.encodeStateAsUpdate(ydoc)` payload, so late joiners catch up while at least one synced editor remains connected.
+When an encrypted client connects, it sends a query frame. Existing encrypted editor clients respond with an encrypted whole-document snapshot, so late joiners catch up while at least one synced editor remains connected. The v1 editor stores the design file as a single `documentJson` value, so encrypted sync uses last-received snapshot application instead of relying on raw Yjs map conflict ordering between independently seeded browser documents.
 
 ## UI
 

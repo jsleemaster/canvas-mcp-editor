@@ -4,7 +4,7 @@
 
 **Goal:** Add passphrase-based E2EE for relay document updates so team-owned relays cannot read collaborative document contents.
 
-**Architecture:** Extend shared collaboration contracts with non-secret encryption metadata and Web Crypto helpers. Replace the default y-websocket document sync path with an encrypted websocket provider when a team manifest enables shared-key encryption, while keeping awareness and auth behavior compatible with the existing relay. Add an opaque encrypted room mode to the TypeScript relay.
+**Architecture:** Extend shared collaboration contracts with non-secret encryption metadata and Web Crypto helpers. Replace the default y-websocket document sync path with an encrypted websocket provider when a team manifest enables shared-key encryption, while keeping awareness and auth behavior compatible with the existing relay. Add an opaque encrypted room mode to the TypeScript relay. Encrypted v1 document frames carry whole-document snapshots because the editor stores the design file as one `documentJson` value.
 
 **Tech Stack:** TypeScript, React, Vite, Yjs, Web Crypto, ws, Vitest, Playwright CLI.
 
@@ -35,38 +35,38 @@
 - Produces: `encryptYjsUpdate(update: Uint8Array, key: CryptoKey, crypto?: Crypto): Promise<EncryptedYjsUpdate>`
 - Produces: `decryptYjsUpdate(encrypted: EncryptedYjsUpdate, key: CryptoKey, crypto?: Crypto): Promise<Uint8Array>`
 
-- [ ] **Step 1: Write failing manifest tests**
+- [x] **Step 1: Write failing manifest tests**
 
 Add tests that create a shared-key manifest, preserve only non-secret encryption metadata, parse legacy manifests without encryption, and strip `passphrase`, `encryptionKey`, and `derivedKey` aliases.
 
-- [ ] **Step 2: Verify manifest RED**
+- [x] **Step 2: Verify manifest RED**
 
 Run: `pnpm --filter @canvas-mcp-editor/collaboration test -- src/team-manifest.test.ts`
 Expected: FAIL because encryption metadata helpers and redaction do not exist yet.
 
-- [ ] **Step 3: Implement manifest metadata**
+- [x] **Step 3: Implement manifest metadata**
 
 Add `TeamEncryptionConfig`, schema validation, create input support, legacy defaulting, and plaintext key redaction.
 
-- [ ] **Step 4: Verify manifest GREEN**
+- [x] **Step 4: Verify manifest GREEN**
 
 Run: `pnpm --filter @canvas-mcp-editor/collaboration test -- src/team-manifest.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Write failing crypto tests**
+- [x] **Step 5: Write failing crypto tests**
 
 Cover AES-GCM round-trip, wrong passphrase rejection, unique IVs, and empty passphrase rejection.
 
-- [ ] **Step 6: Verify crypto RED**
+- [x] **Step 6: Verify crypto RED**
 
 Run: `pnpm --filter @canvas-mcp-editor/collaboration test -- src/e2ee.test.ts`
 Expected: FAIL because `src/e2ee.ts` does not exist yet.
 
-- [ ] **Step 7: Implement crypto helpers**
+- [x] **Step 7: Implement crypto helpers**
 
 Use Web Crypto PBKDF2-SHA-256 and AES-GCM. Encode salt and IV as base64url strings.
 
-- [ ] **Step 8: Verify crypto GREEN**
+- [x] **Step 8: Verify crypto GREEN**
 
 Run: `pnpm --filter @canvas-mcp-editor/collaboration test -- src/e2ee.test.ts`
 Expected: PASS.
@@ -81,20 +81,20 @@ Expected: PASS.
 - Consumes: websocket query parameter `e2ee=true`
 - Produces: relay handling for `messageEncryptedSync = 10` and `messageEncryptedSyncQuery = 11`
 
-- [ ] **Step 1: Write failing relay tests**
+- [x] **Step 1: Write failing relay tests**
 
 Add tests that encrypted rooms broadcast opaque encrypted frames without mutating a relay `Y.Doc`, broadcast encrypted query frames to peers, reject mixed encrypted/plain connections in the same room, and keep viewer sync restrictions.
 
-- [ ] **Step 2: Verify relay RED**
+- [x] **Step 2: Verify relay RED**
 
 Run: `pnpm --filter @canvas-mcp-editor/collab-relay test -- src/index.test.ts`
 Expected: FAIL because encrypted room mode does not exist.
 
-- [ ] **Step 3: Implement relay mode**
+- [x] **Step 3: Implement relay mode**
 
 Track each room as `mode: "plain" | "encrypted"`. Plain rooms keep current Yjs sync. Encrypted rooms skip `sendSyncStep1`, skip relay `Y.Doc` mutation, and only broadcast encrypted document/query frames plus awareness frames.
 
-- [ ] **Step 4: Verify relay GREEN**
+- [x] **Step 4: Verify relay GREEN**
 
 Run: `pnpm --filter @canvas-mcp-editor/collab-relay test -- src/index.test.ts`
 Expected: PASS.
@@ -109,27 +109,27 @@ Expected: PASS.
 
 **Interfaces:**
 - Consumes: `deriveSharedKey`, `encryptYjsUpdate`, `decryptYjsUpdate`
-- Produces: `createEncryptedProvider(input: CollaborationProviderInput & { passphrase: string; encryption: SharedKeyEncryptionConfig }): Promise<CollaborationProvider>`
+- Produces: `createEncryptedProvider(input: CollaborationProviderInput & { passphrase: string; encryption: SharedKeyEncryptionConfig }): CollaborationProvider`
 - Extends: `CreateCollabDocumentSessionInput.encryptionPassphrase?: string`
 
-- [ ] **Step 1: Write failing provider tests**
+- [x] **Step 1: Write failing provider tests**
 
-Cover websocket URL includes `e2ee=true`, encrypted update frames do not contain plaintext document text, incoming encrypted frames apply to the local `Y.Doc`, query frames trigger encrypted full-state responses, and wrong passphrase reports `error`.
+Cover websocket URL includes `e2ee=true`, encrypted document frames do not contain plaintext document text, incoming encrypted frames apply to the local `Y.Doc`, query frames trigger encrypted snapshot responses, competing local seed documents are replaced by encrypted snapshots, and wrong passphrase reports `error`.
 
-- [ ] **Step 2: Verify provider RED**
+- [x] **Step 2: Verify provider RED**
 
 Run: `pnpm --filter @canvas-mcp-editor/web test -- src/collaboration/encrypted-provider.test.ts src/collaboration/collab-session.test.ts`
 Expected: FAIL because encrypted provider/session wiring does not exist.
 
-- [ ] **Step 3: Implement provider**
+- [x] **Step 3: Implement provider**
 
-Implement binary frame encode/decode with `DataView` or small byte helpers, use native `WebSocket`, keep awareness through `Awareness`, and ignore document sync for viewer awareness-only sessions.
+Implement binary frame encode/decode with `DataView` or small byte helpers, use native `WebSocket`, keep awareness through `Awareness`, send encrypted document snapshots for editor document changes, and ignore document sync for viewer awareness-only sessions.
 
-- [ ] **Step 4: Wire session**
+- [x] **Step 4: Wire session**
 
 When `team.encryption.mode === "shared-key"`, require `encryptionPassphrase` and create the encrypted provider instead of `WebsocketProvider`.
 
-- [ ] **Step 5: Verify provider GREEN**
+- [x] **Step 5: Verify provider GREEN**
 
 Run: `pnpm --filter @canvas-mcp-editor/web test -- src/collaboration/encrypted-provider.test.ts src/collaboration/collab-session.test.ts`
 Expected: PASS.
@@ -147,24 +147,24 @@ Expected: PASS.
 - Consumes: `createSharedKeyEncryptionConfig`
 - Consumes: `CreateCollabDocumentSessionInput.encryptionPassphrase`
 
-- [ ] **Step 1: Write failing UI/e2e assertions**
+- [x] **Step 1: Write failing UI/e2e assertions**
 
 Add Playwright steps that enable E2EE, enter the same passphrase in two browser contexts, sync a document edit, and assert the downloaded manifest does not contain the passphrase.
 
-- [ ] **Step 2: Verify UI/e2e RED**
+- [x] **Step 2: Verify UI/e2e RED**
 
 Run: `pnpm test:e2e:collab`
 Expected: FAIL because UI controls and provider wiring are incomplete.
 
-- [ ] **Step 3: Implement UI controls**
+- [x] **Step 3: Implement UI controls**
 
 Add E2EE toggle, passphrase input, encrypted relay creation, encrypted manifest import activation, and status feedback for missing passphrase.
 
-- [ ] **Step 4: Update docs**
+- [x] **Step 4: Update docs**
 
 Document that document updates are encrypted through the relay, presence remains plaintext, passphrases are runtime-only, and the relay must still be team-owned.
 
-- [ ] **Step 5: Verify all checks**
+- [x] **Step 5: Verify all checks**
 
 Run:
 - `pnpm --filter @canvas-mcp-editor/collaboration test -- src/team-manifest.test.ts src/e2ee.test.ts`

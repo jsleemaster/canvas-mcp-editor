@@ -52,6 +52,9 @@ export function createCollaborativeDesignDocument(input: {
     },
     subscribe(listener) {
       listeners.add(listener);
+      if (root.has(DOCUMENT_JSON)) {
+        listener(getDocument());
+      }
       return () => {
         listeners.delete(listener);
       };

@@ -295,6 +295,17 @@ button:disabled {
   gap: var(--editor-space-sm);
 }
 
+.team-toggle-field {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.team-panel input[type="checkbox"] {
+  width: var(--editor-space-md);
+  height: var(--editor-space-md);
+  padding: 0;
+}
+
 .team-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -51,7 +51,7 @@ describe("web collaboration session", () => {
 
     expect(session.status).toBe("offline");
     expect(session.getDocument().name).toBe("Renamed File");
-    expect(updates).toEqual(["Renamed File"]);
+    expect(updates).toEqual(["Sample File", "Renamed File"]);
 
     unsubscribe();
     session.destroy();
