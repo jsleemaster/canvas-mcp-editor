@@ -19,6 +19,23 @@ const agentFindSchema = {
   componentDefinitionId: z.string().optional().describe("Component definition id to match")
 };
 
+const nodeLayoutSchema = z.object({
+  mode: z.enum(["none", "auto"]),
+  direction: z.enum(["horizontal", "vertical"]),
+  gap: z.number(),
+  padding: z.object({
+    top: z.number(),
+    right: z.number(),
+    bottom: z.number(),
+    left: z.number()
+  })
+});
+
+const nodeConstraintsSchema = z.object({
+  horizontal: z.enum(["left", "right", "left_right", "center", "scale"]),
+  vertical: z.enum(["top", "bottom", "top_bottom", "center", "scale"])
+});
+
 const agentCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("update_geometry"),
@@ -68,6 +85,16 @@ const agentCommandSchema = z.discriminatedUnion("type", [
     nodeId: z.string(),
     componentId: z.string(),
     name: z.string()
+  }),
+  z.object({
+    type: z.literal("set_layout"),
+    nodeId: z.string(),
+    layout: nodeLayoutSchema
+  }),
+  z.object({
+    type: z.literal("set_constraints"),
+    nodeId: z.string(),
+    constraints: nodeConstraintsSchema
   }),
   z.object({
     type: z.literal("create_component_instance"),

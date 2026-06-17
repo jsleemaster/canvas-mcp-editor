@@ -137,6 +137,87 @@ describe("editor state commands", () => {
     expect(findNodeById(undo(created).document, "rectangle-1")).toBeNull();
   });
 
+  test("auto layout stacks direct children with padding and gap after node creation", () => {
+    const document = sampleDocument();
+    const frame = findNodeById(document, "frame-1") as any;
+    frame.layout = {
+      mode: "auto",
+      direction: "vertical",
+      gap: 12,
+      padding: { top: 20, right: 24, bottom: 20, left: 24 }
+    };
+
+    const created = executeEditorCommand(createEditorState(document), {
+      type: "create_node",
+      parentId: "frame-1",
+      node: {
+        id: "rectangle-1",
+        kind: "rectangle",
+        name: "Rectangle",
+        transform: { x: 180, y: 140, rotation: 0 },
+        size: { width: 160, height: 96 },
+        style: { fill: "#e0f2fe", stroke: "#0284c7", stroke_width: 1, opacity: 1 },
+        content: { type: "empty" },
+        children: []
+      }
+    });
+
+    expect(findNodeById(created.document, "text-1")?.transform).toMatchObject({ x: 24, y: 20 });
+    expect(findNodeById(created.document, "rectangle-1")?.transform).toMatchObject({ x: 24, y: 80 });
+  });
+
+  test("sets auto layout through an editor command and supports undo", () => {
+    const layout = {
+      mode: "auto",
+      direction: "vertical",
+      gap: 12,
+      padding: { top: 20, right: 24, bottom: 20, left: 24 }
+    } as const;
+
+    const updated = executeEditorCommand(createEditorState(sampleDocument()), {
+      type: "set_node_layout",
+      nodeId: "frame-1",
+      layout
+    } as any);
+
+    expect(findNodeById(updated.document, "frame-1")?.layout).toEqual(layout);
+    expect(findNodeById(updated.document, "text-1")?.transform).toMatchObject({ x: 24, y: 20 });
+
+    const undone = undo(updated);
+    expect(findNodeById(undone.document, "frame-1")?.layout).toBeUndefined();
+    expect(findNodeById(undone.document, "text-1")?.transform).toMatchObject({ x: 32, y: 40 });
+  });
+
+  test("constraints preserve right and bottom offsets when a parent frame resizes", () => {
+    const document = sampleDocument();
+    const frame = findNodeById(document, "frame-1");
+    if (!frame) {
+      throw new Error("frame missing");
+    }
+    frame.children.push({
+      id: "badge-1",
+      kind: "rectangle",
+      name: "Badge",
+      transform: { x: 300, y: 220, rotation: 0 },
+      size: { width: 80, height: 32 },
+      style: { fill: "#fef3c7", stroke: "#f59e0b", stroke_width: 1, opacity: 1 },
+      content: { type: "empty" },
+      children: [],
+      constraints: { horizontal: "right", vertical: "bottom" }
+    } as any);
+
+    const resized = executeEditorCommand(createEditorState(document), {
+      type: "update_node_geometry",
+      nodeId: "frame-1",
+      patch: { width: 520, height: 340 }
+    });
+
+    expect(findNodeById(resized.document, "badge-1")?.transform).toMatchObject({
+      x: 400,
+      y: 280
+    });
+  });
+
   test("tracks selection and viewport pan and zoom", () => {
     const initial = createEditorState(sampleDocument());
     const selected = setSelection(initial, "text-1");

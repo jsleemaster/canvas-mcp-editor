@@ -78,6 +78,13 @@ button:disabled {
   letter-spacing: var(--editor-letter-spacing);
 }
 
+.inspector h3 {
+  margin: 0;
+  font-size: var(--editor-text-body-size);
+  line-height: var(--editor-text-body-line);
+  letter-spacing: var(--editor-letter-spacing);
+}
+
 .sidebar p,
 .empty-state {
   margin: 0 0 var(--editor-space-md);
@@ -119,6 +126,7 @@ button:disabled {
 .layer-list button:focus-visible,
 .toolbar button:focus-visible,
 .inspector input:focus-visible,
+.inspector select:focus-visible,
 .inspector textarea:focus-visible,
 .team-panel input:focus-visible,
 .team-panel textarea:focus-visible,
@@ -270,7 +278,16 @@ button:disabled {
   margin-top: var(--editor-space-md);
 }
 
+.inspector-section {
+  display: grid;
+  gap: var(--editor-space-sm);
+  margin-top: var(--editor-space-lg);
+  padding-top: var(--editor-space-md);
+  border-top: var(--editor-border-hairline) solid var(--editor-color-border-soft);
+}
+
 .inspector input,
+.inspector select,
 .inspector textarea,
 .team-panel input,
 .team-panel textarea {

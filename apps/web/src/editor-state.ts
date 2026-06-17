@@ -1,4 +1,9 @@
-import type { RendererDocument, RendererNode } from "@canvas-mcp-editor/renderer";
+import type {
+  NodeConstraints,
+  NodeLayout,
+  RendererDocument,
+  RendererNode
+} from "@canvas-mcp-editor/renderer";
 
 export interface EditorSelection {
   nodeId: string | null;
@@ -79,6 +84,17 @@ export type EditorCommand =
       type: "detach_instance";
       nodeId: string;
       previousNode?: RendererNode;
+    }
+  | {
+      type: "set_node_layout";
+      nodeId: string;
+      layout: NodeLayout | null;
+      previousChildren?: Array<{ id: string; transform: RendererNode["transform"] }>;
+    }
+  | {
+      type: "set_node_constraints";
+      nodeId: string;
+      constraints: NodeConstraints | null;
     };
 
 interface CommandResult {
@@ -90,6 +106,7 @@ interface CommandResult {
 const MIN_NODE_SIZE = 1;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
+const DEFAULT_CONSTRAINTS: NodeConstraints = { horizontal: "left", vertical: "top" };
 
 export function createEditorState(document: RendererDocument): EditorState {
   return {
@@ -272,6 +289,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       if (!node) {
         return { document, inverse: null };
       }
+      const previousSize = { ...node.size };
 
       const inverse: EditorCommand = {
         type: "update_node_geometry",
@@ -293,6 +311,8 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         width: clampSize(command.patch.width ?? node.size.width),
         height: clampSize(command.patch.height ?? node.size.height)
       };
+      applyConstraintsAfterParentResize(node, previousSize);
+      relayoutDocument(next);
 
       return { document: next, inverse };
     }
@@ -308,6 +328,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         fill: node.style.fill
       };
       node.style = { ...node.style, fill: command.fill };
+      relayoutDocument(next);
 
       return { document: next, inverse };
     }
@@ -323,6 +344,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         value: node.content.value
       };
       node.content = { ...node.content, value: command.value };
+      relayoutDocument(next);
 
       return { document: next, inverse };
     }
@@ -334,6 +356,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
 
       const node = structuredClone(command.node);
       parent.children.push(node);
+      relayoutDocument(next);
 
       return {
         document: next,
@@ -370,6 +393,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       node.kind = "component";
       node.component_instance = null;
       next.components = next.components ?? [];
+      relayoutDocument(next);
       next.components.push({
         id: command.componentId,
         name: command.name,
@@ -391,6 +415,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
     case "delete_component": {
       replaceNodeById(next, command.nodeId, structuredClone(command.previousNode));
       next.components = (next.components ?? []).filter((component) => component.id !== command.componentId);
+      relayoutDocument(next);
 
       return {
         document: next,
@@ -424,6 +449,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         detached: false
       };
       parent.children.push(node);
+      relayoutDocument(next);
 
       return {
         document: next,
@@ -440,6 +466,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       const previousNode = command.previousNode ?? structuredClone(node);
       node.kind = "frame";
       node.component_instance = null;
+      relayoutDocument(next);
 
       return {
         document: next,
@@ -447,7 +474,216 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         selectedNodeId: command.nodeId
       };
     }
+    case "set_node_layout": {
+      const node = findNodeById(next, command.nodeId);
+      if (!node) {
+        return { document, inverse: null };
+      }
+
+      const previousLayout = node.layout ? structuredClone(node.layout) : null;
+      const previousChildren = node.children.map((child) => ({
+        id: child.id,
+        transform: { ...child.transform }
+      }));
+
+      if (command.layout) {
+        node.layout = normalizeNodeLayout(command.layout);
+      } else {
+        delete node.layout;
+      }
+      if (command.previousChildren) {
+        restoreChildTransforms(node, command.previousChildren);
+      }
+      relayoutDocument(next);
+
+      return {
+        document: next,
+        inverse: {
+          type: "set_node_layout",
+          nodeId: command.nodeId,
+          layout: previousLayout,
+          previousChildren
+        },
+        selectedNodeId: command.nodeId
+      };
+    }
+    case "set_node_constraints": {
+      const node = findNodeById(next, command.nodeId);
+      if (!node) {
+        return { document, inverse: null };
+      }
+
+      const previousConstraints = node.constraints ? structuredClone(node.constraints) : null;
+      if (command.constraints) {
+        node.constraints = normalizeNodeConstraints(command.constraints);
+      } else {
+        delete node.constraints;
+      }
+      relayoutDocument(next);
+
+      return {
+        document: next,
+        inverse: {
+          type: "set_node_constraints",
+          nodeId: command.nodeId,
+          constraints: previousConstraints
+        },
+        selectedNodeId: command.nodeId
+      };
+    }
   }
+}
+
+function relayoutDocument(document: RendererDocument): void {
+  for (const page of document.pages) {
+    for (const node of page.children) {
+      relayoutNode(node);
+    }
+  }
+}
+
+function relayoutNode(node: RendererNode): void {
+  const layout = normalizedAutoLayout(node.layout);
+  if (layout) {
+    let cursor = layout.direction === "vertical" ? layout.padding.top : layout.padding.left;
+    for (const child of node.children) {
+      child.transform = {
+        ...child.transform,
+        x: layout.direction === "vertical" ? layout.padding.left : cursor,
+        y: layout.direction === "vertical" ? cursor : layout.padding.top
+      };
+      cursor += (layout.direction === "vertical" ? child.size.height : child.size.width) + layout.gap;
+    }
+  }
+
+  for (const child of node.children) {
+    relayoutNode(child);
+  }
+}
+
+function normalizedAutoLayout(layout: NodeLayout | null | undefined): NodeLayout | null {
+  if (!layout || layout.mode !== "auto") {
+    return null;
+  }
+
+  return normalizeNodeLayout(layout);
+}
+
+function normalizeNodeLayout(layout: NodeLayout): NodeLayout {
+  return {
+    mode: layout.mode === "auto" ? "auto" : "none",
+    direction: layout.direction === "horizontal" ? "horizontal" : "vertical",
+    gap: Math.max(0, finiteNumber(layout.gap, 0)),
+    padding: {
+      top: Math.max(0, finiteNumber(layout.padding?.top, 0)),
+      right: Math.max(0, finiteNumber(layout.padding?.right, 0)),
+      bottom: Math.max(0, finiteNumber(layout.padding?.bottom, 0)),
+      left: Math.max(0, finiteNumber(layout.padding?.left, 0))
+    }
+  };
+}
+
+function normalizeNodeConstraints(constraints: NodeConstraints): NodeConstraints {
+  return {
+    horizontal: isHorizontalConstraint(constraints.horizontal) ? constraints.horizontal : "left",
+    vertical: isVerticalConstraint(constraints.vertical) ? constraints.vertical : "top"
+  };
+}
+
+function restoreChildTransforms(
+  node: RendererNode,
+  transforms: Array<{ id: string; transform: RendererNode["transform"] }>
+): void {
+  const byId = new Map(transforms.map((entry) => [entry.id, entry.transform]));
+  for (const child of node.children) {
+    const transform = byId.get(child.id);
+    if (transform) {
+      child.transform = { ...transform };
+    }
+  }
+}
+
+function applyConstraintsAfterParentResize(
+  parent: RendererNode,
+  previousSize: { width: number; height: number }
+): void {
+  if (normalizedAutoLayout(parent.layout)) {
+    return;
+  }
+
+  const deltaWidth = parent.size.width - previousSize.width;
+  const deltaHeight = parent.size.height - previousSize.height;
+  if (deltaWidth === 0 && deltaHeight === 0) {
+    return;
+  }
+
+  for (const child of parent.children) {
+    const constraints = child.constraints ?? DEFAULT_CONSTRAINTS;
+    applyHorizontalConstraint(child, constraints.horizontal, previousSize.width, parent.size.width, deltaWidth);
+    applyVerticalConstraint(child, constraints.vertical, previousSize.height, parent.size.height, deltaHeight);
+  }
+}
+
+function applyHorizontalConstraint(
+  node: RendererNode,
+  constraint: NodeConstraints["horizontal"],
+  previousParentWidth: number,
+  nextParentWidth: number,
+  deltaWidth: number
+): void {
+  if (constraint === "right") {
+    node.transform.x += deltaWidth;
+    return;
+  }
+  if (constraint === "center") {
+    node.transform.x += deltaWidth / 2;
+    return;
+  }
+  if (constraint === "left_right") {
+    node.size.width = clampSize(node.size.width + deltaWidth);
+    return;
+  }
+  if (constraint === "scale" && previousParentWidth > 0) {
+    const xRatio = node.transform.x / previousParentWidth;
+    const widthRatio = node.size.width / previousParentWidth;
+    node.transform.x = xRatio * nextParentWidth;
+    node.size.width = clampSize(widthRatio * nextParentWidth);
+  }
+}
+
+function applyVerticalConstraint(
+  node: RendererNode,
+  constraint: NodeConstraints["vertical"],
+  previousParentHeight: number,
+  nextParentHeight: number,
+  deltaHeight: number
+): void {
+  if (constraint === "bottom") {
+    node.transform.y += deltaHeight;
+    return;
+  }
+  if (constraint === "center") {
+    node.transform.y += deltaHeight / 2;
+    return;
+  }
+  if (constraint === "top_bottom") {
+    node.size.height = clampSize(node.size.height + deltaHeight);
+    return;
+  }
+  if (constraint === "scale" && previousParentHeight > 0) {
+    const yRatio = node.transform.y / previousParentHeight;
+    const heightRatio = node.size.height / previousParentHeight;
+    node.transform.y = yRatio * nextParentHeight;
+    node.size.height = clampSize(heightRatio * nextParentHeight);
+  }
+}
+
+function isHorizontalConstraint(value: string): value is NodeConstraints["horizontal"] {
+  return ["left", "right", "left_right", "center", "scale"].includes(value);
+}
+
+function isVerticalConstraint(value: string): value is NodeConstraints["vertical"] {
+  return ["top", "bottom", "top_bottom", "center", "scale"].includes(value);
 }
 
 function findInNode(node: RendererNode, nodeId: string): RendererNode | null {
@@ -545,6 +781,10 @@ function renameInstanceTree(node: RendererNode, instanceId: string) {
 
 function clampSize(value: number): number {
   return Math.max(MIN_NODE_SIZE, value);
+}
+
+function finiteNumber(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 function clamp(value: number, min: number, max: number): number {

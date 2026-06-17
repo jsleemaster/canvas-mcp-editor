@@ -33,6 +33,7 @@ Use this order when entering the repo:
 | `2026-06-17-collaboration-e2ee.md` | Completed | Merged in PR #12, `03297dd`, with manifest encryption metadata, crypto helpers, encrypted relay mode, encrypted web provider, UI, docs, and e2e coverage. |
 | `2026-06-17-rust-collab-relay.md` | Completed | Merged in PR #13, `b02fa10`, with Rust frame codec, auth/config, room hub, Axum runtime, scripts, tests, and docs. |
 | `2026-06-17-web-only-laptop-layout.md` | Completed | Merged in PR #14, `a09a93e`, with laptop viewport overflow regression coverage and hidden input sizing fix. |
+| `2026-06-17-figma-layout-foundation.md` | Completed | Implemented after the 2026-06-17 Figma feature audit with optional layout/constraints metadata, auto layout stacking, parent-resize constraints, inspector controls, MCP/HTTP agent command support, code-export metadata, and Playwright coverage. Verified with `pnpm test`, `pnpm typecheck`, `cargo test --workspace`, `pnpm --filter @canvas-mcp-editor/web build`, `pnpm test:e2e`, and `pnpm test:e2e:collab`. |
 
 ## Current Active Plan
 
@@ -45,3 +46,6 @@ resuming any historical plan above.
 PR #15, `dc090c8`, added `AGENTS.md` and `docs/PROJECT_BRIEF.md`. Those files
 summarize the implemented product state and should be treated as the current
 agent handoff layer.
+
+For Figma parity work, read `docs/product/figma-feature-inventory.md` and
+`docs/product/figma-migration-roadmap.md` before creating or resuming a plan.

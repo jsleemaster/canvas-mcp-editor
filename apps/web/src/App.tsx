@@ -3,6 +3,8 @@ import type { KonvaEventObject } from "konva/lib/Node";
 import { Group, Layer, Rect, Stage, Text } from "react-konva";
 import {
   flattenRendererNodes,
+  type NodeConstraints,
+  type NodeLayout,
   type RendererDocument,
   type RendererNode
 } from "@canvas-mcp-editor/renderer";
@@ -56,6 +58,16 @@ function numericInputValue(value: number) {
 
 const teamStore = createIndexedDbTeamStore();
 const LOCAL_USER_COLOR = "var(--editor-color-selection)";
+const DEFAULT_NODE_LAYOUT: NodeLayout = {
+  mode: "none",
+  direction: "vertical",
+  gap: 8,
+  padding: { top: 16, right: 16, bottom: 16, left: 16 }
+};
+const DEFAULT_NODE_CONSTRAINTS: NodeConstraints = {
+  horizontal: "left",
+  vertical: "top"
+};
 
 function remotePresenceSignature(member: CollaborationPresence) {
   return JSON.stringify({
@@ -273,12 +285,16 @@ function Inspector({
   selectedNode,
   onGeometryChange,
   onFillChange,
-  onTextChange
+  onTextChange,
+  onLayoutChange,
+  onConstraintsChange
 }: {
   selectedNode: RendererNode | null;
   onGeometryChange: (nodeId: string, patch: GeometryPatch) => void;
   onFillChange: (nodeId: string, fill: string) => void;
   onTextChange: (nodeId: string, value: string) => void;
+  onLayoutChange: (nodeId: string, layout: NodeLayout) => void;
+  onConstraintsChange: (nodeId: string, constraints: NodeConstraints) => void;
 }) {
   if (!selectedNode) {
     return (
@@ -294,6 +310,30 @@ function Inspector({
     if (Number.isFinite(nextValue)) {
       onGeometryChange(selectedNode.id, { [patchKey]: nextValue });
     }
+  };
+  const layout = selectedNode.layout ?? DEFAULT_NODE_LAYOUT;
+  const constraints = selectedNode.constraints ?? DEFAULT_NODE_CONSTRAINTS;
+  const updateLayout = (patch: Partial<NodeLayout>) => {
+    onLayoutChange(selectedNode.id, {
+      ...layout,
+      ...patch,
+      padding: patch.padding ?? layout.padding
+    });
+  };
+  const updatePadding =
+    (side: keyof NodeLayout["padding"]) => (event: React.ChangeEvent<HTMLInputElement>) => {
+      const nextValue = Number(event.currentTarget.value);
+      if (Number.isFinite(nextValue)) {
+        updateLayout({
+          padding: {
+            ...layout.padding,
+            [side]: nextValue
+          }
+        });
+      }
+    };
+  const updateConstraints = (patch: Partial<NodeConstraints>) => {
+    onConstraintsChange(selectedNode.id, { ...constraints, ...patch });
   };
 
   return (
@@ -360,6 +400,126 @@ function Inspector({
           />
         </label>
       ) : null}
+      <section className="inspector-section" aria-label="Layout">
+        <h3>Layout</h3>
+        <label className="stacked-field">
+          Mode
+          <select
+            data-testid="inspector-layout-mode"
+            value={layout.mode}
+            onChange={(event) =>
+              updateLayout({ mode: event.currentTarget.value as NodeLayout["mode"] })
+            }
+          >
+            <option value="none">None</option>
+            <option value="auto">Auto</option>
+          </select>
+        </label>
+        <label className="stacked-field">
+          Flow
+          <select
+            data-testid="inspector-layout-direction"
+            value={layout.direction}
+            onChange={(event) =>
+              updateLayout({ direction: event.currentTarget.value as NodeLayout["direction"] })
+            }
+          >
+            <option value="vertical">Vertical</option>
+            <option value="horizontal">Horizontal</option>
+          </select>
+        </label>
+        <div className="field-grid">
+          <label>
+            Gap
+            <input
+              data-testid="inspector-layout-gap"
+              type="number"
+              value={numericInputValue(layout.gap)}
+              onChange={(event) => {
+                const nextValue = Number(event.currentTarget.value);
+                if (Number.isFinite(nextValue)) {
+                  updateLayout({ gap: nextValue });
+                }
+              }}
+            />
+          </label>
+          <label>
+            Top
+            <input
+              data-testid="inspector-layout-padding-top"
+              type="number"
+              value={numericInputValue(layout.padding.top)}
+              onChange={updatePadding("top")}
+            />
+          </label>
+          <label>
+            Right
+            <input
+              data-testid="inspector-layout-padding-right"
+              type="number"
+              value={numericInputValue(layout.padding.right)}
+              onChange={updatePadding("right")}
+            />
+          </label>
+          <label>
+            Bottom
+            <input
+              data-testid="inspector-layout-padding-bottom"
+              type="number"
+              value={numericInputValue(layout.padding.bottom)}
+              onChange={updatePadding("bottom")}
+            />
+          </label>
+          <label>
+            Left
+            <input
+              data-testid="inspector-layout-padding-left"
+              type="number"
+              value={numericInputValue(layout.padding.left)}
+              onChange={updatePadding("left")}
+            />
+          </label>
+        </div>
+      </section>
+      <section className="inspector-section" aria-label="Constraints">
+        <h3>Constraints</h3>
+        <label className="stacked-field">
+          Horizontal
+          <select
+            data-testid="inspector-constraint-horizontal"
+            value={constraints.horizontal}
+            onChange={(event) =>
+              updateConstraints({
+                horizontal: event.currentTarget.value as NodeConstraints["horizontal"]
+              })
+            }
+          >
+            <option value="left">Left</option>
+            <option value="right">Right</option>
+            <option value="left_right">Left + right</option>
+            <option value="center">Center</option>
+            <option value="scale">Scale</option>
+          </select>
+        </label>
+        <label className="stacked-field">
+          Vertical
+          <select
+            data-testid="inspector-constraint-vertical"
+            value={constraints.vertical}
+            onChange={(event) =>
+              updateConstraints({
+                vertical: event.currentTarget.value as NodeConstraints["vertical"]
+              })
+            }
+          >
+            <option value="top">Top</option>
+            <option value="bottom">Bottom</option>
+            <option value="top_bottom">Top + bottom</option>
+            <option value="center">Center</option>
+            <option value="scale">Scale</option>
+          </select>
+        </label>
+      </section>
     </aside>
   );
 }
@@ -520,6 +680,18 @@ export function App() {
     dispatch({ type: "update_node_geometry", nodeId, patch });
   };
 
+  const updateLayout = (nodeId: string, layout: NodeLayout) => {
+    dispatch({
+      type: "set_node_layout",
+      nodeId,
+      layout: layout.mode === "none" ? null : layout
+    });
+  };
+
+  const updateConstraints = (nodeId: string, constraints: NodeConstraints) => {
+    dispatch({ type: "set_node_constraints", nodeId, constraints });
+  };
+
   const createNode = (kind: "rectangle" | "text") => {
     if (!editor) {
       return;
@@ -529,10 +701,14 @@ export function App() {
     if (!firstPage) {
       return;
     }
+    const selectedContainer =
+      selectedNode && (selectedNode.kind === "frame" || selectedNode.kind === "component")
+        ? selectedNode
+        : null;
 
     dispatch({
       type: "create_node",
-      parentId: firstPage.id,
+      parentId: selectedContainer?.id ?? firstPage.id,
       node:
         kind === "rectangle"
           ? createRectangleNode(nodes.length + 1)
@@ -1197,6 +1373,8 @@ export function App() {
         onGeometryChange={updateGeometry}
         onFillChange={(nodeId, fill) => dispatch({ type: "set_fill", nodeId, fill })}
         onTextChange={(nodeId, value) => dispatch({ type: "update_text", nodeId, value })}
+        onLayoutChange={updateLayout}
+        onConstraintsChange={updateConstraints}
       />
     </main>
   );
