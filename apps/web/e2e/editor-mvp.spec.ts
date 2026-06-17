@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { rm } from "node:fs/promises";
 
+test.beforeEach(async () => {
+  await rm(".canvas-mcp-editor/projects", { recursive: true, force: true });
+  await rm("apps/server/.canvas-mcp-editor/projects", { recursive: true, force: true });
+});
+
 test("creates, reopens, and team-links a saved project", async ({ page }) => {
   await rm(".canvas-mcp-editor/projects", { recursive: true, force: true });
   await rm(".canvas-mcp-editor/files", { recursive: true, force: true });
