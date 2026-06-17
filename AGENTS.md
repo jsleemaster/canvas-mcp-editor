@@ -33,6 +33,12 @@ The app supports these core workflows:
 - Prefer MCP or HTTP for deterministic document edits. Do not rely on clicking the UI for primary mutations.
 - Use browser automation only to verify that the local web editor renders the result correctly.
 - Browser debugging and visual verification must use Playwright CLI.
+- For editor or browser interaction changes, do not stop at code-level tests.
+  After the automated checks pass, run a direct Playwright CLI interaction pass
+  against the live editor: click the relevant canvas/layer controls, drag or
+  wheel when the behavior depends on pointer movement, press the expected
+  keyboard shortcuts, and record what visibly changed. Treat this as required
+  verification, not optional polish.
 - Keep design UI changes aligned with `DESIGN.md`, `apps/web/src/design-tokens.css`, and `apps/web/src/design-tokens.ts`.
 - If a requested UI change conflicts with the current design rules, show the relevant `DESIGN.md` rule to the user first and explain the conflict. Only when the user explicitly confirms they still want the change should you update the design rule, then update the actual UI to match the approved rule change.
 - Keep user-facing web UI Korean-first. Product code, API names, protocol fields, and generated code identifiers may remain English where they are developer contracts.
@@ -112,6 +118,9 @@ For a document task, use this order:
 5. Validate with `validate_document` or `GET /files/:fileId/agent/validate`.
 6. Summarize with `get_change_summary` or `POST /files/:fileId/agent/change-summary`.
 7. Verify rendering through Playwright CLI at `http://127.0.0.1:5173/`.
+8. For editor or browser interaction changes, perform a direct Playwright CLI
+   interaction pass on the live UI and record the clicked, dragged, wheeled, or
+   typed actions plus the visible result.
 
 For code generation tasks, use `export_code` or `GET /files/:fileId/export/code`. The structured `implementationSpec` is the primary agent-readable output; the generated HTML and CSS are secondary artifacts.
 
