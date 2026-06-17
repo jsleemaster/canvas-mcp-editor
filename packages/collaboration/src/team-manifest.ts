@@ -51,6 +51,20 @@ export interface TeamAuthMetadata {
   };
 }
 
+export type TeamEncryptionConfig =
+  | {
+      mode: "none";
+    }
+  | {
+      mode: "shared-key";
+      algorithm: "AES-GCM";
+      kdf: "PBKDF2-SHA-256";
+      salt: string;
+      iterations: number;
+    };
+
+export type SharedKeyEncryptionConfig = Extract<TeamEncryptionConfig, { mode: "shared-key" }>;
+
 export const TEAM_MANIFEST_SCHEMA_VERSION = 1;
 
 export interface TeamManifest {
@@ -64,6 +78,7 @@ export interface TeamManifest {
   sync: TeamSyncConfig;
   permissions: TeamPermissions;
   auth: TeamAuthMetadata;
+  encryption: TeamEncryptionConfig;
 }
 
 export interface CreateTeamManifestInput {
@@ -79,6 +94,7 @@ export interface CreateTeamManifestInput {
     inviteTokenHashes?: RelayInviteTokenHash[];
   };
   permissions?: Partial<TeamPermissions>;
+  encryption?: TeamEncryptionConfig;
 }
 
 const teamMemberSchema = z.object({
@@ -126,6 +142,19 @@ const teamAuthMetadataSchema = z.object({
   })
 });
 
+const teamEncryptionConfigSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("none")
+  }),
+  z.object({
+    mode: z.literal("shared-key"),
+    algorithm: z.literal("AES-GCM"),
+    kdf: z.literal("PBKDF2-SHA-256"),
+    salt: z.string().trim().min(1),
+    iterations: z.number().int().min(1)
+  })
+]);
+
 const teamManifestSchema = z.object({
   schemaVersion: z.literal(TEAM_MANIFEST_SCHEMA_VERSION),
   teamId: z.string().trim().min(1),
@@ -139,10 +168,12 @@ const teamManifestSchema = z.object({
     canEdit: z.boolean(),
     canInvite: z.boolean()
   }),
-  auth: teamAuthMetadataSchema
+  auth: teamAuthMetadataSchema,
+  encryption: teamEncryptionConfigSchema.default({ mode: "none" })
 });
 
 const DEFAULT_ROOM_PREFIX = "canvas-mcp-editor";
+const DEFAULT_E2EE_ITERATIONS = 210000;
 
 export type TeamManifestValidationResult =
   | {
@@ -185,10 +216,29 @@ export function createTeamManifest(input: CreateTeamManifestInput): TeamManifest
         memberTokenHashes: input.sync?.memberTokenHashes ?? [],
         inviteTokenHashes: input.sync?.inviteTokenHashes ?? []
       }
-    }
+    },
+    encryption: input.encryption ?? { mode: "none" }
   };
 
   return parseTeamManifest(team);
+}
+
+export function createSharedKeyEncryptionConfig(
+  input: { salt?: string; iterations?: number } = {}
+): SharedKeyEncryptionConfig {
+  const salt = input.salt?.trim() || createRandomSalt();
+  const iterations = input.iterations ?? DEFAULT_E2EE_ITERATIONS;
+  if (!Number.isInteger(iterations) || iterations < 1) {
+    throw new Error("encryption iterations must be a positive integer");
+  }
+
+  return {
+    mode: "shared-key",
+    algorithm: "AES-GCM",
+    kdf: "PBKDF2-SHA-256",
+    salt,
+    iterations
+  };
 }
 
 export function parseTeamManifest(input: unknown): TeamManifest {
@@ -319,7 +369,8 @@ function migrateLegacyTeamManifest(input: Record<string, unknown>): TeamManifest
     documents: Array.isArray(input.documents) ? input.documents : [],
     sync,
     permissions: normalizeMigratedPermissions(input.permissions, currentMember),
-    auth
+    auth,
+    encryption: normalizeMigratedEncryption(input.encryption)
   };
 }
 
@@ -369,6 +420,16 @@ function normalizeMigratedAuthMetadata(input: unknown): TeamAuthMetadata {
   };
 }
 
+function normalizeMigratedEncryption(input: unknown): TeamEncryptionConfig {
+  if (!isRecord(input)) {
+    return { mode: "none" };
+  }
+
+  const stripped = stripPlaintextManifestSecrets(input);
+  const parsed = teamEncryptionConfigSchema.safeParse(stripped);
+  return parsed.success ? parsed.data : { mode: "none" };
+}
+
 function stripPlaintextManifestSecrets(input: Record<string, unknown>): Record<string, unknown> {
   const clone = structuredClone(input) as Record<string, unknown>;
   stripSecretsFromRecord(clone);
@@ -396,7 +457,35 @@ function stripSecretsFromRecord(record: Record<string, unknown>) {
 }
 
 function isPlaintextSecretKey(key: string): boolean {
-  return ["token", "memberToken", "relayToken", "inviteToken"].includes(key);
+  return [
+    "token",
+    "memberToken",
+    "relayToken",
+    "inviteToken",
+    "passphrase",
+    "encryptionKey",
+    "derivedKey"
+  ].includes(key);
+}
+
+function createRandomSalt(): string {
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  return base64UrlEncode(bytes);
+}
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 function issuesFromValidationMessage(message: string): string[] {

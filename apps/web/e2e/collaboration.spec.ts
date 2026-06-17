@@ -124,3 +124,41 @@ test("relay team syncs document edits between two browser contexts", async ({ br
     await rm(downloadDir, { force: true, recursive: true });
   }
 });
+
+test("encrypted relay team syncs document edits without exporting the passphrase", async ({ browser }) => {
+  await rm(".canvas-mcp-editor/files/sample-file.json", { force: true });
+  await rm("apps/server/.canvas-mcp-editor/files/sample-file.json", { force: true });
+
+  const contextA = await browser.newContext();
+  const contextB = await browser.newContext();
+  const pageA = await contextA.newPage();
+  const pageB = await contextB.newPage();
+
+  try {
+    await pageA.goto("http://127.0.0.1:5173/");
+    await pageB.goto("http://127.0.0.1:5173/");
+
+    await pageA.getByTestId("relay-url").fill("ws://127.0.0.1:4327");
+    await pageA.getByTestId("team-e2ee-toggle").check();
+    await pageA.getByTestId("team-e2ee-passphrase").fill("correct horse battery staple");
+    await pageA.getByRole("button", { name: "Relay" }).click();
+    await expect(pageA.getByTestId("team-status")).toContainText("synced", { timeout: 8000 });
+
+    await pageA.getByRole("button", { name: "Export" }).click();
+    const manifest = await pageA.getByTestId("team-manifest").inputValue();
+    expect(manifest).toContain('"mode": "shared-key"');
+    expect(manifest).toContain('"algorithm": "AES-GCM"');
+    expect(manifest).not.toContain("correct horse battery staple");
+
+    await pageB.getByTestId("team-e2ee-passphrase").fill("correct horse battery staple");
+    await pageB.getByTestId("team-manifest").fill(manifest);
+    await pageB.getByRole("button", { name: "Import" }).click();
+    await expect(pageB.getByTestId("team-status")).toContainText("synced", { timeout: 8000 });
+
+    await pageA.getByRole("button", { name: "Create text" }).click();
+    await expect(pageB.getByRole("button", { name: "Text 3" })).toBeVisible({ timeout: 8000 });
+  } finally {
+    await contextA.close();
+    await contextB.close();
+  }
+});

@@ -105,9 +105,15 @@ Publish the websocket URL to team members through the team manifest. The project
 
 `owner` and `editor` members can request document sync access. `viewer` members can connect with awareness-only access so they can participate in presence without mutating the shared document. Plain `token` fields are accepted for local testing, but production relay config should prefer `tokenHash`.
 
+## End-to-end encryption
+
+Relay-backed teams can enable passphrase-based E2EE in the web app before creating a team. The manifest stores only non-secret metadata such as algorithm, KDF, salt, and iteration count. Team members must enter the shared passphrase at runtime when they create or import an encrypted team manifest.
+
+With E2EE enabled, document snapshots are encrypted in the browser and the relay treats those snapshots as opaque frames. The relay cannot apply encrypted document contents into its own `Y.Doc`. Awareness remains plaintext in this v1, so display names, colors, cursors, selections, room ids, and relay/member auth metadata are still visible to the relay operator.
+
 ## Trusted network relay
 
-For sensitive work, run the relay inside a trusted private network or VPN and keep `COLLAB_ROOM_TOKEN` set. The current relay token is only a lightweight gate. It is not account authentication and it is not end-to-end encryption.
+For sensitive work, run the relay inside a trusted private network or VPN and keep `COLLAB_ROOM_TOKEN` set. The current relay token is only a lightweight gate. It is not account authentication. E2EE protects document update contents, but teams should still treat relay metadata and plaintext awareness as visible to the relay operator.
 
 ## Relay Configuration
 
@@ -151,6 +157,8 @@ The server connects to the relay room, applies the command to the Yjs-backed doc
 
 - No account system is included.
 - Relay tokens are not end-to-end encryption.
+- E2EE protects document snapshots only; awareness and presence metadata remain plaintext in this v1.
+- Passphrases and derived keys are runtime-only and are not exported in team manifests.
 - Team manifests store member roles and token hashes, not plaintext relay/member tokens.
 - Viewer write blocking is enforced at relay connection and sync-message handling; the current Yjs protocol layer is not a full document permission engine.
-- Sensitive teams should run relays inside a trusted network until encrypted Yjs updates are added.
+- Sensitive teams should still run relays inside a trusted network when relay metadata exposure matters.

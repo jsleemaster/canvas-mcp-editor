@@ -3,6 +3,7 @@ import type { RendererDocument } from "@canvas-mcp-editor/renderer";
 import {
   createDocumentRoomId,
   createPresenceState,
+  createSharedKeyEncryptionConfig,
   createTeamManifest
 } from "@canvas-mcp-editor/collaboration";
 import {
@@ -50,7 +51,7 @@ describe("web collaboration session", () => {
 
     expect(session.status).toBe("offline");
     expect(session.getDocument().name).toBe("Renamed File");
-    expect(updates).toEqual(["Renamed File"]);
+    expect(updates).toEqual(["Sample File", "Renamed File"]);
 
     unsubscribe();
     session.destroy();
@@ -178,6 +179,34 @@ describe("web collaboration session", () => {
 
     expect(calls).toEqual([{ access: "awareness" }]);
     session.destroy();
+  });
+
+  test("requires a runtime passphrase for encrypted websocket teams", () => {
+    const team = createTeamManifest({
+      name: "Encrypted Team",
+      currentUser: {
+        userId: "user-1",
+        displayName: "Lee",
+        color: "#2563eb"
+      },
+      sync: {
+        mode: "websocket",
+        relayUrl: "ws://127.0.0.1:4327"
+      },
+      encryption: createSharedKeyEncryptionConfig({
+        salt: "fixed-test-salt",
+        iterations: 1000
+      })
+    });
+
+    expect(() =>
+      createCollabDocumentSession({
+        team,
+        documentId: "sample-file",
+        initialDocument: sampleDocument(),
+        enablePersistence: false
+      })
+    ).toThrow(/passphrase/i);
   });
 
   test("publishes provider presence changes", () => {

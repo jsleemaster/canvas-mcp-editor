@@ -11,6 +11,7 @@ import { Awareness } from "y-protocols/awareness";
 import { WebsocketProvider } from "y-websocket";
 import { IndexeddbPersistence } from "y-indexeddb";
 import type * as Y from "yjs";
+import { createEncryptedProvider } from "./encrypted-provider";
 
 export type CollabConnectionStatus = "offline" | "connecting" | "synced" | "error";
 
@@ -56,6 +57,7 @@ export interface CreateCollabDocumentSessionInput {
   initialDocument: RendererDocument;
   relayToken?: string;
   memberToken?: string;
+  encryptionPassphrase?: string;
   enablePersistence?: boolean;
   providerFactory?: CollaborationProviderFactory;
 }
@@ -93,7 +95,7 @@ export function createCollabDocumentSession(
   }
 
   if (input.team.sync.mode === "websocket") {
-    provider = (input.providerFactory ?? createDefaultProvider)({
+    const providerInput: CollaborationProviderInput = {
       relayUrl: input.team.sync.relayUrl,
       roomId: createDocumentRoomId(input.team.teamId, input.documentId),
       token: input.relayToken,
@@ -102,7 +104,19 @@ export function createCollabDocumentSession(
       access,
       ydoc: document.ydoc,
       initialPresence: localPresence
-    });
+    };
+    if (input.team.encryption.mode === "shared-key") {
+      if (!input.encryptionPassphrase?.trim()) {
+        throw new Error("encryption passphrase is required for encrypted team sync");
+      }
+      provider = createEncryptedProvider({
+        ...providerInput,
+        passphrase: input.encryptionPassphrase,
+        encryption: input.team.encryption
+      });
+    } else {
+      provider = (input.providerFactory ?? createDefaultProvider)(providerInput);
+    }
     provider.onStatus((nextStatus) => {
       status = nextStatus;
       for (const listener of statusListeners) {

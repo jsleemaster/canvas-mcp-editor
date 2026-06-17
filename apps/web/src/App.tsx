@@ -7,6 +7,7 @@ import {
   type RendererNode
 } from "@canvas-mcp-editor/renderer";
 import {
+  createSharedKeyEncryptionConfig,
   createTeamManifest,
   type CollaborationPresence,
   type TeamManifest
@@ -350,6 +351,8 @@ export function App() {
   const [manifestText, setManifestText] = useState("");
   const [manifestUrl, setManifestUrl] = useState("");
   const [manifestStatus, setManifestStatus] = useState("");
+  const [encryptionEnabled, setEncryptionEnabled] = useState(false);
+  const [encryptionPassphrase, setEncryptionPassphrase] = useState("");
   const [collabSession, setCollabSession] = useState<CollabDocumentSession | null>(null);
   const [collabStatus, setCollabStatus] = useState("offline");
   const [presence, setPresence] = useState<CollaborationPresence[]>([]);
@@ -557,10 +560,14 @@ export function App() {
 
   const activateTeam = async (
     team: TeamManifest,
-    credentials: { relayToken?: string; memberToken?: string } = {}
+    credentials: { relayToken?: string; memberToken?: string; encryptionPassphrase?: string } = {}
   ) => {
     if (!editor) {
       return;
+    }
+    const runtimeEncryptionPassphrase = credentials.encryptionPassphrase?.trim();
+    if (team.encryption.mode === "shared-key" && !runtimeEncryptionPassphrase) {
+      throw new Error("encryption passphrase is required for encrypted team sync");
     }
 
     await teamStore.saveTeam(team);
@@ -572,7 +579,8 @@ export function App() {
       documentId: editor.document.id,
       initialDocument: editor.document,
       relayToken: credentials.relayToken,
-      memberToken: credentials.memberToken
+      memberToken: credentials.memberToken,
+      encryptionPassphrase: runtimeEncryptionPassphrase
     });
     session.subscribe((document) => {
       setEditor((current) => {
@@ -609,6 +617,7 @@ export function App() {
     setCollabSession(session);
     setCollabStatus(session.status);
     publishPresenceSnapshot(session);
+    setEncryptionEnabled(team.encryption.mode === "shared-key");
     setManifestStatus(`Loaded ${team.name}`);
   };
 
@@ -634,6 +643,11 @@ export function App() {
     if (!relayUrl.trim()) {
       return;
     }
+    const runtimeEncryptionPassphrase = encryptionPassphrase.trim();
+    if (encryptionEnabled && !runtimeEncryptionPassphrase) {
+      setManifestError(new Error("encryption passphrase is required for encrypted team sync"));
+      return;
+    }
 
     void activateTeam(
       createTeamManifest({
@@ -647,13 +661,15 @@ export function App() {
           mode: "websocket",
           roomPrefix: "canvas-mcp-editor",
           relayUrl: relayUrl.trim()
-        }
+        },
+        encryption: encryptionEnabled ? createSharedKeyEncryptionConfig() : { mode: "none" }
       }),
       {
         relayToken: relayToken.trim() || undefined,
-        memberToken: memberToken.trim() || undefined
+        memberToken: memberToken.trim() || undefined,
+        encryptionPassphrase: encryptionEnabled ? runtimeEncryptionPassphrase : undefined
       }
-    );
+    ).catch(setManifestError);
   };
 
   const exportCurrentTeam = () => {
@@ -669,7 +685,11 @@ export function App() {
     }
 
     try {
-      void activateTeam(importTeamManifest(manifestText));
+      const team = importTeamManifest(manifestText);
+      void activateTeam(team, {
+        encryptionPassphrase:
+          team.encryption.mode === "shared-key" ? encryptionPassphrase.trim() : undefined
+      }).catch(setManifestError);
     } catch (error) {
       setManifestError(error);
     }
@@ -706,7 +726,10 @@ export function App() {
     try {
       const team = await readTeamManifestFile(file);
       setManifestText(exportTeamManifest(team));
-      await activateTeam(team);
+      await activateTeam(team, {
+        encryptionPassphrase:
+          team.encryption.mode === "shared-key" ? encryptionPassphrase.trim() : undefined
+      });
     } catch (error) {
       setManifestError(error);
     }
@@ -720,7 +743,10 @@ export function App() {
     try {
       const team = await fetchTeamManifestFromUrl(manifestUrl.trim());
       setManifestText(exportTeamManifest(team));
-      await activateTeam(team);
+      await activateTeam(team, {
+        encryptionPassphrase:
+          team.encryption.mode === "shared-key" ? encryptionPassphrase.trim() : undefined
+      });
     } catch (error) {
       setManifestError(error);
     }
@@ -880,6 +906,24 @@ export function App() {
                 data-testid="member-token"
                 value={memberToken}
                 onChange={(event) => setMemberToken(event.currentTarget.value)}
+              />
+            </label>
+            <label className="team-toggle-field">
+              E2EE
+              <input
+                data-testid="team-e2ee-toggle"
+                type="checkbox"
+                checked={encryptionEnabled}
+                onChange={(event) => setEncryptionEnabled(event.currentTarget.checked)}
+              />
+            </label>
+            <label>
+              Passphrase
+              <input
+                data-testid="team-e2ee-passphrase"
+                type="password"
+                value={encryptionPassphrase}
+                onChange={(event) => setEncryptionPassphrase(event.currentTarget.value)}
               />
             </label>
             <label>

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   createTeamManifest,
+  createSharedKeyEncryptionConfig,
   parseTeamManifest,
   migrateTeamManifest,
   validateTeamManifest,
@@ -184,10 +185,118 @@ describe("team manifests", () => {
           ],
           inviteTokenHashes: []
         }
+      },
+      encryption: {
+        mode: "none"
       }
     };
 
     expect(parseTeamManifest(imported)).toEqual(imported);
+  });
+
+  test("creates shared-key encryption metadata without storing runtime secrets", () => {
+    const encryption = createSharedKeyEncryptionConfig({
+      salt: "fixed-test-salt",
+      iterations: 150000
+    });
+    const team = createTeamManifest({
+      name: "Encrypted Team",
+      currentUser: {
+        userId: "owner-1",
+        displayName: "Owner",
+        color: "#2563eb"
+      },
+      sync: {
+        mode: "websocket",
+        relayUrl: "ws://127.0.0.1:4327"
+      },
+      encryption
+    });
+
+    expect(team.encryption).toEqual({
+      mode: "shared-key",
+      algorithm: "AES-GCM",
+      kdf: "PBKDF2-SHA-256",
+      salt: "fixed-test-salt",
+      iterations: 150000
+    });
+    expect(JSON.stringify(team)).not.toContain("passphrase");
+    expect(JSON.stringify(team)).not.toContain("derivedKey");
+  });
+
+  test("defaults legacy manifests to no encryption and strips plaintext encryption aliases", () => {
+    const imported = parseTeamManifest({
+      schemaVersion: TEAM_MANIFEST_SCHEMA_VERSION,
+      teamId: "team-encrypted-import",
+      name: "Encrypted Import",
+      createdAt: "2026-06-17T00:00:00.000Z",
+      currentUserId: "user-1",
+      members: [
+        {
+          userId: "user-1",
+          displayName: "Lee",
+          color: "#2563eb",
+          role: "owner"
+        }
+      ],
+      documents: [],
+      sync: {
+        mode: "local",
+        roomPrefix: "canvas-mcp-editor"
+      },
+      permissions: {
+        canEdit: true,
+        canInvite: true
+      },
+      auth: {
+        relay: {
+          memberTokenHashes: [],
+          inviteTokenHashes: []
+        }
+      },
+      encryption: {
+        mode: "shared-key",
+        algorithm: "AES-GCM",
+        kdf: "PBKDF2-SHA-256",
+        salt: "fixed-test-salt",
+        iterations: 150000,
+        passphrase: "plain-passphrase",
+        encryptionKey: "plain-key",
+        derivedKey: "plain-derived-key"
+      }
+    });
+
+    expect(imported.encryption).toEqual({
+      mode: "shared-key",
+      algorithm: "AES-GCM",
+      kdf: "PBKDF2-SHA-256",
+      salt: "fixed-test-salt",
+      iterations: 150000
+    });
+    expect(JSON.stringify(imported)).not.toContain("plain-passphrase");
+    expect(JSON.stringify(imported)).not.toContain("plain-key");
+    expect(JSON.stringify(imported)).not.toContain("plain-derived-key");
+
+    expect(
+      parseTeamManifest({
+        teamId: "team-legacy-no-encryption",
+        name: "Legacy No Encryption",
+        createdAt: "2026-06-16T00:00:00.000Z",
+        currentUserId: "user-1",
+        members: [
+          {
+            userId: "user-1",
+            displayName: "Lee",
+            color: "#2563eb"
+          }
+        ],
+        documents: [],
+        sync: {
+          mode: "local",
+          roomPrefix: "canvas-mcp-editor"
+        }
+      }).encryption
+    ).toEqual({ mode: "none" });
   });
 
   test("migrates legacy manifests without schema metadata to the current schema", () => {
@@ -242,6 +351,9 @@ describe("team manifests", () => {
           memberTokenHashes: [],
           inviteTokenHashes: []
         }
+      },
+      encryption: {
+        mode: "none"
       }
     });
     expect(JSON.stringify(parseTeamManifest(legacyManifest))).not.toContain("plain-relay-token");
