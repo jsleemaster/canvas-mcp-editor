@@ -96,6 +96,26 @@ describe("HTTP server", () => {
     expect(privateProject.json().project.sharing).toEqual({ mode: "private" });
   });
 
+  test("answers browser CORS preflight for JSON project mutations", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
+    const server = createHttpServer(new FileStorage(tempRoot));
+
+    const response = await server.inject({
+      method: "OPTIONS",
+      url: "/projects",
+      headers: {
+        origin: "http://127.0.0.1:5173",
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type"
+      }
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(response.headers["access-control-allow-origin"]).toBe("*");
+    expect(response.headers["access-control-allow-methods"]).toContain("POST");
+    expect(response.headers["access-control-allow-headers"]).toContain("Content-Type");
+  });
+
   test("updates node geometry, fill, text, and creates nodes", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
     const server = createHttpServer(new FileStorage(tempRoot));

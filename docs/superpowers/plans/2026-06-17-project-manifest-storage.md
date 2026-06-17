@@ -1051,7 +1051,7 @@ pnpm --filter @canvas-mcp-editor/web test -- src/project-api.test.ts src/project
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit web API/store work**
+- [x] **Step 7: Commit web API/store work**
 
 Run:
 
@@ -1067,7 +1067,7 @@ git commit -m "feat: add web project client state"
 - Modify: `apps/web/src/styles.css`
 - Modify: `apps/web/e2e/editor-mvp.spec.ts`
 
-- [ ] **Step 1: Write failing Playwright CLI test**
+- [x] **Step 1: Write failing Playwright CLI test**
 
 Add this test near the top of `apps/web/e2e/editor-mvp.spec.ts`:
 
@@ -1108,7 +1108,7 @@ test("creates, reopens, and team-links a saved project", async ({ page }) => {
 });
 ```
 
-- [ ] **Step 2: Run the Playwright CLI test and verify it fails**
+- [x] **Step 2: Run the Playwright CLI test and verify it fails**
 
 Run:
 
@@ -1118,7 +1118,7 @@ pnpm exec playwright test apps/web/e2e/editor-mvp.spec.ts --grep "creates, reope
 
 Expected: FAIL because the project UI does not exist.
 
-- [ ] **Step 3: Wire project state into `App.tsx`**
+- [x] **Step 3: Wire project state into `App.tsx`**
 
 In `apps/web/src/App.tsx`, import project helpers:
 
@@ -1259,7 +1259,7 @@ Add helper functions near the team actions:
   };
 ```
 
-- [ ] **Step 4: Render compact project controls**
+- [x] **Step 4: Render compact project controls**
 
 In the sidebar, replace:
 
@@ -1318,7 +1318,7 @@ with:
             <p>{editor ? editor.document.name : "로컬 서버를 시작하면 프로젝트를 불러옵니다."}</p>
 ```
 
-- [ ] **Step 5: Add project styles**
+- [x] **Step 5: Add project styles**
 
 In `apps/web/src/styles.css`, add these rules next to the team panel form rules:
 
@@ -1366,7 +1366,7 @@ In `apps/web/src/styles.css`, add these rules next to the team panel form rules:
 }
 ```
 
-- [ ] **Step 6: Run the Playwright CLI test and verify it passes**
+- [x] **Step 6: Run the Playwright CLI test and verify it passes**
 
 Run:
 

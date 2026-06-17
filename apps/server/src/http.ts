@@ -7,9 +7,15 @@ export function createHttpServer(storage = new FileStorage()) {
 
   server.addHook("onRequest", async (_request, reply) => {
     reply.header("Access-Control-Allow-Origin", "*");
+    reply.header("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS");
+    reply.header("Access-Control-Allow-Headers", "Content-Type");
   });
 
   server.get("/health", async () => ({ ok: true }));
+
+  server.options("*", async (_request, reply) => {
+    return reply.code(204).send();
+  });
 
   server.get("/projects", async () => {
     return { projects: await storage.listProjects() };

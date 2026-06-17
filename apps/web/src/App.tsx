@@ -35,6 +35,14 @@ import {
   readTeamManifestFile
 } from "./collaboration/team-store";
 import {
+  createProject as createSavedProject,
+  fetchProjects,
+  setProjectSharing,
+  updateProject,
+  type ProjectManifest
+} from "./project-api";
+import { createIndexedDbProjectStore } from "./project-store";
+import {
   createEditorState,
   createRectangleNode,
   createTextNode,
@@ -68,6 +76,7 @@ function numericInputValue(value: number) {
 }
 
 const teamStore = createIndexedDbTeamStore();
+const projectStore = createIndexedDbProjectStore();
 const LOCAL_USER_COLOR = "var(--editor-color-selection)";
 const DEFAULT_NODE_LAYOUT: NodeLayout = {
   mode: "none",
@@ -611,6 +620,10 @@ export function App() {
   const [manifestText, setManifestText] = useState("");
   const [manifestUrl, setManifestUrl] = useState("");
   const [manifestStatus, setManifestStatus] = useState("");
+  const [projects, setProjects] = useState<ProjectManifest[]>([]);
+  const [currentProject, setCurrentProject] = useState<ProjectManifest | null>(null);
+  const [projectNameDraft, setProjectNameDraft] = useState("");
+  const [projectStatus, setProjectStatus] = useState("프로젝트 불러오는 중");
   const [encryptionEnabled, setEncryptionEnabled] = useState(false);
   const [encryptionPassphrase, setEncryptionPassphrase] = useState("");
   const [teamPanelMode, setTeamPanelMode] = useState<TeamPanelMode>("local");
@@ -635,11 +648,65 @@ export function App() {
   const [isSpacePanning, setIsSpacePanning] = useState(false);
   const [stageSize, setStageSize] = useState<{ width: number; height: number }>(editorKonvaTokens.stage);
 
+  const loadProjectDocument = async (project: ProjectManifest, projectList = projects) => {
+    const response = await fetch(`http://127.0.0.1:4317/files/${project.currentDocumentId}`);
+    if (!response.ok) {
+      throw new Error(`프로젝트 문서를 불러오지 못했습니다: ${response.status}`);
+    }
+    const payload = await response.json();
+    setProjects(projectList);
+    setCurrentProject(project);
+    setProjectNameDraft(project.name);
+    await projectStore.setCurrentProjectId(project.projectId);
+    setEditor(createEditorState(parseDocumentPayload(payload)));
+    setProjectStatus(`${project.name} 불러옴`);
+  };
+
   useEffect(() => {
-    fetch("http://127.0.0.1:4317/files/sample-file")
-      .then((response) => response.json())
-      .then((payload) => setEditor(createEditorState(parseDocumentPayload(payload))))
-      .catch(() => setEditor(null));
+    let cancelled = false;
+
+    const loadInitialProject = async () => {
+      try {
+        const [projectList, storedProjectId] = await Promise.all([
+          fetchProjects(),
+          projectStore.getCurrentProjectId()
+        ]);
+        const selectedProject =
+          projectList.find((project) => project.projectId === storedProjectId) ?? projectList[0] ?? null;
+        if (!selectedProject) {
+          if (!cancelled) {
+            setProjectStatus("저장된 프로젝트 없음");
+            setEditor(null);
+          }
+          return;
+        }
+
+        const response = await fetch(`http://127.0.0.1:4317/files/${selectedProject.currentDocumentId}`);
+        if (!response.ok) {
+          throw new Error(`프로젝트 문서를 불러오지 못했습니다: ${response.status}`);
+        }
+        const payload = await response.json();
+        if (cancelled) {
+          return;
+        }
+        setProjects(projectList);
+        setCurrentProject(selectedProject);
+        setProjectNameDraft(selectedProject.name);
+        await projectStore.setCurrentProjectId(selectedProject.projectId);
+        setEditor(createEditorState(parseDocumentPayload(payload)));
+        setProjectStatus(`${selectedProject.name} 불러옴`);
+      } catch {
+        if (!cancelled) {
+          setProjectStatus("로컬 서버를 시작하면 프로젝트를 불러옵니다");
+          setEditor(null);
+        }
+      }
+    };
+
+    void loadInitialProject();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(
@@ -976,6 +1043,91 @@ export function App() {
 
   const updateConstraints = (nodeId: string, constraints: NodeConstraints) => {
     dispatch({ type: "set_node_constraints", nodeId, constraints });
+  };
+
+  const openProject = async (projectId: string) => {
+    const project = projects.find((candidate) => candidate.projectId === projectId);
+    if (!project) {
+      return;
+    }
+
+    try {
+      await loadProjectDocument(project);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "프로젝트를 불러오지 못했습니다";
+      setProjectStatus(message);
+    }
+  };
+
+  const createNewProject = async () => {
+    try {
+      const project = await createSavedProject({
+        name: `새 프로젝트 ${projects.length + 1}`,
+        documentName: `새 문서 ${projects.length + 1}`
+      });
+      const nextProjects = [project, ...projects.filter((candidate) => candidate.projectId !== project.projectId)];
+      await loadProjectDocument(project, nextProjects);
+      setProjectStatus("새 프로젝트 저장됨");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "새 프로젝트를 만들지 못했습니다";
+      setProjectStatus(message);
+    }
+  };
+
+  const saveProjectName = async () => {
+    if (!currentProject) {
+      return;
+    }
+
+    try {
+      const project = await updateProject(currentProject.projectId, { name: projectNameDraft });
+      setCurrentProject(project);
+      setProjects((current) =>
+        current.map((candidate) => (candidate.projectId === project.projectId ? project : candidate))
+      );
+      setProjectNameDraft(project.name);
+      setProjectStatus(`${project.name} 저장됨`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "프로젝트 이름을 저장하지 못했습니다";
+      setProjectStatus(message);
+    }
+  };
+
+  const linkProjectToCurrentTeam = async () => {
+    if (!currentProject || !collabSession) {
+      return;
+    }
+
+    try {
+      const project = await setProjectSharing(currentProject.projectId, {
+        mode: "team",
+        teamId: collabSession.team.teamId
+      });
+      const documentSummaries = project.documents.map((document) => ({
+        documentId: document.documentId,
+        name: document.name,
+        updatedAt: document.updatedAt
+      }));
+      const knownDocumentIds = new Set(documentSummaries.map((document) => document.documentId));
+      const nextTeam: TeamManifest = {
+        ...collabSession.team,
+        documents: [
+          ...collabSession.team.documents.filter((document) => !knownDocumentIds.has(document.documentId)),
+          ...documentSummaries
+        ]
+      };
+      await teamStore.saveTeam(nextTeam);
+      setCurrentProject(project);
+      setProjects((current) =>
+        current.map((candidate) => (candidate.projectId === project.projectId ? project : candidate))
+      );
+      setManifestText(exportTeamManifest(nextTeam));
+      setManifestStatus(`${nextTeam.name} 프로젝트 연결됨`);
+      setProjectStatus(`${project.name} 공유 설정 저장됨`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "프로젝트 공유 설정을 저장하지 못했습니다";
+      setProjectStatus(message);
+    }
   };
 
   const createNode = (kind: "rectangle" | "text") => {
@@ -1401,7 +1553,50 @@ export function App() {
         {isSidebarCollapsed ? null : (
           <>
             <h1>캔버스 MCP 에디터</h1>
-            <p>{editor ? editor.document.name : "로컬 서버를 시작하면 샘플 파일을 불러옵니다."}</p>
+            <section className="project-panel" aria-label="프로젝트">
+              <label>
+                프로젝트
+                <select
+                  data-testid="project-switcher"
+                  value={currentProject?.projectId ?? ""}
+                  onChange={(event) => void openProject(event.currentTarget.value)}
+                >
+                  {projects.map((project) => (
+                    <option key={project.projectId} value={project.projectId}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                이름
+                <input
+                  data-testid="project-name"
+                  value={projectNameDraft}
+                  onChange={(event) => setProjectNameDraft(event.currentTarget.value)}
+                />
+              </label>
+              <div className="project-actions">
+                <button type="button" onClick={createNewProject}>
+                  새 프로젝트 만들기
+                </button>
+                <button type="button" onClick={saveProjectName} disabled={!currentProject}>
+                  이름 저장
+                </button>
+                <button type="button" onClick={linkProjectToCurrentTeam} disabled={!currentProject || !collabSession}>
+                  현재 팀과 공유
+                </button>
+              </div>
+              <div className="project-status" data-testid="project-status">
+                {projectStatus}
+              </div>
+              <div className="project-status" data-testid="project-sharing-status">
+                {currentProject?.sharing.mode === "team"
+                  ? `공유됨 · ${collabSession?.team.name ?? currentProject.sharing.teamId}`
+                  : "비공개 프로젝트"}
+              </div>
+            </section>
+            <p>{editor ? editor.document.name : "로컬 서버를 시작하면 프로젝트를 불러옵니다."}</p>
             <div className="layer-list">
               {nodes.map((node) => (
                 <button

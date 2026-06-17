@@ -99,6 +99,16 @@ button:disabled {
   gap: var(--editor-space-md);
 }
 
+.project-panel {
+  display: grid;
+  gap: var(--editor-space-sm);
+  margin: var(--editor-space-md) 0;
+  padding: var(--editor-space-sm);
+  border: var(--editor-border-hairline) solid var(--editor-color-border-soft);
+  border-radius: var(--editor-radius-sm);
+  background: var(--editor-color-surface);
+}
+
 .sidebar h1,
 .inspector h2,
 .team-panel h2 {
@@ -132,7 +142,8 @@ button:disabled {
 
 .layer-list button,
 .toolbar button,
-.team-actions button {
+.team-actions button,
+.project-actions button {
   border: var(--editor-border-hairline) solid var(--editor-color-border-soft);
   background: var(--editor-color-control);
   color: var(--editor-color-ink);
@@ -161,9 +172,12 @@ button:disabled {
 .inspector select:focus-visible,
 .inspector textarea:focus-visible,
 .team-panel input:focus-visible,
+.project-panel input:focus-visible,
+.project-panel select:focus-visible,
 .team-panel textarea:focus-visible,
 .team-mode-tabs button:focus-visible,
-.team-actions button:focus-visible {
+.team-actions button:focus-visible,
+.project-actions button:focus-visible {
   outline: var(--editor-border-hairline) solid var(--editor-color-focus);
   outline-offset: var(--editor-space-xxs);
 }
@@ -327,7 +341,8 @@ button:disabled {
 
 .field-grid label,
 .stacked-field,
-.team-fields label {
+.team-fields label,
+.project-panel label {
   display: grid;
   gap: var(--editor-space-xxs);
   color: var(--editor-color-muted);
@@ -351,7 +366,9 @@ button:disabled {
 .inspector select,
 .inspector textarea,
 .team-panel input,
-.team-panel textarea {
+.team-panel textarea,
+.project-panel input,
+.project-panel select {
   width: 100%;
   border: var(--editor-border-hairline) solid var(--editor-color-border-soft);
   border-radius: var(--editor-radius-sm);
@@ -423,7 +440,13 @@ button:disabled {
   gap: var(--editor-space-xs);
 }
 
-.team-actions button {
+.project-actions {
+  display: grid;
+  gap: var(--editor-space-xs);
+}
+
+.team-actions button,
+.project-actions button {
   min-height: var(--editor-space-xl);
   padding: var(--editor-space-xs);
 }
@@ -433,6 +456,7 @@ button:disabled {
 }
 
 .team-status,
+.project-status,
 .presence-member {
   color: var(--editor-color-muted);
   font-size: var(--editor-text-small-size);
