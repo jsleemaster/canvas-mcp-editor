@@ -182,6 +182,14 @@ button:disabled {
   background: var(--editor-color-stage);
 }
 
+.stage-frame.is-panning {
+  cursor: grab;
+}
+
+.stage-frame.is-panning:active {
+  cursor: grabbing;
+}
+
 .remote-presence-layer {
   position: absolute;
   inset: 0;

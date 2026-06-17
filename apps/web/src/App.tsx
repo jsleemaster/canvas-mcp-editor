@@ -41,6 +41,7 @@ import {
   executeEditorCommand,
   findNodeById,
   getNodeAbsolutePosition,
+  nudgeSelectedNode,
   panViewport,
   redo,
   setSelection,
@@ -134,11 +135,21 @@ function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   );
 }
 
+function pointerClientPoint(event: MouseEvent | TouchEvent): { x: number; y: number } | null {
+  if ("touches" in event) {
+    const touch = event.touches[0] ?? event.changedTouches[0];
+    return touch ? { x: touch.clientX, y: touch.clientY } : null;
+  }
+
+  return { x: event.clientX, y: event.clientY };
+}
+
 function renderNode({
   node,
   selectedNodeId,
   hasSelectedAncestor = false,
   hasComponentInstanceAncestor = false,
+  isCanvasPanning = false,
   onSelect,
   onGeometryChange,
   onResizeStart
@@ -147,6 +158,7 @@ function renderNode({
   selectedNodeId: string | null;
   hasSelectedAncestor?: boolean;
   hasComponentInstanceAncestor?: boolean;
+  isCanvasPanning?: boolean;
   onSelect: (nodeId: string) => void;
   onGeometryChange: (nodeId: string, patch: GeometryPatch) => void;
   onResizeStart: (nodeId: string) => void;
@@ -160,6 +172,9 @@ function renderNode({
     onResizeStart(node.id);
   };
   const selectAndPrimeDrag = (event: KonvaEventObject<MouseEvent> | KonvaEventObject<TouchEvent>) => {
+    if (isCanvasPanning) {
+      return;
+    }
     if (shouldDeferToAncestor) {
       return;
     }
@@ -172,6 +187,9 @@ function renderNode({
     }
   };
   const selectFromClick = (event: KonvaEventObject<MouseEvent> | KonvaEventObject<TouchEvent>) => {
+    if (isCanvasPanning) {
+      return;
+    }
     if (shouldDeferToAncestor) {
       return;
     }
@@ -208,7 +226,7 @@ function renderNode({
       x={node.transform.x}
       y={node.transform.y}
       rotation={node.transform.rotation}
-      draggable={isSelected}
+      draggable={isSelected && !isCanvasPanning}
       onMouseDown={selectAndPrimeDrag}
       onTouchStart={selectAndPrimeDrag}
       onClick={selectFromClick}
@@ -259,6 +277,7 @@ function renderNode({
           selectedNodeId,
           hasSelectedAncestor: hasSelectedAncestor || isSelected,
           hasComponentInstanceAncestor: hasComponentInstanceAncestor || node.kind === "component_instance",
+          isCanvasPanning,
           onSelect,
           onGeometryChange,
           onResizeStart
@@ -596,12 +615,19 @@ export function App() {
   const [presence, setPresence] = useState<CollaborationPresence[]>([]);
   const [presenceClock, setPresenceClock] = useState(() => Date.now());
   const resizeSessionRef = useRef<{ nodeId: string } | null>(null);
+  const panSessionRef = useRef<{
+    clientX: number;
+    clientY: number;
+    viewport: EditorState["viewport"];
+  } | null>(null);
+  const isSpacePanningRef = useRef(false);
   const collabSessionRef = useRef<CollabDocumentSession | null>(null);
   const publishedCursorRef = useRef<PublishedCursor | null>(null);
   const remotePresenceSignatureRef = useRef(new Map<string, string>());
   const remotePresenceSeenAtRef = useRef(new Map<string, number>());
   const manifestFileInputRef = useRef<HTMLInputElement | null>(null);
   const stageFrameRef = useRef<HTMLDivElement | null>(null);
+  const [isSpacePanning, setIsSpacePanning] = useState(false);
   const [stageSize, setStageSize] = useState<{ width: number; height: number }>(editorKonvaTokens.stage);
 
   useEffect(() => {
@@ -753,23 +779,40 @@ export function App() {
 
   const handleCanvasWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
     event.preventDefault();
-    const stageFrame = stageFrameRef.current;
-    if (!stageFrame) {
+    const shouldZoom = event.ctrlKey || event.metaKey;
+    if (shouldZoom) {
+      const stageFrame = stageFrameRef.current;
+      if (!stageFrame) {
+        return;
+      }
+
+      const bounds = stageFrame.getBoundingClientRect();
+      const point = {
+        x: event.clientX - bounds.left,
+        y: event.clientY - bounds.top
+      };
+      const delta = event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
+      updateViewportFromInteraction((state) => zoomViewportAtPoint(state, delta, point));
       return;
     }
 
-    const bounds = stageFrame.getBoundingClientRect();
-    const point = {
-      x: event.clientX - bounds.left,
-      y: event.clientY - bounds.top
-    };
-    const delta = event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
-    updateViewportFromInteraction((state) => zoomViewportAtPoint(state, delta, point));
+    const panDeltaX = event.shiftKey ? event.deltaY : event.deltaX;
+    const panDeltaY = event.shiftKey ? 0 : event.deltaY;
+    updateViewportFromInteraction((state) =>
+      panViewport(state, { x: -panDeltaX, y: -panDeltaY })
+    );
   };
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isEditableKeyboardTarget(event.target)) {
+        return;
+      }
+
+      if (event.key === " " || event.code === "Space") {
+        event.preventDefault();
+        isSpacePanningRef.current = true;
+        setIsSpacePanning(true);
         return;
       }
 
@@ -814,23 +857,62 @@ export function App() {
       }
 
       const panStep = event.shiftKey ? KEYBOARD_PAN_STEP_LARGE : KEYBOARD_PAN_STEP;
+      const nudgeStep = event.shiftKey ? 10 : 1;
       if (event.key === "ArrowLeft") {
         event.preventDefault();
-        updateViewportFromInteraction((state) => panViewport(state, { x: panStep, y: 0 }));
+        updateViewportFromInteraction((state) =>
+          state.selection.nodeId
+            ? nudgeSelectedNode(state, { x: -nudgeStep, y: 0 })
+            : panViewport(state, { x: panStep, y: 0 })
+        );
       } else if (event.key === "ArrowRight") {
         event.preventDefault();
-        updateViewportFromInteraction((state) => panViewport(state, { x: -panStep, y: 0 }));
+        updateViewportFromInteraction((state) =>
+          state.selection.nodeId
+            ? nudgeSelectedNode(state, { x: nudgeStep, y: 0 })
+            : panViewport(state, { x: -panStep, y: 0 })
+        );
       } else if (event.key === "ArrowUp") {
         event.preventDefault();
-        updateViewportFromInteraction((state) => panViewport(state, { x: 0, y: panStep }));
+        updateViewportFromInteraction((state) =>
+          state.selection.nodeId
+            ? nudgeSelectedNode(state, { x: 0, y: -nudgeStep })
+            : panViewport(state, { x: 0, y: panStep })
+        );
       } else if (event.key === "ArrowDown") {
         event.preventDefault();
-        updateViewportFromInteraction((state) => panViewport(state, { x: 0, y: -panStep }));
+        updateViewportFromInteraction((state) =>
+          state.selection.nodeId
+            ? nudgeSelectedNode(state, { x: 0, y: nudgeStep })
+            : panViewport(state, { x: 0, y: -panStep })
+        );
       }
     };
 
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key !== " " && event.code !== "Space") {
+        return;
+      }
+
+      isSpacePanningRef.current = false;
+      panSessionRef.current = null;
+      setIsSpacePanning(false);
+    };
+
+    const handleWindowBlur = () => {
+      isSpacePanningRef.current = false;
+      panSessionRef.current = null;
+      setIsSpacePanning(false);
+    };
+
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleWindowBlur);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleWindowBlur);
+    };
   }, [stageSize.height, stageSize.width]);
 
   const dispatch = (command: Parameters<typeof executeEditorCommand>[1]) => {
@@ -1241,6 +1323,54 @@ export function App() {
     return false;
   };
 
+  const startCanvasPan = (event: MouseEvent | TouchEvent) => {
+    if (!isSpacePanningRef.current || !editor) {
+      return false;
+    }
+
+    const point = pointerClientPoint(event);
+    if (!point) {
+      return false;
+    }
+
+    event.preventDefault();
+    panSessionRef.current = {
+      clientX: point.x,
+      clientY: point.y,
+      viewport: editor.viewport
+    };
+    return true;
+  };
+
+  const continueCanvasPan = (event: MouseEvent | TouchEvent) => {
+    const activePan = panSessionRef.current;
+    if (!activePan) {
+      return false;
+    }
+
+    const point = pointerClientPoint(event);
+    if (!point) {
+      return false;
+    }
+
+    event.preventDefault();
+    const nextViewport = {
+      x: activePan.viewport.x + point.x - activePan.clientX,
+      y: activePan.viewport.y + point.y - activePan.clientY
+    };
+    updateViewportFromInteraction((state) => setViewport(state, nextViewport));
+    return true;
+  };
+
+  const endCanvasPan = () => {
+    if (!panSessionRef.current) {
+      return false;
+    }
+
+    panSessionRef.current = null;
+    return true;
+  };
+
   return (
     <main className="app-shell">
       <aside className="sidebar">
@@ -1458,7 +1588,7 @@ export function App() {
         <div className="canvas-area" data-testid="canvas-area">
           <div
             ref={stageFrameRef}
-            className="stage-frame"
+            className={`stage-frame${isSpacePanning ? " is-panning" : ""}`}
             data-testid="stage-frame"
             onWheel={handleCanvasWheel}
             onMouseLeave={clearCursorPresence}
@@ -1471,6 +1601,10 @@ export function App() {
               x={editor?.viewport.x ?? 0}
               y={editor?.viewport.y ?? 0}
               onMouseDown={(event) => {
+                if (startCanvasPan(event.evt)) {
+                  return;
+                }
+
                 if (startResizeFromPointer(event)) {
                   return;
                 }
@@ -1491,16 +1625,46 @@ export function App() {
                   });
                 }
               }}
-              onMouseMove={updateCursorFromPointer}
-              onTouchMove={updateCursorFromPointer}
-              onMouseUp={finishResize}
-              onTouchEnd={finishResize}
+              onTouchStart={(event) => {
+                if (startCanvasPan(event.evt)) {
+                  return;
+                }
+              }}
+              onMouseMove={(event) => {
+                if (continueCanvasPan(event.evt)) {
+                  return;
+                }
+
+                updateCursorFromPointer(event);
+              }}
+              onTouchMove={(event) => {
+                if (continueCanvasPan(event.evt)) {
+                  return;
+                }
+
+                updateCursorFromPointer(event);
+              }}
+              onMouseUp={(event) => {
+                if (endCanvasPan()) {
+                  return;
+                }
+
+                finishResize(event);
+              }}
+              onTouchEnd={(event) => {
+                if (endCanvasPan()) {
+                  return;
+                }
+
+                finishResize(event);
+              }}
             >
               <Layer>
                 {editor?.document.pages[0]?.children.map((node) =>
                   renderNode({
                     node,
                     selectedNodeId: editor.selection.nodeId,
+                    isCanvasPanning: isSpacePanning,
                     onSelect: selectNode,
                     onGeometryChange: updateGeometry,
                     onResizeStart: (nodeId) => {

@@ -267,6 +267,30 @@ export function zoomViewportAtPoint(
   });
 }
 
+export function nudgeSelectedNode(
+  state: EditorState,
+  delta: { x: number; y: number }
+): EditorState {
+  const selectedNodeId = state.selection.nodeId;
+  if (!selectedNodeId) {
+    return state;
+  }
+
+  const selectedNode = findNodeById(state.document, selectedNodeId);
+  if (!selectedNode) {
+    return state;
+  }
+
+  return executeEditorCommand(state, {
+    type: "update_node_geometry",
+    nodeId: selectedNodeId,
+    patch: {
+      x: selectedNode.transform.x + delta.x,
+      y: selectedNode.transform.y + delta.y
+    }
+  });
+}
+
 export function createRectangleNode(sequence: number): RendererNode {
   return {
     id: `rectangle-${sequence}`,

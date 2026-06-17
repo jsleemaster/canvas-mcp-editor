@@ -7,6 +7,7 @@ import {
   createRectangleNode,
   createTextNode,
   getNodeAbsolutePosition,
+  nudgeSelectedNode,
   panViewport,
   redo,
   setSelection,
@@ -280,6 +281,16 @@ describe("editor state commands", () => {
 
     expect(zoomed.viewport.scale).toBe(1.5);
     expect(documentPointAfter).toEqual(documentPointBefore);
+  });
+
+  test("nudges the selected node and preserves undo history", () => {
+    const initial = setSelection(createEditorState(sampleDocument()), "text-1");
+
+    const nudged = nudgeSelectedNode(initial, { x: 1, y: 0 });
+
+    expect(findNodeById(nudged.document, "text-1")?.transform).toMatchObject({ x: 33, y: 40 });
+    expect(nudged.selection.nodeId).toBe("text-1");
+    expect(findNodeById(undo(nudged).document, "text-1")?.transform).toMatchObject({ x: 32, y: 40 });
   });
 
   test("calculates absolute node position through parent transforms", () => {

@@ -154,7 +154,7 @@ test("web editor fills the available work area with a white canvas", async ({ pa
   expect(metrics.stageHeight).toBe(metrics.canvasClientHeight);
 });
 
-test("mouse wheel and keyboard shortcuts control canvas interactions", async ({ page }) => {
+test("Figma-like canvas input routing nudges layers, pans canvas, and zooms with modifiers", async ({ page }) => {
   await rm(".canvas-mcp-editor/files/sample-file.json", { force: true });
   await rm("apps/server/.canvas-mcp-editor/files/sample-file.json", { force: true });
 
@@ -166,6 +166,11 @@ test("mouse wheel and keyboard shortcuts control canvas interactions", async ({ 
 
   await page.mouse.move(stageBox.x + 360, stageBox.y + 260);
   await page.mouse.wheel(0, -300);
+  await expect(page.getByText("100%")).toBeVisible();
+
+  await page.keyboard.down("Control");
+  await page.mouse.wheel(0, -300);
+  await page.keyboard.up("Control");
   await expect(page.getByText("125%")).toBeVisible();
 
   await page.keyboard.press("Control+=");
@@ -176,6 +181,20 @@ test("mouse wheel and keyboard shortcuts control canvas interactions", async ({ 
   await expect(page.getByText("100%")).toBeVisible();
 
   await page.getByRole("button", { name: "헤드라인" }).click();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByTestId("inspector-x")).toHaveValue("33");
+  await page.keyboard.press("Shift+ArrowDown");
+  await expect(page.getByTestId("inspector-y")).toHaveValue("50");
+
+  await page.keyboard.down("Space");
+  await page.mouse.move(stageBox.x + 160, stageBox.y + 130);
+  await page.mouse.down();
+  await page.mouse.move(stageBox.x + 220, stageBox.y + 160);
+  await page.mouse.up();
+  await page.keyboard.up("Space");
+  await expect(page.getByTestId("inspector-x")).toHaveValue("33");
+  await expect(page.getByTestId("inspector-y")).toHaveValue("50");
+
   await expect(page.getByTestId("inspector-text")).toHaveValue("캔버스 MCP 에디터");
   await page.getByTestId("inspector-text").fill("키보드 단축키 검증");
   await expect(page.getByTestId("inspector-text")).toHaveValue("키보드 단축키 검증");
