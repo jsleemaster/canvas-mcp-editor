@@ -1,9 +1,15 @@
 import { describe, expect, test } from "vitest";
-import WebSocket from "ws";
+import * as decoding from "lib0/decoding";
+import * as encoding from "lib0/encoding";
+import WebSocket, { type RawData } from "ws";
 import {
   createCollabRelayServer,
   validateRelayConnection
 } from "./index";
+
+const messageSync = 0;
+const messageEncryptedSync = 10;
+const messageEncryptedSyncQuery = 11;
 
 describe("collaboration relay", () => {
   test("serves health and accepts allowed websocket rooms", async () => {
@@ -184,4 +190,185 @@ describe("collaboration relay", () => {
     viewerAwarenessSocket.close();
     await relay.close();
   });
+
+  test("broadcasts encrypted document frames opaquely without plain sync bootstrap", async () => {
+    const relay = createCollabRelayServer({
+      host: "127.0.0.1",
+      port: 0,
+      allowedRoomPrefix: "canvas-mcp-editor:"
+    });
+    await relay.listen();
+    const first = new WebSocket(`${relay.wsUrl}/canvas-mcp-editor:team-e2ee:sample-file?e2ee=true`);
+    const second = new WebSocket(`${relay.wsUrl}/canvas-mcp-editor:team-e2ee:sample-file?e2ee=true`);
+
+    try {
+      await Promise.all([waitForOpen(first), waitForOpen(second)]);
+      await expectNoMessageType(first, messageSync);
+      await expectNoMessageType(second, messageSync);
+
+      first.send(encodeFrame(messageEncryptedSync, new Uint8Array([7, 8, 9])));
+      expect(decodeFramePayload(await waitForMessageType(second, messageEncryptedSync))).toEqual(
+        new Uint8Array([7, 8, 9])
+      );
+
+      second.send(encodeFrame(messageEncryptedSyncQuery));
+      await waitForMessageType(first, messageEncryptedSyncQuery);
+    } finally {
+      first.close();
+      second.close();
+      await relay.close();
+    }
+  });
+
+  test("rejects mixed encrypted and plain clients in the same room", async () => {
+    const relay = createCollabRelayServer({
+      host: "127.0.0.1",
+      port: 0,
+      allowedRoomPrefix: "canvas-mcp-editor:"
+    });
+    await relay.listen();
+    const encrypted = new WebSocket(`${relay.wsUrl}/canvas-mcp-editor:team-mixed:sample-file?e2ee=true`);
+
+    try {
+      await waitForOpen(encrypted);
+      const plain = new WebSocket(`${relay.wsUrl}/canvas-mcp-editor:team-mixed:sample-file`);
+      await expectUnauthorized(plain, "plain client joined encrypted room");
+    } finally {
+      encrypted.close();
+      await relay.close();
+    }
+  });
+
+  test("does not broadcast encrypted document writes from awareness-only viewers", async () => {
+    const relay = createCollabRelayServer({
+      host: "127.0.0.1",
+      port: 0,
+      allowedRoomPrefix: "canvas-mcp-editor:",
+      memberTokens: [
+        {
+          userId: "editor-1",
+          token: "editor-secret",
+          role: "editor"
+        },
+        {
+          userId: "viewer-1",
+          token: "viewer-secret",
+          role: "viewer"
+        }
+      ]
+    });
+    await relay.listen();
+    const editor = new WebSocket(
+      `${relay.wsUrl}/canvas-mcp-editor:team-viewer:sample-file?e2ee=true&userId=editor-1&memberToken=editor-secret&access=sync`
+    );
+    const viewer = new WebSocket(
+      `${relay.wsUrl}/canvas-mcp-editor:team-viewer:sample-file?e2ee=true&userId=viewer-1&memberToken=viewer-secret&access=awareness`
+    );
+
+    try {
+      await Promise.all([waitForOpen(editor), waitForOpen(viewer)]);
+      viewer.send(encodeFrame(messageEncryptedSync, new Uint8Array([1, 2, 3])));
+      await expectNoMessageType(editor, messageEncryptedSync);
+    } finally {
+      editor.close();
+      viewer.close();
+      await relay.close();
+    }
+  });
 });
+
+function waitForOpen(socket: WebSocket): Promise<void> {
+  return new Promise((resolve, reject) => {
+    socket.once("open", resolve);
+    socket.once("error", reject);
+  });
+}
+
+function expectUnauthorized(socket: WebSocket, openMessage: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    socket.once("unexpected-response", (_request, response) => {
+      expect(response.statusCode).toBe(401);
+      resolve();
+    });
+    socket.once("open", () => reject(new Error(openMessage)));
+    socket.once("error", reject);
+  });
+}
+
+function waitForMessageType(socket: WebSocket, expectedType: number): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`timed out waiting for message type ${expectedType}`));
+    }, 500);
+    const onMessage = (data: RawData) => {
+      const bytes = toUint8Array(data);
+      if (decodeFrameType(bytes) === expectedType) {
+        cleanup();
+        resolve(bytes);
+      }
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      socket.off("message", onMessage);
+      socket.off("error", onError);
+    };
+
+    socket.on("message", onMessage);
+    socket.on("error", onError);
+  });
+}
+
+async function expectNoMessageType(socket: WebSocket, expectedType: number): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, 75);
+    const onMessage = (data: RawData) => {
+      if (decodeFrameType(toUint8Array(data)) === expectedType) {
+        cleanup();
+        reject(new Error(`received unexpected message type ${expectedType}`));
+      }
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      socket.off("message", onMessage);
+    };
+
+    socket.on("message", onMessage);
+  });
+}
+
+function encodeFrame(type: number, payload?: Uint8Array): Uint8Array {
+  const encoder = encoding.createEncoder();
+  encoding.writeVarUint(encoder, type);
+  if (payload) {
+    encoding.writeVarUint8Array(encoder, payload);
+  }
+  return encoding.toUint8Array(encoder);
+}
+
+function decodeFrameType(data: Uint8Array): number {
+  return decoding.readVarUint(decoding.createDecoder(data));
+}
+
+function decodeFramePayload(data: Uint8Array): Uint8Array {
+  const decoder = decoding.createDecoder(data);
+  decoding.readVarUint(decoder);
+  return decoding.readVarUint8Array(decoder);
+}
+
+function toUint8Array(data: RawData): Uint8Array {
+  if (data instanceof ArrayBuffer) {
+    return new Uint8Array(data);
+  }
+  if (Array.isArray(data)) {
+    return new Uint8Array(Buffer.concat(data));
+  }
+  return new Uint8Array(data);
+}

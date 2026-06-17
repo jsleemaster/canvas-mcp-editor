@@ -60,6 +60,8 @@ export interface CollabRelayServer {
 const messageSync = 0;
 const messageAwareness = 1;
 const messageQueryAwareness = 3;
+const messageEncryptedSync = 10;
+const messageEncryptedSyncQuery = 11;
 
 interface RelayConnection {
   socket: WebSocket;
@@ -69,6 +71,7 @@ interface RelayConnection {
 
 interface RelayRoom {
   id: string;
+  mode: "plain" | "encrypted";
   doc: Y.Doc;
   awareness: awarenessProtocol.Awareness;
   connections: Set<RelayConnection>;
@@ -143,9 +146,17 @@ export function createCollabRelayServer(config: CollabRelayConfig): CollabRelayS
       socket.destroy();
       return;
     }
+    const roomMode = target.encrypted ? "encrypted" : "plain";
+    const existingRoom = rooms.get(target.roomId);
+    if (existingRoom && existingRoom.mode !== roomMode) {
+      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      socket.destroy();
+      return;
+    }
 
     websocketServer.handleUpgrade(request, socket, head, (websocket) => {
-      connectToRoom(getRoom(rooms, target.roomId), websocket, validation.canWriteDocument);
+      const room = getRoom(rooms, target.roomId, roomMode);
+      connectToRoom(room, websocket, validation.canWriteDocument);
     });
   });
 
@@ -197,6 +208,7 @@ function parseUpgradeRequest(request: IncomingMessage, host: string): {
   userId: string | null;
   memberToken: string | null;
   access: "sync" | "awareness";
+  encrypted: boolean;
 } {
   const url = new URL(request.url ?? "/", `http://${host}`);
   const roomId = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
@@ -208,11 +220,16 @@ function parseUpgradeRequest(request: IncomingMessage, host: string): {
     token: bearerToken ?? url.searchParams.get("token"),
     userId: url.searchParams.get("userId"),
     memberToken: url.searchParams.get("memberToken"),
-    access
+    access,
+    encrypted: url.searchParams.get("e2ee") === "true"
   };
 }
 
-function getRoom(rooms: Map<string, RelayRoom>, roomId: string): RelayRoom {
+function getRoom(
+  rooms: Map<string, RelayRoom>,
+  roomId: string,
+  mode: RelayRoom["mode"]
+): RelayRoom {
   const existing = rooms.get(roomId);
   if (existing) {
     return existing;
@@ -222,6 +239,7 @@ function getRoom(rooms: Map<string, RelayRoom>, roomId: string): RelayRoom {
   const awareness = new awarenessProtocol.Awareness(doc);
   const room: RelayRoom = {
     id: roomId,
+    mode,
     doc,
     awareness,
     connections: new Set(),
@@ -235,12 +253,14 @@ function getRoom(rooms: Map<string, RelayRoom>, roomId: string): RelayRoom {
     }
   };
 
-  doc.on("update", (update: Uint8Array, origin: unknown) => {
-    const encoder = encoding.createEncoder();
-    encoding.writeVarUint(encoder, messageSync);
-    syncProtocol.writeUpdate(encoder, update);
-    broadcast(room, encoding.toUint8Array(encoder), origin);
-  });
+  if (mode === "plain") {
+    doc.on("update", (update: Uint8Array, origin: unknown) => {
+      const encoder = encoding.createEncoder();
+      encoding.writeVarUint(encoder, messageSync);
+      syncProtocol.writeUpdate(encoder, update);
+      broadcast(room, encoding.toUint8Array(encoder), origin);
+    });
+  }
   rooms.set(roomId, room);
   return room;
 }
@@ -266,7 +286,9 @@ function connectToRoom(room: RelayRoom, socket: WebSocket, canWriteDocument: boo
     );
   });
 
-  sendSyncStep1(room, socket);
+  if (room.mode === "plain") {
+    sendSyncStep1(room, socket);
+  }
   sendAwareness(room, socket);
 }
 
@@ -275,6 +297,9 @@ function handleMessage(room: RelayRoom, connection: RelayConnection, data: Uint8
   const messageType = decoding.readVarUint(decoder);
 
   if (messageType === messageSync) {
+    if (room.mode === "encrypted") {
+      return;
+    }
     if (!connection.canWriteDocument) {
       return;
     }
@@ -284,6 +309,26 @@ function handleMessage(room: RelayRoom, connection: RelayConnection, data: Uint8
     if (encoding.length(encoder) > 1) {
       send(connection.socket, encoding.toUint8Array(encoder));
     }
+    return;
+  }
+
+  if (messageType === messageEncryptedSync) {
+    if (room.mode !== "encrypted" || !connection.canWriteDocument) {
+      return;
+    }
+    const encryptedUpdate = decoding.readVarUint8Array(decoder);
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, messageEncryptedSync);
+    encoding.writeVarUint8Array(encoder, encryptedUpdate);
+    broadcast(room, encoding.toUint8Array(encoder), connection);
+    return;
+  }
+
+  if (messageType === messageEncryptedSyncQuery) {
+    if (room.mode !== "encrypted" || !connection.canWriteDocument) {
+      return;
+    }
+    broadcast(room, data, connection);
     return;
   }
 
