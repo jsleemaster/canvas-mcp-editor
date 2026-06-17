@@ -531,7 +531,7 @@ pnpm --filter @canvas-mcp-editor/server test -- src/http.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit HTTP routes**
+- [x] **Step 5: Commit HTTP routes**
 
 Run:
 
@@ -546,7 +546,7 @@ git commit -m "feat: expose project routes"
 - Modify: `apps/server/src/mcp.ts`
 - Modify: `apps/server/src/mcp.test.ts`
 
-- [ ] **Step 1: Write failing MCP project tool tests**
+- [x] **Step 1: Write failing MCP project tool tests**
 
 Add this test to `apps/server/src/mcp.test.ts` after the annotations test:
 
@@ -607,7 +607,7 @@ Add this test to `apps/server/src/mcp.test.ts` after the annotations test:
   });
 ```
 
-- [ ] **Step 2: Run MCP tests and verify they fail**
+- [x] **Step 2: Run MCP tests and verify they fail**
 
 Run:
 
@@ -617,7 +617,7 @@ pnpm --filter @canvas-mcp-editor/server test -- src/mcp.test.ts
 
 Expected: FAIL because project tools are not registered.
 
-- [ ] **Step 3: Register MCP project tools**
+- [x] **Step 3: Register MCP project tools**
 
 In `apps/server/src/mcp.ts`, register the project tools after `list_files`:
 
@@ -755,7 +755,7 @@ In `apps/server/src/mcp.ts`, register the project tools after `list_files`:
   );
 ```
 
-- [ ] **Step 4: Run MCP tests and verify they pass**
+- [x] **Step 4: Run MCP tests and verify they pass**
 
 Run:
 
