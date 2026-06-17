@@ -765,7 +765,7 @@ pnpm --filter @canvas-mcp-editor/server test -- src/mcp.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit MCP tools**
+- [x] **Step 5: Commit MCP tools**
 
 Run:
 
@@ -782,7 +782,7 @@ git commit -m "feat: add project MCP tools"
 - Create: `apps/web/src/project-api.test.ts`
 - Create: `apps/web/src/project-store.test.ts`
 
-- [ ] **Step 1: Write failing web API tests**
+- [x] **Step 1: Write failing web API tests**
 
 Create `apps/web/src/project-api.test.ts`:
 
@@ -844,7 +844,7 @@ describe("project api", () => {
 });
 ```
 
-- [ ] **Step 2: Write failing project store tests**
+- [x] **Step 2: Write failing project store tests**
 
 Create `apps/web/src/project-store.test.ts`:
 
@@ -867,7 +867,7 @@ describe("indexeddb project store", () => {
 });
 ```
 
-- [ ] **Step 3: Run web tests and verify they fail**
+- [x] **Step 3: Run web tests and verify they fail**
 
 Run:
 
@@ -877,7 +877,7 @@ pnpm --filter @canvas-mcp-editor/web test -- src/project-api.test.ts src/project
 
 Expected: FAIL because `project-api.ts` and `project-store.ts` do not exist.
 
-- [ ] **Step 4: Add project API client**
+- [x] **Step 4: Add project API client**
 
 Create `apps/web/src/project-api.ts`:
 
@@ -958,7 +958,7 @@ async function readJson(response: Response): Promise<unknown> {
 }
 ```
 
-- [ ] **Step 5: Add project current-id store**
+- [x] **Step 5: Add project current-id store**
 
 Create `apps/web/src/project-store.ts`:
 
@@ -1041,7 +1041,7 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
 }
 ```
 
-- [ ] **Step 6: Run web API/store tests and verify they pass**
+- [x] **Step 6: Run web API/store tests and verify they pass**
 
 Run:
 
