@@ -35,7 +35,7 @@ The web app can be built and served without a central collaboration backend. Thi
 pnpm --filter @canvas-mcp-editor/web build
 ```
 
-Serve `apps/web/dist` from GitHub Pages, Vercel static output, Netlify, nginx, or any static host. The GitHub Actions workflow at `.github/workflows/web-static.yml` builds this artifact and uploads `apps/web/dist` to GitHub Pages.
+Serve `apps/web/dist` from GitHub Pages, Vercel static output, Netlify, nginx, or any static host. This repository does not install an automatic GitHub Pages deployment workflow; choose and configure the static host explicitly when publishing the web app.
 
 Teams that need real-time editing configure their own relay URL inside the team manifest. Local-only teams continue to work without a relay.
 
