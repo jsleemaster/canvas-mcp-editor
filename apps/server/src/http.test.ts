@@ -32,6 +32,70 @@ describe("HTTP server", () => {
     expect(file.json().file.name).toBe("샘플 파일");
   });
 
+  test("serves project create, read, update, document, and sharing routes", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
+    const server = createHttpServer(new FileStorage(tempRoot));
+
+    const projects = await server.inject({ method: "GET", url: "/projects" });
+    expect(projects.statusCode).toBe(200);
+    expect(projects.json().projects[0]).toMatchObject({
+      projectId: "sample-project",
+      currentDocumentId: "sample-file"
+    });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/projects",
+      payload: {
+        projectId: "project-http",
+        name: "HTTP 프로젝트",
+        documentId: "document-http",
+        documentName: "HTTP 문서"
+      }
+    });
+    expect(created.statusCode).toBe(200);
+    expect(created.json().project).toMatchObject({
+      projectId: "project-http",
+      currentDocumentId: "document-http"
+    });
+
+    const read = await server.inject({ method: "GET", url: "/projects/project-http" });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().project.name).toBe("HTTP 프로젝트");
+
+    const renamed = await server.inject({
+      method: "PATCH",
+      url: "/projects/project-http",
+      payload: { name: "HTTP 리네임" }
+    });
+    expect(renamed.statusCode).toBe(200);
+    expect(renamed.json().project.name).toBe("HTTP 리네임");
+
+    const document = await server.inject({
+      method: "POST",
+      url: "/projects/project-http/documents",
+      payload: { documentId: "document-http-2", name: "두 번째 문서" }
+    });
+    expect(document.statusCode).toBe(200);
+    expect(document.json().project.currentDocumentId).toBe("document-http-2");
+
+    const shared = await server.inject({
+      method: "PATCH",
+      url: "/projects/project-http/sharing",
+      payload: { mode: "team", teamId: "team-http" }
+    });
+    expect(shared.statusCode).toBe(200);
+    expect(shared.json().project.sharing).toEqual({ mode: "team", teamId: "team-http" });
+
+    const privateProject = await server.inject({
+      method: "PATCH",
+      url: "/projects/project-http/sharing",
+      payload: { mode: "private" }
+    });
+    expect(privateProject.statusCode).toBe(200);
+    expect(privateProject.json().project.sharing).toEqual({ mode: "private" });
+  });
+
   test("updates node geometry, fill, text, and creates nodes", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
     const server = createHttpServer(new FileStorage(tempRoot));

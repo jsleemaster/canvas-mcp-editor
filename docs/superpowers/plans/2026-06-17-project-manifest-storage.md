@@ -385,7 +385,7 @@ pnpm --filter @canvas-mcp-editor/server test -- src/storage.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit storage work**
+- [x] **Step 5: Commit storage work**
 
 Run:
 
@@ -400,7 +400,7 @@ git commit -m "feat: persist project manifests"
 - Modify: `apps/server/src/http.ts`
 - Modify: `apps/server/src/http.test.ts`
 
-- [ ] **Step 1: Write failing HTTP route tests**
+- [x] **Step 1: Write failing HTTP route tests**
 
 Add this test after the first HTTP server test in `apps/server/src/http.test.ts`:
 
@@ -470,7 +470,7 @@ Add this test after the first HTTP server test in `apps/server/src/http.test.ts`
   });
 ```
 
-- [ ] **Step 2: Run HTTP tests and verify they fail**
+- [x] **Step 2: Run HTTP tests and verify they fail**
 
 Run:
 
@@ -480,7 +480,7 @@ pnpm --filter @canvas-mcp-editor/server test -- src/http.test.ts
 
 Expected: FAIL with 404 responses for `/projects`.
 
-- [ ] **Step 3: Add Fastify project routes**
+- [x] **Step 3: Add Fastify project routes**
 
 In `apps/server/src/http.ts`, register these routes immediately after `/health`:
 
@@ -521,7 +521,7 @@ In `apps/server/src/http.ts`, register these routes immediately after `/health`:
   });
 ```
 
-- [ ] **Step 4: Run HTTP tests and verify they pass**
+- [x] **Step 4: Run HTTP tests and verify they pass**
 
 Run:
 
