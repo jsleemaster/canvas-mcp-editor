@@ -111,3 +111,38 @@ test("canvas editor MVP supports select, inspect, edit, undo, create, and zoom",
 
   await page.screenshot({ path: "/tmp/canvas-mcp-editor-mvp-verified.png", fullPage: true });
 });
+
+test("web editor keeps laptop viewport overflow inside the canvas area", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("http://127.0.0.1:5173/");
+  await expect(page.getByTestId("stage-frame")).toBeVisible();
+
+  const metrics = await page.evaluate(() => {
+    const canvas = document.querySelector('[data-testid="canvas-area"]') as HTMLElement | null;
+    const stage = document.querySelector('[data-testid="stage-frame"]') as HTMLElement | null;
+
+    if (!canvas || !stage) {
+      throw new Error("layout nodes missing");
+    }
+
+    window.scrollTo(1000, 0);
+    const pageScrollXAfterAttempt = window.scrollX;
+    window.scrollTo(0, 0);
+
+    return {
+      pageScrollXAfterAttempt,
+      documentScrollWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+      canvasClientWidth: canvas.clientWidth,
+      canvasScrollWidth: canvas.scrollWidth,
+      stageWidth: Math.round(stage.getBoundingClientRect().width),
+      stageHeight: Math.round(stage.getBoundingClientRect().height)
+    };
+  });
+
+  expect(metrics.pageScrollXAfterAttempt).toBe(0);
+  expect(metrics.documentScrollWidth).toBe(metrics.viewportWidth);
+  expect(metrics.canvasScrollWidth).toBeGreaterThan(metrics.canvasClientWidth);
+  expect(metrics.stageWidth).toBe(960);
+  expect(metrics.stageHeight).toBe(640);
+});
