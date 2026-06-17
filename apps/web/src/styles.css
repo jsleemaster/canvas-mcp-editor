@@ -12,6 +12,7 @@
 
 body {
   margin: 0;
+  overflow: hidden;
 }
 
 button,
@@ -41,7 +42,8 @@ button:disabled {
 .app-shell {
   display: grid;
   grid-template-columns: var(--editor-size-sidebar) minmax(0, 1fr) var(--editor-size-inspector);
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
 }
 
 .sidebar,
@@ -53,10 +55,12 @@ button:disabled {
 
 .sidebar {
   border-right: var(--editor-border-hairline) solid var(--editor-color-border);
+  overflow: auto;
 }
 
 .inspector {
   border-left: var(--editor-border-hairline) solid var(--editor-color-border);
+  overflow: auto;
 }
 
 .team-panel {
@@ -137,6 +141,7 @@ button:disabled {
 
 .editor-workspace {
   min-width: 0;
+  min-height: 0;
   display: grid;
   grid-template-rows: var(--editor-size-toolbar) minmax(0, 1fr);
 }
@@ -164,18 +169,25 @@ button:disabled {
 
 .canvas-area {
   min-width: 0;
-  overflow: auto;
-  padding: var(--editor-space-xl);
-  background: var(--editor-color-app);
+  min-height: 0;
+  overflow: hidden;
+  background: var(--editor-color-stage);
 }
 
 .stage-frame {
   position: relative;
-  width: var(--editor-size-stage-width);
-  height: var(--editor-size-stage-height);
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   background: var(--editor-color-stage);
-  box-shadow: var(--editor-shadow-stage);
+}
+
+.stage-frame.is-panning {
+  cursor: grab;
+}
+
+.stage-frame.is-panning:active {
+  cursor: grabbing;
 }
 
 .remote-presence-layer {

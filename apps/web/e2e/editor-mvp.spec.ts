@@ -112,7 +112,7 @@ test("canvas editor MVP supports Korean-first select, inspect, edit, undo, creat
   await page.screenshot({ path: "/tmp/canvas-mcp-editor-mvp-verified.png", fullPage: true });
 });
 
-test("web editor keeps laptop viewport overflow inside the canvas area", async ({ page }) => {
+test("web editor fills the available work area with a white canvas", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("http://127.0.0.1:5173/");
   await expect(page.getByTestId("stage-frame")).toBeVisible();
@@ -134,7 +134,11 @@ test("web editor keeps laptop viewport overflow inside the canvas area", async (
       documentScrollWidth: document.documentElement.scrollWidth,
       viewportWidth: window.innerWidth,
       canvasClientWidth: canvas.clientWidth,
+      canvasClientHeight: canvas.clientHeight,
       canvasScrollWidth: canvas.scrollWidth,
+      canvasScrollHeight: canvas.scrollHeight,
+      canvasBackground: getComputedStyle(canvas).backgroundColor,
+      stageBackground: getComputedStyle(stage).backgroundColor,
       stageWidth: Math.round(stage.getBoundingClientRect().width),
       stageHeight: Math.round(stage.getBoundingClientRect().height)
     };
@@ -142,9 +146,71 @@ test("web editor keeps laptop viewport overflow inside the canvas area", async (
 
   expect(metrics.pageScrollXAfterAttempt).toBe(0);
   expect(metrics.documentScrollWidth).toBe(metrics.viewportWidth);
-  expect(metrics.canvasScrollWidth).toBeGreaterThan(metrics.canvasClientWidth);
-  expect(metrics.stageWidth).toBe(960);
-  expect(metrics.stageHeight).toBe(640);
+  expect(metrics.canvasScrollWidth).toBe(metrics.canvasClientWidth);
+  expect(metrics.canvasScrollHeight).toBe(metrics.canvasClientHeight);
+  expect(metrics.canvasBackground).toBe("rgb(255, 255, 255)");
+  expect(metrics.stageBackground).toBe("rgb(255, 255, 255)");
+  expect(metrics.stageWidth).toBe(metrics.canvasClientWidth);
+  expect(metrics.stageHeight).toBe(metrics.canvasClientHeight);
+});
+
+test("Figma-like canvas input routing nudges layers, pans canvas, and zooms with modifiers", async ({ page }) => {
+  await rm(".canvas-mcp-editor/files/sample-file.json", { force: true });
+  await rm("apps/server/.canvas-mcp-editor/files/sample-file.json", { force: true });
+
+  await page.goto("http://127.0.0.1:5173/");
+  const stageBox = await page.locator("canvas").first().boundingBox();
+  if (!stageBox) {
+    throw new Error("stage canvas was not visible");
+  }
+
+  await page.mouse.move(stageBox.x + 360, stageBox.y + 260);
+  await page.mouse.wheel(0, -300);
+  await expect(page.getByText("100%")).toBeVisible();
+
+  await page.keyboard.down("Control");
+  await page.mouse.wheel(0, -300);
+  await page.keyboard.up("Control");
+  await expect(page.getByText("125%")).toBeVisible();
+
+  await page.keyboard.press("Control+=");
+  await expect(page.getByText("150%")).toBeVisible();
+  await page.keyboard.press("Control+-");
+  await expect(page.getByText("125%")).toBeVisible();
+  await page.keyboard.press("Control+0");
+  await expect(page.getByText("100%")).toBeVisible();
+
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByTestId("inspector-x")).toHaveValue("33");
+  await page.keyboard.press("Shift+ArrowDown");
+  await expect(page.getByTestId("inspector-y")).toHaveValue("50");
+
+  await page.keyboard.down("Space");
+  await page.mouse.move(stageBox.x + 160, stageBox.y + 130);
+  await page.mouse.down();
+  await page.mouse.move(stageBox.x + 220, stageBox.y + 160);
+  await page.mouse.up();
+  await page.keyboard.up("Space");
+  await expect(page.getByTestId("inspector-x")).toHaveValue("33");
+  await expect(page.getByTestId("inspector-y")).toHaveValue("50");
+
+  await expect(page.getByTestId("inspector-text")).toHaveValue("캔버스 MCP 에디터");
+  await page.getByTestId("inspector-text").fill("키보드 단축키 검증");
+  await expect(page.getByTestId("inspector-text")).toHaveValue("키보드 단축키 검증");
+
+  await page.mouse.click(stageBox.x + 40, stageBox.y + 40);
+  await page.keyboard.press("Control+Z");
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await expect(page.getByTestId("inspector-text")).toHaveValue("캔버스 MCP 에디터");
+
+  await page.mouse.click(stageBox.x + 40, stageBox.y + 40);
+  await page.keyboard.press("Control+Shift+Z");
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await expect(page.getByTestId("inspector-text")).toHaveValue("키보드 단축키 검증");
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("레이어 또는 캔버스 요소를 선택하세요.")).toBeVisible();
 });
 
 test("component instances drag as a single selected object from nested content", async ({ page }) => {

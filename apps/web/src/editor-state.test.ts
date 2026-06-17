@@ -7,11 +7,13 @@ import {
   createRectangleNode,
   createTextNode,
   getNodeAbsolutePosition,
+  nudgeSelectedNode,
   panViewport,
   redo,
   setSelection,
   setViewport,
   undo,
+  zoomViewportAtPoint,
   zoomViewport
 } from "./editor-state";
 
@@ -257,6 +259,38 @@ describe("editor state commands", () => {
 
     expect(panned.viewport).toEqual({ scale: 1, x: 24, y: -16 });
     expect(zoomed.viewport.scale).toBe(1.5);
+  });
+
+  test("zooms around a viewport point without moving the document point under the pointer", () => {
+    const initial = setViewport(createEditorState(sampleDocument()), {
+      scale: 1,
+      x: 40,
+      y: -20
+    });
+    const pointer = { x: 400, y: 300 };
+    const documentPointBefore = {
+      x: (pointer.x - initial.viewport.x) / initial.viewport.scale,
+      y: (pointer.y - initial.viewport.y) / initial.viewport.scale
+    };
+
+    const zoomed = zoomViewportAtPoint(initial, 0.5, pointer);
+    const documentPointAfter = {
+      x: (pointer.x - zoomed.viewport.x) / zoomed.viewport.scale,
+      y: (pointer.y - zoomed.viewport.y) / zoomed.viewport.scale
+    };
+
+    expect(zoomed.viewport.scale).toBe(1.5);
+    expect(documentPointAfter).toEqual(documentPointBefore);
+  });
+
+  test("nudges the selected node and preserves undo history", () => {
+    const initial = setSelection(createEditorState(sampleDocument()), "text-1");
+
+    const nudged = nudgeSelectedNode(initial, { x: 1, y: 0 });
+
+    expect(findNodeById(nudged.document, "text-1")?.transform).toMatchObject({ x: 33, y: 40 });
+    expect(nudged.selection.nodeId).toBe("text-1");
+    expect(findNodeById(undo(nudged).document, "text-1")?.transform).toMatchObject({ x: 32, y: 40 });
   });
 
   test("calculates absolute node position through parent transforms", () => {
