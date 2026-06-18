@@ -101,6 +101,45 @@ export interface StoredFileSummary {
   modifiedAt: string;
 }
 
+export interface ProjectDocumentSummary {
+  documentId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ProjectSharing =
+  | { mode: "private" }
+  | { mode: "team"; teamId: string };
+
+export interface ProjectManifest {
+  schemaVersion: 1;
+  projectId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  currentDocumentId: string;
+  documents: ProjectDocumentSummary[];
+  sharing: ProjectSharing;
+}
+
+export interface CreateProjectInput {
+  projectId?: string;
+  name?: string;
+  documentId?: string;
+  documentName?: string;
+}
+
+export interface UpdateProjectInput {
+  name?: string;
+  currentDocumentId?: string;
+}
+
+export interface CreateProjectDocumentInput {
+  documentId?: string;
+  name?: string;
+}
+
 export class FileStorage {
   constructor(private readonly rootDir = path.join(process.cwd(), ".canvas-mcp-editor")) {}
 
@@ -108,9 +147,18 @@ export class FileStorage {
     return path.join(this.rootDir, "files");
   }
 
+  private get projectsDir() {
+    return path.join(this.rootDir, "projects");
+  }
+
   private filePathFor(fileId: string) {
     const safeFileId = fileId.replace(/[^a-zA-Z0-9_-]/g, "");
     return path.join(this.filesDir, `${safeFileId}.json`);
+  }
+
+  private projectPathFor(projectId: string) {
+    assertSafeStorageId(projectId);
+    return path.join(this.projectsDir, `${projectId}.json`);
   }
 
   async ensureSeedFile() {
@@ -164,6 +212,132 @@ export class FileStorage {
         };
       })
     );
+  }
+
+  async ensureSeedProject() {
+    await this.ensureSeedFile();
+    await mkdir(this.projectsDir, { recursive: true });
+    const entries = await readdir(this.projectsDir);
+    if (entries.some((entry) => entry.endsWith(".json"))) {
+      return;
+    }
+
+    const sample = await this.readFile(sampleDocument.id);
+    const now = new Date().toISOString();
+    await this.writeProject({
+      schemaVersion: 1,
+      projectId: "sample-project",
+      name: "샘플 프로젝트",
+      createdAt: now,
+      updatedAt: now,
+      currentDocumentId: sample.id,
+      documents: [
+        {
+          documentId: sample.id,
+          name: sample.name,
+          createdAt: now,
+          updatedAt: now
+        }
+      ],
+      sharing: { mode: "private" }
+    });
+  }
+
+  async listProjects(): Promise<ProjectManifest[]> {
+    await this.ensureSeedProject();
+    const entries = await readdir(this.projectsDir);
+    const projects = await Promise.all(
+      entries
+        .filter((entry) => entry.endsWith(".json"))
+        .map(async (entry) => {
+          const raw = await readFile(path.join(this.projectsDir, entry), "utf8");
+          return parseProjectManifest(JSON.parse(raw));
+        })
+    );
+
+    return projects.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  async readProject(projectId: string): Promise<ProjectManifest> {
+    await this.ensureSeedProject();
+    const raw = await readFile(this.projectPathFor(projectId), "utf8");
+    return parseProjectManifest(JSON.parse(raw));
+  }
+
+  async createProject(input: CreateProjectInput = {}): Promise<ProjectManifest> {
+    const now = new Date().toISOString();
+    const projectId = input.projectId ?? createStorageId("project");
+    const documentId = input.documentId ?? createStorageId("document");
+    assertSafeStorageId(projectId);
+    assertSafeStorageId(documentId);
+    const projectName = normalizeName(input.name, "새 프로젝트");
+    const documentName = normalizeName(input.documentName, `${projectName} 문서`);
+
+    await this.writeFile(documentId, createInitialDesignFile(documentId, documentName));
+    return this.writeProject({
+      schemaVersion: 1,
+      projectId,
+      name: projectName,
+      createdAt: now,
+      updatedAt: now,
+      currentDocumentId: documentId,
+      documents: [{ documentId, name: documentName, createdAt: now, updatedAt: now }],
+      sharing: { mode: "private" }
+    });
+  }
+
+  async updateProject(projectId: string, input: UpdateProjectInput): Promise<ProjectManifest> {
+    const project = await this.readProject(projectId);
+    const currentDocumentId = input.currentDocumentId ?? project.currentDocumentId;
+    if (!project.documents.some((document) => document.documentId === currentDocumentId)) {
+      throw new Error(`project document not found: ${currentDocumentId}`);
+    }
+
+    return this.writeProject({
+      ...project,
+      name: input.name === undefined ? project.name : normalizeName(input.name, project.name),
+      currentDocumentId,
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  async createProjectDocument(
+    projectId: string,
+    input: CreateProjectDocumentInput = {}
+  ): Promise<ProjectManifest> {
+    const project = await this.readProject(projectId);
+    const now = new Date().toISOString();
+    const documentId = input.documentId ?? createStorageId("document");
+    assertSafeStorageId(documentId);
+    if (project.documents.some((document) => document.documentId === documentId)) {
+      throw new Error(`project document already exists: ${documentId}`);
+    }
+
+    const name = normalizeName(input.name, "새 문서");
+    await this.writeFile(documentId, createInitialDesignFile(documentId, name));
+    return this.writeProject({
+      ...project,
+      updatedAt: now,
+      currentDocumentId: documentId,
+      documents: [...project.documents, { documentId, name, createdAt: now, updatedAt: now }]
+    });
+  }
+
+  async setProjectSharing(projectId: string, sharing: ProjectSharing): Promise<ProjectManifest> {
+    const project = await this.readProject(projectId);
+    const nextSharing: ProjectSharing =
+      sharing.mode === "team"
+        ? { mode: "team", teamId: normalizeName(sharing.teamId, "") }
+        : { mode: "private" };
+    if (nextSharing.mode === "team" && !nextSharing.teamId) {
+      throw new Error("team id is required for project sharing");
+    }
+
+    return this.writeProject({
+      ...project,
+      sharing: nextSharing,
+      updatedAt: new Date().toISOString()
+    });
   }
 
   async readFile(fileId: string): Promise<DesignFile> {
@@ -381,6 +555,72 @@ export class FileStorage {
   async exportCode(fileId: string, options: CodeExportOptions = {}): Promise<CodeExportResult> {
     return exportDesignToCode(await this.readFile(fileId), options);
   }
+
+  private async writeProject(project: ProjectManifest): Promise<ProjectManifest> {
+    await mkdir(this.projectsDir, { recursive: true });
+    const parsed = parseProjectManifest(project);
+    await writeFile(this.projectPathFor(parsed.projectId), `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+    return parsed;
+  }
+}
+
+function assertSafeStorageId(value: string) {
+  if (!/^[a-zA-Z0-9_-]+$/.test(value)) {
+    throw new Error(`safe id is required: ${value}`);
+  }
+}
+
+function createStorageId(prefix: string) {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeName(value: string | undefined, fallback: string) {
+  const normalized = value?.trim() || fallback;
+  if (!normalized.trim()) {
+    throw new Error("name is required");
+  }
+  return normalized;
+}
+
+function createInitialDesignFile(documentId: string, name: string): DesignFile {
+  return {
+    ...(JSON.parse(JSON.stringify(sampleDocument)) as DesignFile),
+    id: documentId,
+    name
+  };
+}
+
+function parseProjectManifest(input: unknown): ProjectManifest {
+  if (!input || typeof input !== "object") {
+    throw new Error("invalid project manifest");
+  }
+
+  const candidate = input as ProjectManifest;
+  if (candidate.schemaVersion !== 1) {
+    throw new Error(`unsupported project manifest schema version: ${String(candidate.schemaVersion)}`);
+  }
+  assertSafeStorageId(candidate.projectId);
+  assertSafeStorageId(candidate.currentDocumentId);
+  if (!candidate.name?.trim()) {
+    throw new Error("project name is required");
+  }
+  if (!Array.isArray(candidate.documents) || candidate.documents.length === 0) {
+    throw new Error("project documents are required");
+  }
+  for (const document of candidate.documents) {
+    assertSafeStorageId(document.documentId);
+    if (!document.name?.trim()) {
+      throw new Error("project document name is required");
+    }
+  }
+  if (!candidate.documents.some((document) => document.documentId === candidate.currentDocumentId)) {
+    throw new Error(`project current document not found: ${candidate.currentDocumentId}`);
+  }
+  if (candidate.sharing.mode === "team" && !candidate.sharing.teamId?.trim()) {
+    throw new Error("team id is required for project sharing");
+  }
+
+  return candidate;
 }
 
 function findNodeById(document: DesignFile, nodeId: string): DesignNode | null {

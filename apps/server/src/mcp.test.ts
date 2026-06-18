@@ -56,6 +56,61 @@ describe("MCP AI editing workflow", () => {
     });
   });
 
+  test("lets an MCP client manage project manifests", async () => {
+    const client = await connectMcpClient();
+
+    const listed = parseToolJson(
+      await client.callTool({
+        name: "list_projects",
+        arguments: {}
+      })
+    );
+    expect(listed.projects[0]).toMatchObject({
+      projectId: "sample-project",
+      currentDocumentId: "sample-file"
+    });
+
+    const created = parseToolJson(
+      await client.callTool({
+        name: "create_project",
+        arguments: {
+          projectId: "project-mcp",
+          name: "MCP 프로젝트",
+          documentId: "document-mcp",
+          documentName: "MCP 문서"
+        }
+      })
+    );
+    expect(created.project).toMatchObject({
+      projectId: "project-mcp",
+      currentDocumentId: "document-mcp"
+    });
+
+    const renamed = parseToolJson(
+      await client.callTool({
+        name: "update_project",
+        arguments: { projectId: "project-mcp", name: "MCP 리네임" }
+      })
+    );
+    expect(renamed.project.name).toBe("MCP 리네임");
+
+    const nextDocument = parseToolJson(
+      await client.callTool({
+        name: "create_project_document",
+        arguments: { projectId: "project-mcp", documentId: "document-mcp-2", name: "두 번째 MCP 문서" }
+      })
+    );
+    expect(nextDocument.project.currentDocumentId).toBe("document-mcp-2");
+
+    const shared = parseToolJson(
+      await client.callTool({
+        name: "set_project_sharing",
+        arguments: { projectId: "project-mcp", mode: "team", teamId: "team-mcp" }
+      })
+    );
+    expect(shared.project.sharing).toEqual({ mode: "team", teamId: "team-mcp" });
+  });
+
   test("lets an MCP client inspect, edit, find, and validate a design file", async () => {
     const client = await connectMcpClient();
 

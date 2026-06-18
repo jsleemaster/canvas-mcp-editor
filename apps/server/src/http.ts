@@ -7,9 +7,50 @@ export function createHttpServer(storage = new FileStorage()) {
 
   server.addHook("onRequest", async (_request, reply) => {
     reply.header("Access-Control-Allow-Origin", "*");
+    reply.header("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS");
+    reply.header("Access-Control-Allow-Headers", "Content-Type");
   });
 
   server.get("/health", async () => ({ ok: true }));
+
+  server.options("*", async (_request, reply) => {
+    return reply.code(204).send();
+  });
+
+  server.get("/projects", async () => {
+    return { projects: await storage.listProjects() };
+  });
+
+  server.post<{
+    Body: { projectId?: string; name?: string; documentId?: string; documentName?: string };
+  }>("/projects", async (request) => {
+    return { project: await storage.createProject(request.body) };
+  });
+
+  server.get<{ Params: { projectId: string } }>("/projects/:projectId", async (request) => {
+    return { project: await storage.readProject(request.params.projectId) };
+  });
+
+  server.patch<{ Params: { projectId: string }; Body: { name?: string; currentDocumentId?: string } }>(
+    "/projects/:projectId",
+    async (request) => {
+      return { project: await storage.updateProject(request.params.projectId, request.body) };
+    }
+  );
+
+  server.post<{ Params: { projectId: string }; Body: { documentId?: string; name?: string } }>(
+    "/projects/:projectId/documents",
+    async (request) => {
+      return { project: await storage.createProjectDocument(request.params.projectId, request.body) };
+    }
+  );
+
+  server.patch<{
+    Params: { projectId: string };
+    Body: { mode: "private" } | { mode: "team"; teamId: string };
+  }>("/projects/:projectId/sharing", async (request) => {
+    return { project: await storage.setProjectSharing(request.params.projectId, request.body) };
+  });
 
   server.get("/files", async () => {
     return { files: await storage.listFiles() };

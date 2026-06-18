@@ -1,6 +1,46 @@
 import { expect, test } from "@playwright/test";
 import { rm } from "node:fs/promises";
 
+test.beforeEach(async () => {
+  await rm(".canvas-mcp-editor/projects", { recursive: true, force: true });
+  await rm("apps/server/.canvas-mcp-editor/projects", { recursive: true, force: true });
+});
+
+test("creates, reopens, and team-links a saved project", async ({ page }) => {
+  await rm(".canvas-mcp-editor/projects", { recursive: true, force: true });
+  await rm(".canvas-mcp-editor/files", { recursive: true, force: true });
+  await rm("apps/server/.canvas-mcp-editor/projects", { recursive: true, force: true });
+  await rm("apps/server/.canvas-mcp-editor/files", { recursive: true, force: true });
+
+  await page.goto("http://127.0.0.1:5173/");
+  await expect(page.getByTestId("project-switcher")).toHaveValue("sample-project");
+
+  await page.getByRole("button", { name: "새 프로젝트 만들기" }).click();
+  await expect(page.getByTestId("project-status")).toContainText("새 프로젝트 저장됨");
+  const createdProjectId = await page.getByTestId("project-switcher").inputValue();
+  expect(createdProjectId).not.toBe("sample-project");
+  await expect(page.getByTestId("project-name")).toHaveValue(/새 프로젝트/);
+
+  const projectsResponse = await page.request.get("http://127.0.0.1:4317/projects");
+  expect(projectsResponse.ok()).toBeTruthy();
+  const projectsPayload = await projectsResponse.json();
+  expect(projectsPayload.projects.map((project: { projectId: string }) => project.projectId)).toContain(
+    createdProjectId
+  );
+
+  await page.reload();
+  await expect(page.getByTestId("project-switcher")).toHaveValue(createdProjectId);
+
+  await page.getByRole("button", { name: "로컬 팀 만들기" }).click();
+  await expect(page.getByTestId("team-status")).toContainText("디자인 팀");
+  await page.getByRole("button", { name: "현재 팀과 공유" }).click();
+  await expect(page.getByTestId("project-sharing-status")).toContainText("디자인 팀");
+
+  const projectResponse = await page.request.get(`http://127.0.0.1:4317/projects/${createdProjectId}`);
+  expect(projectResponse.ok()).toBeTruthy();
+  expect((await projectResponse.json()).project.sharing).toMatchObject({ mode: "team" });
+});
+
 test("canvas editor MVP supports Korean-first select, inspect, edit, undo, create, and zoom", async ({ page }) => {
   await rm(".canvas-mcp-editor/files/sample-file.json", { force: true });
   await rm("apps/server/.canvas-mcp-editor/files/sample-file.json", { force: true });

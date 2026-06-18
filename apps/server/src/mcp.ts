@@ -157,6 +157,154 @@ export function createMcpServer(storage = new FileStorage()) {
   );
 
   server.registerTool(
+    "list_projects",
+    {
+      description: "List local Canvas MCP Editor projects and their document membership.",
+      annotations: readOnlyToolAnnotations,
+      inputSchema: {}
+    },
+    async () => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ projects: await storage.listProjects() }, null, 2)
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "create_project",
+    {
+      description: "Create a saved project manifest and its initial design document.",
+      annotations: writeToolAnnotations,
+      inputSchema: {
+        projectId: z.string().optional().describe("Optional safe project id"),
+        name: z.string().optional().describe("Project display name"),
+        documentId: z.string().optional().describe("Optional safe initial document id"),
+        documentName: z.string().optional().describe("Initial design document name")
+      }
+    },
+    async ({ projectId, name, documentId, documentName }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              project: await storage.createProject({ projectId, name, documentId, documentName })
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "get_project",
+    {
+      description: "Read a saved project manifest by id.",
+      annotations: readOnlyToolAnnotations,
+      inputSchema: {
+        projectId: z.string().describe("Project id returned by list_projects")
+      }
+    },
+    async ({ projectId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ project: await storage.readProject(projectId) }, null, 2)
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "update_project",
+    {
+      description: "Rename a project or switch its current document.",
+      annotations: writeToolAnnotations,
+      inputSchema: {
+        projectId: z.string().describe("Project id returned by list_projects"),
+        name: z.string().optional().describe("New project display name"),
+        currentDocumentId: z.string().optional().describe("Existing project document id to open by default")
+      }
+    },
+    async ({ projectId, name, currentDocumentId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              project: await storage.updateProject(projectId, { name, currentDocumentId })
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "create_project_document",
+    {
+      description: "Create a new design document inside an existing project.",
+      annotations: writeToolAnnotations,
+      inputSchema: {
+        projectId: z.string().describe("Project id returned by list_projects"),
+        documentId: z.string().optional().describe("Optional safe document id"),
+        name: z.string().optional().describe("Document display name")
+      }
+    },
+    async ({ projectId, documentId, name }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              project: await storage.createProjectDocument(projectId, { documentId, name })
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "set_project_sharing",
+    {
+      description: "Set a project sharing reference to private or a team manifest id.",
+      annotations: writeToolAnnotations,
+      inputSchema: {
+        projectId: z.string().describe("Project id returned by list_projects"),
+        mode: z.enum(["private", "team"]),
+        teamId: z.string().optional().describe("Required when mode is team")
+      }
+    },
+    async ({ projectId, mode, teamId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              project: await storage.setProjectSharing(
+                projectId,
+                mode === "team" ? { mode: "team", teamId: teamId ?? "" } : { mode: "private" }
+              )
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
     "get_file_metadata",
     {
       description: "Get page and node counts for a local design file.",

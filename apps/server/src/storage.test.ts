@@ -39,6 +39,95 @@ describe("FileStorage", () => {
     });
   });
 
+  test("seeds a default project for the sample document", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
+    const storage = new FileStorage(tempRoot);
+
+    const projects = await storage.listProjects();
+
+    expect(projects).toHaveLength(1);
+    expect(projects[0]).toMatchObject({
+      schemaVersion: 1,
+      projectId: "sample-project",
+      name: "샘플 프로젝트",
+      currentDocumentId: "sample-file",
+      sharing: { mode: "private" },
+      documents: [
+        {
+          documentId: "sample-file",
+          name: "샘플 파일"
+        }
+      ]
+    });
+  });
+
+  test("creates, reads, renames, shares, and appends documents to projects", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
+    const storage = new FileStorage(tempRoot);
+
+    const created = await storage.createProject({
+      projectId: "project-alpha",
+      name: "알파 프로젝트",
+      documentId: "document-alpha",
+      documentName: "알파 문서"
+    });
+    expect(created).toMatchObject({
+      projectId: "project-alpha",
+      name: "알파 프로젝트",
+      currentDocumentId: "document-alpha",
+      sharing: { mode: "private" }
+    });
+    expect(await storage.readFile("document-alpha")).toMatchObject({
+      id: "document-alpha",
+      name: "알파 문서"
+    });
+
+    const renamed = await storage.updateProject("project-alpha", { name: "리네임 프로젝트" });
+    expect(renamed.name).toBe("리네임 프로젝트");
+
+    const nextDocument = await storage.createProjectDocument("project-alpha", {
+      documentId: "document-beta",
+      name: "베타 문서"
+    });
+    expect(nextDocument.currentDocumentId).toBe("document-beta");
+    expect(nextDocument.documents.map((document) => document.documentId)).toEqual([
+      "document-alpha",
+      "document-beta"
+    ]);
+
+    const shared = await storage.setProjectSharing("project-alpha", {
+      mode: "team",
+      teamId: "team-alpha"
+    });
+    expect(shared.sharing).toEqual({ mode: "team", teamId: "team-alpha" });
+
+    const privateProject = await storage.setProjectSharing("project-alpha", { mode: "private" });
+    expect(privateProject.sharing).toEqual({ mode: "private" });
+  });
+
+  test("rejects unsafe project and document ids", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
+    const storage = new FileStorage(tempRoot);
+
+    await expect(
+      storage.createProject({
+        projectId: "../bad",
+        name: "Bad",
+        documentId: "document-safe",
+        documentName: "Safe"
+      })
+    ).rejects.toThrow(/safe id/i);
+
+    await expect(
+      storage.createProject({
+        projectId: "project-safe",
+        name: "Safe",
+        documentId: "../bad",
+        documentName: "Bad"
+      })
+    ).rejects.toThrow(/safe id/i);
+  });
+
   test("upgrades legacy English sample labels without replacing user geometry", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
     const filesDir = path.join(tempRoot, "files");
