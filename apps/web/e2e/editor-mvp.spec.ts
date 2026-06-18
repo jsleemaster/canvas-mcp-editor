@@ -373,6 +373,51 @@ test("Figma-like multi-selection supports Shift-click and area selection", async
   await expect(page.getByText("2개 레이어 선택됨")).toBeVisible();
 });
 
+test("Figma-like multi-selection drags together and shows snap guides", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+
+  await page.getByRole("button", { name: "사각형 만들기" }).click();
+  await page.getByRole("button", { name: "텍스트 만들기" }).click();
+  const headlineLayer = page.getByRole("button", { name: "헤드라인" });
+  const rectangleLayer = page.getByRole("button", { name: "사각형 3" });
+  const targetLayer = page.getByRole("button", { name: "텍스트 4" });
+  await expect(rectangleLayer).toBeVisible();
+  await expect(targetLayer).toBeVisible();
+
+  await page.getByTestId("inspector-x").fill("480");
+  await page.getByTestId("inspector-y").fill("130");
+  await expect(page.getByTestId("inspector-x")).toHaveValue("480");
+
+  await rectangleLayer.click();
+  await page.keyboard.down("Shift");
+  await headlineLayer.click();
+  await page.keyboard.up("Shift");
+  await expect(headlineLayer).toHaveClass(/is-selected/);
+  await expect(rectangleLayer).toHaveClass(/is-selected/);
+  await expect(targetLayer).not.toHaveClass(/is-selected/);
+  await expect(page.getByText("2개 레이어 선택됨")).toBeVisible();
+
+  const stageBox = await page.locator("canvas").first().boundingBox();
+  if (!stageBox) {
+    throw new Error("stage canvas was not visible");
+  }
+
+  await page.mouse.move(stageBox.x + 220, stageBox.y + 180);
+  await page.mouse.down();
+  await page.mouse.move(stageBox.x + 285, stageBox.y + 180);
+  await expect(page.getByTestId("snap-guide-vertical")).toBeVisible();
+  await page.mouse.up();
+
+  await expect(page.getByText("2개 레이어 선택됨")).toBeVisible();
+  await expect(page.getByTestId("snap-guide-vertical")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("레이어 또는 캔버스 요소를 선택하세요.")).toBeVisible();
+  await rectangleLayer.click();
+  await expect(page.getByTestId("inspector-x")).toHaveValue("248");
+  await headlineLayer.click();
+  await expect(page.getByTestId("inspector-x")).toHaveValue("100");
+});
+
 test("Figma-like alignment and distribution toolbar controls selected layers", async ({ page }) => {
   await createProjectFromEmptyState(page);
 

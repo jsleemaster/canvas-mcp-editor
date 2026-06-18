@@ -276,6 +276,22 @@ button:disabled {
   background: var(--editor-color-selection-soft);
 }
 
+.snap-guide {
+  position: absolute;
+  pointer-events: none;
+  z-index: 4;
+  background: var(--editor-color-selection);
+  box-shadow: 0 0 0 var(--editor-border-hairline) var(--editor-color-selection-soft);
+}
+
+.snap-guide-vertical {
+  width: var(--editor-border-hairline);
+}
+
+.snap-guide-horizontal {
+  height: var(--editor-border-hairline);
+}
+
 .remote-cursor,
 .remote-selection {
   position: absolute;

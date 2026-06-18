@@ -17,6 +17,32 @@ export interface SelectionBounds {
   height: number;
 }
 
+export interface NodeDragGeometry {
+  nodeId: string;
+  transform: { x: number; y: number };
+  parentAbsolutePosition: { x: number; y: number };
+  bounds: SelectionBounds;
+}
+
+export type SnapGuide =
+  | {
+      orientation: "vertical";
+      x: number;
+      y1: number;
+      y2: number;
+    }
+  | {
+      orientation: "horizontal";
+      y: number;
+      x1: number;
+      x2: number;
+    };
+
+export interface SnapResult {
+  delta: { x: number; y: number };
+  guides: SnapGuide[];
+}
+
 export type AlignmentMode = "left" | "center" | "right" | "top" | "middle" | "bottom";
 export type DistributionMode = "horizontal" | "vertical";
 
@@ -121,6 +147,7 @@ interface CommandResult {
 const MIN_NODE_SIZE = 1;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
+const DEFAULT_SNAP_THRESHOLD = 6;
 const DEFAULT_CONSTRAINTS: NodeConstraints = { horizontal: "left", vertical: "top" };
 
 export function createEditorState(document: RendererDocument): EditorState {
@@ -345,6 +372,87 @@ export function nudgeSelectedNode(
       y: selectedNode.transform.y + delta.y
     }
   });
+}
+
+export function getNodeDragGeometriesForNodeIds(
+  document: RendererDocument,
+  nodeIds: string[]
+): NodeDragGeometry[] {
+  return selectedNodeGeometries(document, nodeIds).map(toNodeDragGeometry);
+}
+
+export function getSelectionBoundsForNodeIds(
+  document: RendererDocument,
+  nodeIds: string[]
+): SelectionBounds | null {
+  const geometries = selectedNodeGeometries(document, nodeIds);
+  return geometries.length ? geometryBounds(geometries) : null;
+}
+
+export function moveSelectedNodesBy(
+  state: EditorState,
+  delta: { x: number; y: number },
+  nodeIds = selectionNodeIds(state.selection)
+): EditorState {
+  const geometries = selectedNodeGeometries(state.document, nodeIds);
+  const patches = geometries.flatMap((geometry) => {
+    const nextX = Math.round(geometry.node.transform.x + delta.x);
+    const nextY = Math.round(geometry.node.transform.y + delta.y);
+
+    if (nextX === geometry.node.transform.x && nextY === geometry.node.transform.y) {
+      return [];
+    }
+
+    return [{ nodeId: geometry.node.id, patch: { x: nextX, y: nextY } }];
+  });
+
+  return executeBatchGeometryCommand(state, patches);
+}
+
+export function calculateSnapForMovingBounds(
+  document: RendererDocument,
+  movingNodeIds: string[],
+  movingBounds: SelectionBounds,
+  rawDelta: { x: number; y: number },
+  threshold = DEFAULT_SNAP_THRESHOLD
+): SnapResult {
+  const targetGeometries = collectSnapTargetGeometries(document, new Set(movingNodeIds));
+  const xSnap = findBestAxisSnap("x", movingBounds, rawDelta, targetGeometries, threshold);
+  const ySnap = findBestAxisSnap("y", movingBounds, rawDelta, targetGeometries, threshold);
+  const delta = {
+    x: rawDelta.x + (xSnap?.offset ?? 0),
+    y: rawDelta.y + (ySnap?.offset ?? 0)
+  };
+  const movedBounds = translateBounds(movingBounds, delta);
+  const guides: SnapGuide[] = [];
+
+  if (xSnap) {
+    guides.push({
+      orientation: "vertical",
+      x: xSnap.targetPosition,
+      y1: Math.min(movedBounds.y, xSnap.target.bounds.y) - 24,
+      y2:
+        Math.max(
+          movedBounds.y + movedBounds.height,
+          xSnap.target.bounds.y + xSnap.target.bounds.height
+        ) + 24
+    });
+  }
+
+  if (ySnap) {
+    guides.push({
+      orientation: "horizontal",
+      y: ySnap.targetPosition,
+      x1: Math.min(movedBounds.x, ySnap.target.bounds.x) - 24,
+      x2:
+        Math.max(
+          movedBounds.x + movedBounds.width,
+          ySnap.target.bounds.x + ySnap.target.bounds.width
+        ) + 24
+    });
+  }
+
+  return { delta, guides };
 }
 
 export function alignSelectedNodes(state: EditorState, mode: AlignmentMode): EditorState {
@@ -1033,6 +1141,96 @@ function geometryBounds(geometries: NodeGeometry[]): SelectionBounds {
   );
 
   return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+function toNodeDragGeometry(geometry: NodeGeometry): NodeDragGeometry {
+  return {
+    nodeId: geometry.node.id,
+    transform: { x: geometry.node.transform.x, y: geometry.node.transform.y },
+    parentAbsolutePosition: geometry.parentAbsolutePosition,
+    bounds: geometry.bounds
+  };
+}
+
+function translateBounds(bounds: SelectionBounds, delta: { x: number; y: number }): SelectionBounds {
+  return {
+    ...bounds,
+    x: bounds.x + delta.x,
+    y: bounds.y + delta.y
+  };
+}
+
+type SnapAxis = "x" | "y";
+
+interface AxisSnap {
+  offset: number;
+  targetPosition: number;
+  target: NodeGeometry;
+}
+
+function findBestAxisSnap(
+  axis: SnapAxis,
+  movingBounds: SelectionBounds,
+  rawDelta: { x: number; y: number },
+  targetGeometries: NodeGeometry[],
+  threshold: number
+): AxisSnap | null {
+  let best: AxisSnap | null = null;
+  const movingOffset = axis === "x" ? rawDelta.x : rawDelta.y;
+  const movingAnchors = axisAnchorsForBounds(movingBounds, axis);
+
+  for (const movingAnchor of movingAnchors) {
+    const movedPosition = movingAnchor + movingOffset;
+
+    for (const target of targetGeometries) {
+      for (const targetPosition of axisAnchorsForBounds(target.bounds, axis)) {
+        const offset = targetPosition - movedPosition;
+        if (Math.abs(offset) > threshold) {
+          continue;
+        }
+        if (!best || Math.abs(offset) < Math.abs(best.offset)) {
+          best = { offset, targetPosition, target };
+        }
+      }
+    }
+  }
+
+  return best;
+}
+
+function axisAnchorsForBounds(bounds: SelectionBounds, axis: SnapAxis): number[] {
+  if (axis === "x") {
+    return [bounds.x, bounds.x + bounds.width / 2, bounds.x + bounds.width];
+  }
+
+  return [bounds.y, bounds.y + bounds.height / 2, bounds.y + bounds.height];
+}
+
+function collectSnapTargetGeometries(
+  document: RendererDocument,
+  excludedNodeIds: Set<string>
+): NodeGeometry[] {
+  const geometries: NodeGeometry[] = [];
+
+  for (const page of document.pages) {
+    for (const node of page.children) {
+      if (excludedNodeIds.has(node.id)) {
+        continue;
+      }
+      geometries.push({
+        node,
+        parentAbsolutePosition: { x: 0, y: 0 },
+        bounds: {
+          x: node.transform.x,
+          y: node.transform.y,
+          width: node.size.width,
+          height: node.size.height
+        }
+      });
+    }
+  }
+
+  return geometries;
 }
 
 function alignmentPatch(

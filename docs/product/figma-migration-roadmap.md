@@ -1,6 +1,6 @@
 # Figma To Canvas MCP Editor Migration Roadmap
 
-Last checked: 2026-06-17
+Last checked: 2026-06-18
 
 This roadmap translates `docs/product/figma-feature-inventory.md` into implementation lanes for Canvas MCP Editor. It does not change the product position: this project remains a local-first, AI-operable design editor, not a feature-for-feature Figma clone.
 
@@ -20,6 +20,7 @@ The current main branch already has:
 
 - Rust/TypeScript document primitives for pages, frames, rectangles, text, images, components, instances, and geometry.
 - Browser editor shell with creation, selection, dragging, bottom-right resizing, inspector geometry, color/text editing, undo/redo, and zoom.
+- Shift-click and marquee multi-selection, selected-layer alignment/distribution, grouped selected-layer dragging, and transient snap guides for page-level peer bounds/centers.
 - Component definitions, instances, and detach.
 - HTTP and MCP agent control for inspect, find, command application, validation, change summaries, components, and code export.
 - Structured code export with implementation specs and token candidates.
@@ -157,5 +158,5 @@ Implementation shape:
 2. Keep the core shortcut slice from `docs/product/figma-core-interaction-rules.md` green: selected-layer Delete/Backspace and Cmd/Ctrl+D duplicate.
 3. Keep Shift-click multi-selection and drag 영역 선택 green.
 4. Keep alignment/distribute commands green for multi-selected layers.
-5. Add snap guides only after live drag preview and multi-selection bounds are stable.
+5. Extend the landed grouped drag and snap guide slice with all resize handles, rotation, rulers, manual guides, and snap settings.
 6. Merge only after `pnpm test`, `pnpm typecheck`, web build, relevant Playwright suites, and direct live UI interaction verification pass.
