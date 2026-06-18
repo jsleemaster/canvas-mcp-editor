@@ -43,6 +43,14 @@ export async function updateProject(
   return writeProject(`${API_BASE_URL}/projects/${projectId}`, "PATCH", input, fetcher);
 }
 
+export async function duplicateProject(
+  projectId: string,
+  input: { projectId?: string; name?: string; documentIdPrefix?: string },
+  fetcher: typeof fetch = fetch
+): Promise<ProjectManifest> {
+  return writeProject(`${API_BASE_URL}/projects/${projectId}/duplicate`, "POST", input, fetcher);
+}
+
 export async function setProjectSharing(
   projectId: string,
   sharing: ProjectSharing,
@@ -51,17 +59,25 @@ export async function setProjectSharing(
   return writeProject(`${API_BASE_URL}/projects/${projectId}/sharing`, "PATCH", sharing, fetcher);
 }
 
+export async function deleteProject(
+  projectId: string,
+  fetcher: typeof fetch = fetch
+): Promise<ProjectManifest> {
+  return writeProject(`${API_BASE_URL}/projects/${projectId}`, "DELETE", undefined, fetcher);
+}
+
 async function writeProject(
   url: string,
-  method: "POST" | "PATCH",
+  method: "POST" | "PATCH" | "DELETE",
   body: unknown,
   fetcher: typeof fetch
 ): Promise<ProjectManifest> {
-  const response = await fetcher(url, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
+  const init: RequestInit = { method };
+  if (body !== undefined) {
+    init.headers = { "Content-Type": "application/json" };
+    init.body = JSON.stringify(body);
+  }
+  const response = await fetcher(url, init);
   const payload = await readJson(response);
   return (payload as { project: ProjectManifest }).project;
 }

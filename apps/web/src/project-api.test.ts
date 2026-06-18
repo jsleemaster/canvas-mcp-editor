@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
   createProject,
+  deleteProject,
+  duplicateProject,
   fetchProjects,
   setProjectSharing,
   updateProject,
@@ -33,22 +35,57 @@ describe("project api", () => {
   });
 
   test("creates, renames, and shares projects", async () => {
-    const requests: Array<{ url: string; body: unknown }> = [];
+    const requests: Array<{ url: string; method: string | undefined; headers: unknown; body: unknown }> = [];
     const fetcher = async (url: RequestInfo | URL, init?: RequestInit) => {
-      requests.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
+      requests.push({
+        url: String(url),
+        method: init?.method,
+        headers: init?.headers,
+        body: init?.body ? JSON.parse(String(init.body)) : null
+      });
       return new Response(JSON.stringify({ project }), { status: 200 });
     };
 
     await createProject({ name: "새 프로젝트" }, fetcher as typeof fetch);
     await updateProject("project-web", { name: "리네임" }, fetcher as typeof fetch);
+    await duplicateProject(
+      "project-web",
+      { projectId: "project-web-copy", name: "복제", documentIdPrefix: "web-copy" },
+      fetcher as typeof fetch
+    );
     await setProjectSharing("project-web", { mode: "team", teamId: "team-web" }, fetcher as typeof fetch);
+    await deleteProject("project-web-copy", fetcher as typeof fetch);
 
     expect(requests).toEqual([
-      { url: "http://127.0.0.1:4317/projects", body: { name: "새 프로젝트" } },
-      { url: "http://127.0.0.1:4317/projects/project-web", body: { name: "리네임" } },
+      {
+        url: "http://127.0.0.1:4317/projects",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: { name: "새 프로젝트" }
+      },
+      {
+        url: "http://127.0.0.1:4317/projects/project-web",
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: { name: "리네임" }
+      },
+      {
+        url: "http://127.0.0.1:4317/projects/project-web/duplicate",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: { projectId: "project-web-copy", name: "복제", documentIdPrefix: "web-copy" }
+      },
       {
         url: "http://127.0.0.1:4317/projects/project-web/sharing",
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
         body: { mode: "team", teamId: "team-web" }
+      },
+      {
+        url: "http://127.0.0.1:4317/projects/project-web-copy",
+        method: "DELETE",
+        headers: undefined,
+        body: null
       }
     ]);
   });

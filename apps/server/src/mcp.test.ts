@@ -109,6 +109,31 @@ describe("MCP AI editing workflow", () => {
       })
     );
     expect(shared.project.sharing).toEqual({ mode: "team", teamId: "team-mcp" });
+
+    const duplicated = parseToolJson(
+      await client.callTool({
+        name: "duplicate_project",
+        arguments: {
+          projectId: "project-mcp",
+          newProjectId: "project-mcp-copy",
+          name: "MCP 복제",
+          documentIdPrefix: "mcp-copy"
+        }
+      })
+    );
+    expect(duplicated.project).toMatchObject({
+      projectId: "project-mcp-copy",
+      name: "MCP 복제",
+      currentDocumentId: "mcp-copy-document-mcp-2"
+    });
+
+    const deleted = parseToolJson(
+      await client.callTool({
+        name: "delete_project",
+        arguments: { projectId: "project-mcp-copy" }
+      })
+    );
+    expect(deleted.project.projectId).toBe("project-mcp-copy");
   });
 
   test("lets an MCP client inspect, edit, find, and validate a design file", async () => {

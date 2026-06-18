@@ -36,6 +36,8 @@ import {
 } from "./collaboration/team-store";
 import {
   createProject as createSavedProject,
+  deleteProject,
+  duplicateProject,
   fetchProjects,
   setProjectSharing,
   updateProject,
@@ -1177,6 +1179,56 @@ export function App() {
     }
   };
 
+  const duplicateCurrentProject = async () => {
+    if (!currentProject) {
+      return;
+    }
+
+    try {
+      const project = await duplicateProject(currentProject.projectId, {
+        name: `${currentProject.name} 사본`
+      });
+      const nextProjects = [project, ...projects.filter((candidate) => candidate.projectId !== project.projectId)];
+      await loadProjectDocument(project, nextProjects);
+      setProjectStatus("프로젝트 복제됨");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "프로젝트를 복제하지 못했습니다";
+      setProjectStatus(message);
+    }
+  };
+
+  const deleteCurrentProject = async () => {
+    if (!currentProject) {
+      return;
+    }
+    if (projects.length <= 1) {
+      setProjectStatus("마지막 프로젝트는 삭제할 수 없습니다");
+      return;
+    }
+    if (!window.confirm(`${currentProject.name} 프로젝트를 삭제할까요?`)) {
+      return;
+    }
+
+    try {
+      const deletedProject = currentProject;
+      await deleteProject(currentProject.projectId);
+      const nextProjects = projects.filter((candidate) => candidate.projectId !== deletedProject.projectId);
+      const nextProject = nextProjects[0] ?? null;
+      if (nextProject) {
+        await loadProjectDocument(nextProject, nextProjects);
+      } else {
+        setProjects([]);
+        setCurrentProject(null);
+        setProjectNameDraft("");
+        await projectStore.setCurrentProjectId("");
+      }
+      setProjectStatus(`${deletedProject.name} 프로젝트 삭제됨`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "프로젝트를 삭제하지 못했습니다";
+      setProjectStatus(message);
+    }
+  };
+
   const linkProjectToCurrentTeam = async () => {
     if (!currentProject || !collabSession) {
       return;
@@ -1747,6 +1799,12 @@ export function App() {
                 </button>
                 <button type="button" onClick={saveProjectName} disabled={!currentProject}>
                   이름 저장
+                </button>
+                <button type="button" onClick={duplicateCurrentProject} disabled={!currentProject}>
+                  현재 프로젝트 복제
+                </button>
+                <button type="button" onClick={deleteCurrentProject} disabled={!currentProject || projects.length <= 1}>
+                  현재 프로젝트 삭제
                 </button>
                 <button type="button" onClick={linkProjectToCurrentTeam} disabled={!currentProject || !collabSession}>
                   현재 팀과 공유

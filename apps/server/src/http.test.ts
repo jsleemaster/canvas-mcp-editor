@@ -94,6 +94,32 @@ describe("HTTP server", () => {
     });
     expect(privateProject.statusCode).toBe(200);
     expect(privateProject.json().project.sharing).toEqual({ mode: "private" });
+
+    const duplicated = await server.inject({
+      method: "POST",
+      url: "/projects/project-http/duplicate",
+      payload: {
+        projectId: "project-http-copy",
+        name: "HTTP 복제",
+        documentIdPrefix: "http-copy"
+      }
+    });
+    expect(duplicated.statusCode).toBe(200);
+    expect(duplicated.json().project).toMatchObject({
+      projectId: "project-http-copy",
+      name: "HTTP 복제",
+      currentDocumentId: "http-copy-document-http-2"
+    });
+
+    const deleted = await server.inject({
+      method: "DELETE",
+      url: "/projects/project-http-copy"
+    });
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json().project.projectId).toBe("project-http-copy");
+
+    const missing = await server.inject({ method: "GET", url: "/projects/project-http-copy" });
+    expect(missing.statusCode).toBe(404);
   });
 
   test("answers browser CORS preflight for JSON project mutations", async () => {

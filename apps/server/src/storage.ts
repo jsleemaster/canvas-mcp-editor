@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   applyAgentCommandsToDocument,
@@ -138,6 +138,12 @@ export interface UpdateProjectInput {
 export interface CreateProjectDocumentInput {
   documentId?: string;
   name?: string;
+}
+
+export interface DuplicateProjectInput {
+  projectId?: string;
+  name?: string;
+  documentIdPrefix?: string;
 }
 
 export class FileStorage {
@@ -338,6 +344,83 @@ export class FileStorage {
       sharing: nextSharing,
       updatedAt: new Date().toISOString()
     });
+  }
+
+  async duplicateProject(
+    sourceProjectId: string,
+    input: DuplicateProjectInput = {}
+  ): Promise<ProjectManifest> {
+    const source = await this.readProject(sourceProjectId);
+    const now = new Date().toISOString();
+    const projectId = input.projectId ?? createStorageId("project");
+    assertSafeStorageId(projectId);
+    if (input.documentIdPrefix !== undefined) {
+      assertSafeStorageId(input.documentIdPrefix);
+    }
+    if (await pathExists(this.projectPathFor(projectId))) {
+      throw new Error(`project already exists: ${projectId}`);
+    }
+
+    const documents: ProjectDocumentSummary[] = [];
+    let currentDocumentId = "";
+    for (const sourceDocument of source.documents) {
+      const documentId = input.documentIdPrefix
+        ? `${input.documentIdPrefix}-${sourceDocument.documentId}`
+        : createStorageId("document");
+      assertSafeStorageId(documentId);
+      if (await pathExists(this.filePathFor(documentId))) {
+        throw new Error(`document already exists: ${documentId}`);
+      }
+
+      const document = await this.readFile(sourceDocument.documentId);
+      const name = `${sourceDocument.name} 사본`;
+      await this.writeFile(documentId, { ...structuredClone(document), id: documentId, name });
+      documents.push({
+        documentId,
+        name,
+        createdAt: now,
+        updatedAt: now
+      });
+      if (sourceDocument.documentId === source.currentDocumentId) {
+        currentDocumentId = documentId;
+      }
+    }
+
+    return this.writeProject({
+      schemaVersion: 1,
+      projectId,
+      name: normalizeName(input.name, `${source.name} 사본`),
+      createdAt: now,
+      updatedAt: now,
+      currentDocumentId: currentDocumentId || documents[0].documentId,
+      documents,
+      sharing: { mode: "private" }
+    });
+  }
+
+  async deleteProject(projectId: string): Promise<ProjectManifest> {
+    const projects = await this.listProjects();
+    const project = projects.find((candidate) => candidate.projectId === projectId);
+    if (!project) {
+      throw new Error(`project not found: ${projectId}`);
+    }
+    if (projects.length <= 1) {
+      throw new Error("cannot delete last project");
+    }
+
+    const otherDocumentIds = new Set(
+      projects
+        .filter((candidate) => candidate.projectId !== projectId)
+        .flatMap((candidate) => candidate.documents.map((document) => document.documentId))
+    );
+    await rm(this.projectPathFor(project.projectId), { force: true });
+    await Promise.all(
+      project.documents
+        .filter((document) => !otherDocumentIds.has(document.documentId))
+        .map((document) => rm(this.filePathFor(document.documentId), { force: true }))
+    );
+
+    return project;
   }
 
   async readFile(fileId: string): Promise<DesignFile> {
@@ -580,6 +663,15 @@ function normalizeName(value: string | undefined, fallback: string) {
     throw new Error("name is required");
   }
   return normalized;
+}
+
+async function pathExists(filePath: string) {
+  try {
+    await stat(filePath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function createInitialDesignFile(documentId: string, name: string): DesignFile {
