@@ -93,6 +93,9 @@ Implementation shape:
 
 ## Lane 4: Collaboration, Review, And History
 
+Team setup and ownership sequencing is tracked separately in
+`docs/product/team-collaboration-roadmap.md`.
+
 Figma capabilities to bring over:
 
 - Canvas comments with threads, mentions, resolved state, and prototype comments.
