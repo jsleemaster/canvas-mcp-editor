@@ -334,6 +334,50 @@ test("Figma-like multi-selection supports Shift-click and area selection", async
   await expect(page.getByText("2개 레이어 선택됨")).toBeVisible();
 });
 
+test("Figma-like alignment and distribution toolbar controls selected layers", async ({ page }) => {
+  await rm(".canvas-mcp-editor/files/sample-file.json", { force: true });
+  await rm("apps/server/.canvas-mcp-editor/files/sample-file.json", { force: true });
+
+  await page.goto("http://127.0.0.1:5173/");
+
+  await page.getByRole("button", { name: "사각형 만들기" }).click();
+  await page.getByRole("button", { name: "텍스트 만들기" }).click();
+  const headlineLayer = page.getByRole("button", { name: "헤드라인" });
+  const rectangleLayer = page.getByRole("button", { name: "사각형 3" });
+  const helperTextLayer = page.getByRole("button", { name: "텍스트 4" });
+  await expect(rectangleLayer).toBeVisible();
+  await expect(helperTextLayer).toBeVisible();
+
+  await page.getByTestId("inspector-x").fill("760");
+  await expect(page.getByTestId("inspector-x")).toHaveValue("760");
+
+  await page.keyboard.down("Shift");
+  await rectangleLayer.click();
+  await headlineLayer.click();
+  await page.keyboard.up("Shift");
+  await expect(headlineLayer).toHaveClass(/is-selected/);
+  await expect(rectangleLayer).toHaveClass(/is-selected/);
+  await expect(helperTextLayer).toHaveClass(/is-selected/);
+  await expect(page.getByText("3개 레이어 선택됨")).toBeVisible();
+
+  await page.getByRole("button", { name: "왼쪽 정렬" }).click();
+  await rectangleLayer.click();
+  await expect(page.getByTestId("inspector-x")).toHaveValue("152");
+
+  await page.keyboard.press("Control+Z");
+  await helperTextLayer.click();
+  await expect(page.getByTestId("inspector-x")).toHaveValue("760");
+
+  await page.keyboard.down("Shift");
+  await rectangleLayer.click();
+  await headlineLayer.click();
+  await page.keyboard.up("Shift");
+  await page.getByRole("button", { name: "가로 분배" }).click();
+
+  await rectangleLayer.click();
+  await expect(page.getByTestId("inspector-x")).toHaveValue("506");
+});
+
 test("component instances drag as a single selected object from nested content", async ({ page }) => {
   await rm(".canvas-mcp-editor/files/sample-file.json", { force: true });
   await rm("apps/server/.canvas-mcp-editor/files/sample-file.json", { force: true });
