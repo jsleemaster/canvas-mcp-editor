@@ -17,6 +17,9 @@ export interface SelectionBounds {
   height: number;
 }
 
+export type AlignmentMode = "left" | "center" | "right" | "top" | "middle" | "bottom";
+export type DistributionMode = "horizontal" | "vertical";
+
 export interface EditorViewport {
   scale: number;
   x: number;
@@ -47,6 +50,10 @@ export type EditorCommand =
       type: "update_node_geometry";
       nodeId: string;
       patch: GeometryPatch;
+    }
+  | {
+      type: "update_nodes_geometry";
+      patches: Array<{ nodeId: string; patch: GeometryPatch }>;
     }
   | {
       type: "set_fill";
@@ -340,6 +347,59 @@ export function nudgeSelectedNode(
   });
 }
 
+export function alignSelectedNodes(state: EditorState, mode: AlignmentMode): EditorState {
+  const geometries = selectedNodeGeometries(state.document, selectionNodeIds(state.selection));
+  if (geometries.length < 2) {
+    return state;
+  }
+
+  const selectionBounds = geometryBounds(geometries);
+  const patches = geometries.flatMap((geometry) => {
+    const patch = alignmentPatch(geometry, selectionBounds, mode);
+    return patch ? [{ nodeId: geometry.node.id, patch }] : [];
+  });
+
+  return executeBatchGeometryCommand(state, patches);
+}
+
+export function distributeSelectedNodes(state: EditorState, mode: DistributionMode): EditorState {
+  const geometries = selectedNodeGeometries(state.document, selectionNodeIds(state.selection));
+  if (geometries.length < 3) {
+    return state;
+  }
+
+  const sortedGeometries = [...geometries].sort((a, b) => {
+    const firstStart = mode === "horizontal" ? a.bounds.x : a.bounds.y;
+    const secondStart = mode === "horizontal" ? b.bounds.x : b.bounds.y;
+    return firstStart - secondStart;
+  });
+  const first = sortedGeometries[0];
+  const last = sortedGeometries.at(-1);
+  if (!first || !last) {
+    return state;
+  }
+
+  const totalSize = sortedGeometries.reduce(
+    (sum, geometry) => sum + (mode === "horizontal" ? geometry.bounds.width : geometry.bounds.height),
+    0
+  );
+  const start = mode === "horizontal" ? first.bounds.x : first.bounds.y;
+  const end =
+    mode === "horizontal"
+      ? last.bounds.x + last.bounds.width
+      : last.bounds.y + last.bounds.height;
+  const gap = (end - start - totalSize) / (sortedGeometries.length - 1);
+
+  let cursor = start;
+  const patches = sortedGeometries.flatMap((geometry) => {
+    const patch = distributionPatch(geometry, mode, cursor);
+    cursor += (mode === "horizontal" ? geometry.bounds.width : geometry.bounds.height) + gap;
+    return patch ? [{ nodeId: geometry.node.id, patch }] : [];
+  });
+
+  return executeBatchGeometryCommand(state, patches);
+}
+
 export function deleteSelectedNode(state: EditorState): EditorState {
   const selected = findSelectedNodeWithParent(state);
   if (!selected) {
@@ -439,6 +499,50 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       relayoutDocument(next);
 
       return { document: next, inverse };
+    }
+    case "update_nodes_geometry": {
+      const inversePatches: Array<{ nodeId: string; patch: GeometryPatch }> = [];
+      let changed = false;
+
+      for (const geometryPatch of command.patches) {
+        const node = findNodeById(next, geometryPatch.nodeId);
+        if (!node) {
+          continue;
+        }
+
+        inversePatches.push({
+          nodeId: node.id,
+          patch: {
+            x: node.transform.x,
+            y: node.transform.y,
+            width: node.size.width,
+            height: node.size.height
+          }
+        });
+        const previousSize = { ...node.size };
+        node.transform = {
+          ...node.transform,
+          x: geometryPatch.patch.x ?? node.transform.x,
+          y: geometryPatch.patch.y ?? node.transform.y
+        };
+        node.size = {
+          width: clampSize(geometryPatch.patch.width ?? node.size.width),
+          height: clampSize(geometryPatch.patch.height ?? node.size.height)
+        };
+        applyConstraintsAfterParentResize(node, previousSize);
+        changed = true;
+      }
+
+      if (!changed) {
+        return { document, inverse: null };
+      }
+
+      relayoutDocument(next);
+
+      return {
+        document: next,
+        inverse: { type: "update_nodes_geometry", patches: inversePatches }
+      };
     }
     case "set_fill": {
       const node = findNodeById(next, command.nodeId);
@@ -847,6 +951,155 @@ function absolutePositionInNode(
   }
 
   return null;
+}
+
+interface NodeGeometry {
+  node: RendererNode;
+  parentAbsolutePosition: { x: number; y: number };
+  bounds: SelectionBounds;
+}
+
+function selectedNodeGeometries(document: RendererDocument, nodeIds: string[]): NodeGeometry[] {
+  const geometries: NodeGeometry[] = [];
+  for (const nodeId of nodeIds) {
+    const geometry = findNodeGeometry(document, nodeId);
+    if (geometry) {
+      geometries.push(geometry);
+    }
+  }
+
+  return geometries;
+}
+
+function findNodeGeometry(document: RendererDocument, nodeId: string): NodeGeometry | null {
+  for (const page of document.pages) {
+    for (const node of page.children) {
+      const found = nodeGeometryInTree(node, nodeId, { x: 0, y: 0 }, null);
+      if (found) {
+        return found;
+      }
+    }
+  }
+
+  return null;
+}
+
+function nodeGeometryInTree(
+  node: RendererNode,
+  nodeId: string,
+  parentAbsolutePosition: { x: number; y: number },
+  parentLayout: NodeLayout | null
+): NodeGeometry | null {
+  const currentAbsolutePosition = {
+    x: parentAbsolutePosition.x + node.transform.x,
+    y: parentAbsolutePosition.y + node.transform.y
+  };
+
+  if (node.id === nodeId) {
+    if (normalizedAutoLayout(parentLayout)) {
+      return null;
+    }
+
+    return {
+      node,
+      parentAbsolutePosition,
+      bounds: {
+        x: currentAbsolutePosition.x,
+        y: currentAbsolutePosition.y,
+        width: node.size.width,
+        height: node.size.height
+      }
+    };
+  }
+
+  for (const child of node.children) {
+    const found = nodeGeometryInTree(child, nodeId, currentAbsolutePosition, node.layout ?? null);
+    if (found) {
+      return found;
+    }
+  }
+
+  return null;
+}
+
+function geometryBounds(geometries: NodeGeometry[]): SelectionBounds {
+  const left = Math.min(...geometries.map((geometry) => geometry.bounds.x));
+  const top = Math.min(...geometries.map((geometry) => geometry.bounds.y));
+  const right = Math.max(
+    ...geometries.map((geometry) => geometry.bounds.x + geometry.bounds.width)
+  );
+  const bottom = Math.max(
+    ...geometries.map((geometry) => geometry.bounds.y + geometry.bounds.height)
+  );
+
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+function alignmentPatch(
+  geometry: NodeGeometry,
+  selectionBounds: SelectionBounds,
+  mode: AlignmentMode
+): GeometryPatch | null {
+  if (mode === "left") {
+    return xPatch(geometry, selectionBounds.x);
+  }
+  if (mode === "center") {
+    return xPatch(
+      geometry,
+      selectionBounds.x + selectionBounds.width / 2 - geometry.bounds.width / 2
+    );
+  }
+  if (mode === "right") {
+    return xPatch(
+      geometry,
+      selectionBounds.x + selectionBounds.width - geometry.bounds.width
+    );
+  }
+  if (mode === "top") {
+    return yPatch(geometry, selectionBounds.y);
+  }
+  if (mode === "middle") {
+    return yPatch(
+      geometry,
+      selectionBounds.y + selectionBounds.height / 2 - geometry.bounds.height / 2
+    );
+  }
+
+  return yPatch(
+    geometry,
+    selectionBounds.y + selectionBounds.height - geometry.bounds.height
+  );
+}
+
+function distributionPatch(
+  geometry: NodeGeometry,
+  mode: DistributionMode,
+  targetDocumentPosition: number
+): GeometryPatch | null {
+  return mode === "horizontal"
+    ? xPatch(geometry, targetDocumentPosition)
+    : yPatch(geometry, targetDocumentPosition);
+}
+
+function xPatch(geometry: NodeGeometry, targetDocumentX: number): GeometryPatch | null {
+  const nextX = targetDocumentX - geometry.parentAbsolutePosition.x;
+  return nextX === geometry.node.transform.x ? null : { x: nextX };
+}
+
+function yPatch(geometry: NodeGeometry, targetDocumentY: number): GeometryPatch | null {
+  const nextY = targetDocumentY - geometry.parentAbsolutePosition.y;
+  return nextY === geometry.node.transform.y ? null : { y: nextY };
+}
+
+function executeBatchGeometryCommand(
+  state: EditorState,
+  patches: Array<{ nodeId: string; patch: GeometryPatch }>
+): EditorState {
+  if (!patches.length) {
+    return state;
+  }
+
+  return executeEditorCommand(state, { type: "update_nodes_geometry", patches });
 }
 
 function selectionNodeIds(selection: EditorSelection): string[] {

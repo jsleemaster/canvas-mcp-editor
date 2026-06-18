@@ -3,6 +3,13 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+test.beforeEach(async () => {
+  await rm(".canvas-mcp-editor/projects", { recursive: true, force: true });
+  await rm(".canvas-mcp-editor/files", { recursive: true, force: true });
+  await rm("apps/server/.canvas-mcp-editor/projects", { recursive: true, force: true });
+  await rm("apps/server/.canvas-mcp-editor/files", { recursive: true, force: true });
+});
+
 test("team panel shows live collaboration controls only in the collaboration tab", async ({ page }) => {
   await page.goto("http://127.0.0.1:5173/");
 

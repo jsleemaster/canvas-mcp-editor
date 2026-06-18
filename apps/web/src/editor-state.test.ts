@@ -1,8 +1,10 @@
 import { describe, expect, test } from "vitest";
 import type { RendererDocument } from "@canvas-mcp-editor/renderer";
 import {
+  alignSelectedNodes,
   createEditorState,
   deleteSelectedNode,
+  distributeSelectedNodes,
   duplicateSelectedNode,
   executeEditorCommand,
   findNodeById,
@@ -13,6 +15,7 @@ import {
   panViewport,
   redo,
   selectNodesInBounds,
+  setMultiSelection,
   setSelection,
   toggleSelection,
   setViewport,
@@ -273,6 +276,53 @@ describe("editor state commands", () => {
 
     expect(selected.selection.nodeId).toBe("rectangle-1");
     expect(selected.selection.nodeIds).toEqual(["text-1", "rectangle-1"]);
+  });
+
+  test("aligns selected nodes by document-space left edge across parents", () => {
+    const initial = setMultiSelection(
+      createEditorState(sampleDocumentWithTopLevelRectangle()),
+      ["text-1", "rectangle-1"],
+      "rectangle-1"
+    );
+
+    const aligned = alignSelectedNodes(initial, "left");
+
+    expect(getNodeAbsolutePosition(aligned.document, "text-1")).toEqual({ x: 152, y: 120 });
+    expect(findNodeById(aligned.document, "rectangle-1")?.transform).toMatchObject({
+      x: 152,
+      y: 140
+    });
+    expect(aligned.selection.nodeIds).toEqual(["text-1", "rectangle-1"]);
+    expect(findNodeById(undo(aligned).document, "rectangle-1")?.transform).toMatchObject({
+      x: 180,
+      y: 140
+    });
+  });
+
+  test("distributes selected nodes horizontally while keeping outer layers fixed", () => {
+    const document = sampleDocumentWithTopLevelRectangle();
+    document.pages[0]?.children.push({
+      id: "text-2",
+      kind: "text",
+      name: "보조 텍스트",
+      transform: { x: 760, y: 180, rotation: 0 },
+      size: { width: 220, height: 44 },
+      style: { fill: "#111827", stroke: null, stroke_width: 0, opacity: 1 },
+      content: { type: "text", value: "보조 텍스트", font_size: 24, font_family: "Inter" },
+      children: []
+    });
+    const initial = setMultiSelection(
+      createEditorState(document),
+      ["text-1", "rectangle-1", "text-2"],
+      "text-2"
+    );
+
+    const distributed = distributeSelectedNodes(initial, "horizontal");
+
+    expect(getNodeAbsolutePosition(distributed.document, "text-1")).toEqual({ x: 152, y: 120 });
+    expect(findNodeById(distributed.document, "rectangle-1")?.transform.x).toBe(506);
+    expect(findNodeById(distributed.document, "text-2")?.transform.x).toBe(760);
+    expect(distributed.selection.nodeIds).toEqual(["text-1", "rectangle-1", "text-2"]);
   });
 
   test("creates predictable default rectangle and text nodes for toolbar actions", () => {

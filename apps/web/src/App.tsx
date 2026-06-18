@@ -43,10 +43,12 @@ import {
 } from "./project-api";
 import { createIndexedDbProjectStore } from "./project-store";
 import {
+  alignSelectedNodes,
   createEditorState,
   createRectangleNode,
   createTextNode,
   deleteSelectedNode,
+  distributeSelectedNodes,
   duplicateSelectedNode,
   executeEditorCommand,
   findNodeById,
@@ -824,6 +826,8 @@ export function App() {
     [editor]
   );
   const selectedNodeIds = editor?.selection.nodeIds ?? [];
+  const canAlignSelection = selectedNodeIds.length >= 2;
+  const canDistributeSelection = selectedNodeIds.length >= 3;
   const areaSelectionBox = useMemo(() => {
     if (!editor || !areaSelection?.hasDragged) {
       return null;
@@ -1974,6 +1978,74 @@ export function App() {
             <span className="toolbar-icon toolbar-icon-detach" aria-hidden="true">
               ◇
             </span>
+          </button>
+          <button
+            type="button"
+            aria-label="왼쪽 정렬"
+            disabled={!canAlignSelection}
+            onClick={() => updateViewportFromInteraction((current) => alignSelectedNodes(current, "left"))}
+          >
+            ⇤
+          </button>
+          <button
+            type="button"
+            aria-label="가로 가운데 정렬"
+            disabled={!canAlignSelection}
+            onClick={() => updateViewportFromInteraction((current) => alignSelectedNodes(current, "center"))}
+          >
+            ↔
+          </button>
+          <button
+            type="button"
+            aria-label="오른쪽 정렬"
+            disabled={!canAlignSelection}
+            onClick={() => updateViewportFromInteraction((current) => alignSelectedNodes(current, "right"))}
+          >
+            ⇥
+          </button>
+          <button
+            type="button"
+            aria-label="위쪽 정렬"
+            disabled={!canAlignSelection}
+            onClick={() => updateViewportFromInteraction((current) => alignSelectedNodes(current, "top"))}
+          >
+            ↥
+          </button>
+          <button
+            type="button"
+            aria-label="세로 가운데 정렬"
+            disabled={!canAlignSelection}
+            onClick={() => updateViewportFromInteraction((current) => alignSelectedNodes(current, "middle"))}
+          >
+            ↕
+          </button>
+          <button
+            type="button"
+            aria-label="아래쪽 정렬"
+            disabled={!canAlignSelection}
+            onClick={() => updateViewportFromInteraction((current) => alignSelectedNodes(current, "bottom"))}
+          >
+            ↧
+          </button>
+          <button
+            type="button"
+            aria-label="가로 분배"
+            disabled={!canDistributeSelection}
+            onClick={() =>
+              updateViewportFromInteraction((current) => distributeSelectedNodes(current, "horizontal"))
+            }
+          >
+            ⟷
+          </button>
+          <button
+            type="button"
+            aria-label="세로 분배"
+            disabled={!canDistributeSelection}
+            onClick={() =>
+              updateViewportFromInteraction((current) => distributeSelectedNodes(current, "vertical"))
+            }
+          >
+            ↕
           </button>
           <button
             type="button"
