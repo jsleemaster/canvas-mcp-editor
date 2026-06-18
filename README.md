@@ -193,6 +193,10 @@ HTTP:
 
 ```bash
 curl http://127.0.0.1:4317/projects
+curl -X POST http://127.0.0.1:4317/projects/project-1/duplicate \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "프로젝트 1 사본" }'
+curl -X DELETE http://127.0.0.1:4317/projects/project-1-copy
 ```
 
 MCP:
@@ -200,6 +204,8 @@ MCP:
 ```text
 list_projects({})
 create_project({ "name": "새 프로젝트" })
+duplicate_project({ "projectId": "project-1", "name": "프로젝트 1 사본" })
+delete_project({ "projectId": "project-1-copy" })
 ```
 
 Project sharing links a project to a `TeamManifest` by `teamId`. The project

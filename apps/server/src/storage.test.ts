@@ -105,6 +105,86 @@ describe("FileStorage", () => {
     expect(privateProject.sharing).toEqual({ mode: "private" });
   });
 
+  test("duplicates a project with copied documents and private sharing", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
+    const storage = new FileStorage(tempRoot);
+
+    await storage.createProject({
+      projectId: "project-source",
+      name: "원본 프로젝트",
+      documentId: "document-source",
+      documentName: "원본 문서"
+    });
+    await storage.updateText("document-source", "text-1", "복제할 헤드라인");
+    await storage.setProjectSharing("project-source", { mode: "team", teamId: "team-source" });
+
+    const duplicated = await storage.duplicateProject("project-source", {
+      projectId: "project-copy",
+      name: "복제 프로젝트",
+      documentIdPrefix: "copy"
+    });
+
+    expect(duplicated).toMatchObject({
+      projectId: "project-copy",
+      name: "복제 프로젝트",
+      sharing: { mode: "private" }
+    });
+    expect(duplicated.currentDocumentId).toBe("copy-document-source");
+    expect(duplicated.documents).toEqual([
+      expect.objectContaining({
+        documentId: "copy-document-source",
+        name: "원본 문서 사본"
+      })
+    ]);
+    expect(await storage.readFile("document-source")).toMatchObject({
+      id: "document-source",
+      name: "원본 문서"
+    });
+    expect(await storage.readFile("copy-document-source")).toMatchObject({
+      id: "copy-document-source",
+      name: "원본 문서 사본",
+      pages: [
+        expect.objectContaining({
+          children: [
+            expect.objectContaining({
+              children: [
+                expect.objectContaining({
+                  content: expect.objectContaining({ value: "복제할 헤드라인" })
+                })
+              ]
+            })
+          ]
+        })
+      ]
+    });
+  });
+
+  test("deletes a project and its owned documents while preserving other projects", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
+    const storage = new FileStorage(tempRoot);
+
+    await storage.createProject({
+      projectId: "project-delete",
+      name: "삭제 프로젝트",
+      documentId: "document-delete",
+      documentName: "삭제 문서"
+    });
+    await storage.createProject({
+      projectId: "project-keep",
+      name: "유지 프로젝트",
+      documentId: "document-keep",
+      documentName: "유지 문서"
+    });
+
+    const deleted = await storage.deleteProject("project-delete");
+
+    expect(deleted.projectId).toBe("project-delete");
+    await expect(storage.readProject("project-delete")).rejects.toThrow();
+    await expect(storage.readFile("document-delete")).rejects.toThrow();
+    await expect(storage.readFile("document-keep")).resolves.toMatchObject({ id: "document-keep" });
+    await expect(storage.deleteProject("project-keep")).rejects.toThrow(/last project/i);
+  });
+
   test("rejects unsafe project and document ids", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
     const storage = new FileStorage(tempRoot);

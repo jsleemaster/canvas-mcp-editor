@@ -305,6 +305,61 @@ export function createMcpServer(storage = new FileStorage()) {
   );
 
   server.registerTool(
+    "duplicate_project",
+    {
+      description: "Duplicate a saved project and copy its documents into new local document ids.",
+      annotations: writeToolAnnotations,
+      inputSchema: {
+        projectId: z.string().describe("Source project id returned by list_projects"),
+        newProjectId: z.string().optional().describe("Optional safe id for the duplicated project"),
+        name: z.string().optional().describe("Duplicated project display name"),
+        documentIdPrefix: z
+          .string()
+          .optional()
+          .describe("Optional safe prefix applied to copied document ids")
+      }
+    },
+    async ({ projectId, newProjectId, name, documentIdPrefix }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              project: await storage.duplicateProject(projectId, {
+                projectId: newProjectId,
+                name,
+                documentIdPrefix
+              })
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "delete_project",
+    {
+      description:
+        "Delete a saved project manifest and local documents that are not referenced by another project.",
+      annotations: writeToolAnnotations,
+      inputSchema: {
+        projectId: z.string().describe("Project id returned by list_projects")
+      }
+    },
+    async ({ projectId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ project: await storage.deleteProject(projectId) }, null, 2)
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
     "get_file_metadata",
     {
       description: "Get page and node counts for a local design file.",

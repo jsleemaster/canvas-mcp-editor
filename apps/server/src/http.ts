@@ -5,9 +5,17 @@ import { FileStorage, type DesignNode, type GeometryPatch } from "./storage.js";
 export function createHttpServer(storage = new FileStorage()) {
   const server = Fastify({ logger: true });
 
+  server.setErrorHandler((error, _request, reply) => {
+    if ((error as { code?: string }).code === "ENOENT") {
+      return reply.code(404).send({ error: "not found" });
+    }
+
+    return reply.send(error);
+  });
+
   server.addHook("onRequest", async (_request, reply) => {
     reply.header("Access-Control-Allow-Origin", "*");
-    reply.header("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS");
+    reply.header("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
     reply.header("Access-Control-Allow-Headers", "Content-Type");
   });
 
@@ -50,6 +58,19 @@ export function createHttpServer(storage = new FileStorage()) {
     Body: { mode: "private" } | { mode: "team"; teamId: string };
   }>("/projects/:projectId/sharing", async (request) => {
     return { project: await storage.setProjectSharing(request.params.projectId, request.body) };
+  });
+
+  server.post<{
+    Params: { projectId: string };
+    Body: { projectId?: string; name?: string; documentIdPrefix?: string };
+  }>("/projects/:projectId/duplicate", async (request) => {
+    return {
+      project: await storage.duplicateProject(request.params.projectId, request.body)
+    };
+  });
+
+  server.delete<{ Params: { projectId: string } }>("/projects/:projectId", async (request) => {
+    return { project: await storage.deleteProject(request.params.projectId) };
   });
 
   server.get("/files", async () => {

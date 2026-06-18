@@ -41,6 +41,41 @@ test("creates, reopens, and team-links a saved project", async ({ page }) => {
   expect((await projectResponse.json()).project.sharing).toMatchObject({ mode: "team" });
 });
 
+test("duplicates and deletes a saved project from the project panel", async ({ page }) => {
+  await rm(".canvas-mcp-editor/projects", { recursive: true, force: true });
+  await rm(".canvas-mcp-editor/files", { recursive: true, force: true });
+  await rm("apps/server/.canvas-mcp-editor/projects", { recursive: true, force: true });
+  await rm("apps/server/.canvas-mcp-editor/files", { recursive: true, force: true });
+
+  await page.goto("http://127.0.0.1:5173/");
+  await page.getByRole("button", { name: "새 프로젝트 만들기" }).click();
+  await expect(page.getByTestId("project-status")).toContainText("새 프로젝트 저장됨");
+  const sourceProjectId = await page.getByTestId("project-switcher").inputValue();
+
+  await page.getByRole("button", { name: "현재 프로젝트 복제" }).click();
+  await expect(page.getByTestId("project-status")).toContainText("프로젝트 복제됨");
+  const duplicatedProjectId = await page.getByTestId("project-switcher").inputValue();
+  expect(duplicatedProjectId).not.toBe(sourceProjectId);
+  await expect(page.getByTestId("project-name")).toHaveValue(/사본/);
+
+  const projectsAfterDuplicate = await page.request.get("http://127.0.0.1:4317/projects");
+  expect(projectsAfterDuplicate.ok()).toBeTruthy();
+  const duplicatePayload = await projectsAfterDuplicate.json();
+  expect(duplicatePayload.projects.map((project: { projectId: string }) => project.projectId)).toEqual(
+    expect.arrayContaining([sourceProjectId, duplicatedProjectId])
+  );
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "현재 프로젝트 삭제" }).click();
+  await expect(page.getByTestId("project-status")).toContainText("프로젝트 삭제됨");
+  await expect(page.getByTestId("project-switcher")).not.toHaveValue(duplicatedProjectId);
+
+  const deletedProject = await page.request.get(
+    `http://127.0.0.1:4317/projects/${duplicatedProjectId}`
+  );
+  expect(deletedProject.status()).toBe(404);
+});
+
 test("canvas editor MVP supports Korean-first select, inspect, edit, undo, create, and zoom", async ({ page }) => {
   await rm(".canvas-mcp-editor/files/sample-file.json", { force: true });
   await rm("apps/server/.canvas-mcp-editor/files/sample-file.json", { force: true });
