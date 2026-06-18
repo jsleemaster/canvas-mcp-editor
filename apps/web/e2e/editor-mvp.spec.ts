@@ -549,6 +549,21 @@ test("selected layers expose four corner resize handles and an immediate size ba
   await expect(page.getByTestId("selection-size-badge")).toHaveText("280 x 68");
 });
 
+test("selected frames show thin padding and child spacing guides", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+  await page.getByRole("button", { name: "사각형 만들기" }).click();
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+
+  await expect(page.getByTestId("frame-spacing-overlay")).toBeVisible();
+  await expect(page.getByTestId("frame-padding-left")).toHaveText("32");
+  await expect(page.getByTestId("frame-padding-top")).toHaveText("40");
+  await expect(page.getByTestId("frame-padding-right")).toHaveText("80");
+  await expect(page.getByTestId("frame-padding-bottom")).toHaveText("44");
+  await expect(page.getByTestId("frame-spacing-vertical")).toHaveText("52");
+});
+
 test("component instances drag as a single selected object from nested content", async ({ page }) => {
   await createProjectFromEmptyState(page);
   await page.getByRole("button", { name: "랜딩 프레임" }).click();

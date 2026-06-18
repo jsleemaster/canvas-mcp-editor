@@ -164,6 +164,23 @@ interface SelectionChromeOverlay {
   handles: Array<{ corner: ResizeCorner; left: number; top: number }>;
 }
 
+interface FrameSpacingSegment {
+  id: string;
+  testId: string;
+  orientation: "horizontal" | "vertical";
+  left: number;
+  top: number;
+  width?: number;
+  height?: number;
+  labelLeft: number;
+  labelTop: number;
+  text: string;
+}
+
+interface FrameSpacingOverlay {
+  segments: FrameSpacingSegment[];
+}
+
 const RESIZE_CORNERS: ResizeCorner[] = ["top-left", "top-right", "bottom-left", "bottom-right"];
 const MIN_RESIZE_SIZE = 1;
 
@@ -466,6 +483,171 @@ function createSelectionChromeOverlay(
       };
     })
   };
+}
+
+function childBoundsForFrame(frameBounds: SelectionBounds, frame: RendererNode): SelectionBounds[] {
+  return frame.children.map((child) => ({
+    x: frameBounds.x + child.transform.x,
+    y: frameBounds.y + child.transform.y,
+    width: child.size.width,
+    height: child.size.height
+  }));
+}
+
+function boundsUnion(boundsList: SelectionBounds[]): SelectionBounds {
+  const left = Math.min(...boundsList.map((bounds) => bounds.x));
+  const top = Math.min(...boundsList.map((bounds) => bounds.y));
+  const right = Math.max(...boundsList.map((bounds) => bounds.x + bounds.width));
+  const bottom = Math.max(...boundsList.map((bounds) => bounds.y + bounds.height));
+
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+function createFrameSpacingOverlay(
+  frameBounds: SelectionBounds,
+  frame: RendererNode,
+  viewport: EditorState["viewport"]
+): FrameSpacingOverlay | null {
+  const children = childBoundsForFrame(frameBounds, frame);
+  if (!children.length) {
+    return null;
+  }
+
+  const contentBounds = boundsUnion(children);
+  const contentCenterX = contentBounds.x + contentBounds.width / 2;
+  const contentCenterY = contentBounds.y + contentBounds.height / 2;
+  const segments: FrameSpacingSegment[] = [];
+
+  addFrameSpacingSegment(segments, "padding-left", "frame-padding-left", "horizontal", {
+    start: { x: frameBounds.x, y: contentCenterY },
+    end: { x: contentBounds.x, y: contentCenterY },
+    distance: contentBounds.x - frameBounds.x,
+    viewport
+  });
+  addFrameSpacingSegment(segments, "padding-right", "frame-padding-right", "horizontal", {
+    start: { x: contentBounds.x + contentBounds.width, y: contentCenterY },
+    end: { x: frameBounds.x + frameBounds.width, y: contentCenterY },
+    distance: frameBounds.x + frameBounds.width - (contentBounds.x + contentBounds.width),
+    viewport
+  });
+  addFrameSpacingSegment(segments, "padding-top", "frame-padding-top", "vertical", {
+    start: { x: contentCenterX, y: frameBounds.y },
+    end: { x: contentCenterX, y: contentBounds.y },
+    distance: contentBounds.y - frameBounds.y,
+    viewport
+  });
+  addFrameSpacingSegment(segments, "padding-bottom", "frame-padding-bottom", "vertical", {
+    start: { x: contentCenterX, y: contentBounds.y + contentBounds.height },
+    end: { x: contentCenterX, y: frameBounds.y + frameBounds.height },
+    distance: frameBounds.y + frameBounds.height - (contentBounds.y + contentBounds.height),
+    viewport
+  });
+
+  addSiblingSpacingSegments(segments, children, "vertical", viewport);
+  addSiblingSpacingSegments(segments, children, "horizontal", viewport);
+
+  return segments.length ? { segments } : null;
+}
+
+function addFrameSpacingSegment(
+  segments: FrameSpacingSegment[],
+  id: string,
+  testId: string,
+  orientation: "horizontal" | "vertical",
+  details: {
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+    distance: number;
+    viewport: EditorState["viewport"];
+  }
+) {
+  if (details.distance <= 0) {
+    return;
+  }
+
+  const start = documentPointToViewport({ ...details.start, space: "document" }, details.viewport);
+  const end = documentPointToViewport({ ...details.end, space: "document" }, details.viewport);
+  const left = Math.round(Math.min(start.x, end.x));
+  const top = Math.round(Math.min(start.y, end.y));
+  const width = Math.max(1, Math.round(Math.abs(end.x - start.x)));
+  const height = Math.max(1, Math.round(Math.abs(end.y - start.y)));
+
+  segments.push({
+    id,
+    testId,
+    orientation,
+    left,
+    top,
+    width: orientation === "horizontal" ? width : undefined,
+    height: orientation === "vertical" ? height : undefined,
+    labelLeft: Math.round((start.x + end.x) / 2),
+    labelTop: Math.round((start.y + end.y) / 2),
+    text: String(Math.round(details.distance))
+  });
+}
+
+function addSiblingSpacingSegments(
+  segments: FrameSpacingSegment[],
+  children: SelectionBounds[],
+  orientation: "horizontal" | "vertical",
+  viewport: EditorState["viewport"]
+) {
+  const sorted = [...children].sort((first, second) =>
+    orientation === "vertical" ? first.y - second.y : first.x - second.x
+  );
+
+  for (let index = 0; index < sorted.length - 1; index += 1) {
+    const current = sorted[index];
+    const next = sorted[index + 1];
+    if (!current || !next) {
+      continue;
+    }
+
+    if (orientation === "vertical") {
+      const currentBottom = current.y + current.height;
+      const nextTop = next.y;
+      const overlapStart = Math.max(current.x, next.x);
+      const overlapEnd = Math.min(current.x + current.width, next.x + next.width);
+      if (nextTop <= currentBottom || overlapEnd < overlapStart) {
+        continue;
+      }
+
+      addFrameSpacingSegment(
+        segments,
+        `spacing-vertical-${index}`,
+        "frame-spacing-vertical",
+        "vertical",
+        {
+          start: { x: (overlapStart + overlapEnd) / 2, y: currentBottom },
+          end: { x: (overlapStart + overlapEnd) / 2, y: nextTop },
+          distance: nextTop - currentBottom,
+          viewport
+        }
+      );
+      continue;
+    }
+
+    const currentRight = current.x + current.width;
+    const nextLeft = next.x;
+    const overlapStart = Math.max(current.y, next.y);
+    const overlapEnd = Math.min(current.y + current.height, next.y + next.height);
+    if (nextLeft <= currentRight || overlapEnd < overlapStart) {
+      continue;
+    }
+
+    addFrameSpacingSegment(
+      segments,
+      `spacing-horizontal-${index}`,
+      "frame-spacing-horizontal",
+      "horizontal",
+      {
+        start: { x: currentRight, y: (overlapStart + overlapEnd) / 2 },
+        end: { x: nextLeft, y: (overlapStart + overlapEnd) / 2 },
+        distance: nextLeft - currentRight,
+        viewport
+      }
+    );
+  }
 }
 
 function cornerPoint(bounds: SelectionBounds, corner: ResizeCorner): { x: number; y: number } {
@@ -1389,6 +1571,18 @@ export function App() {
 
     return createSelectionChromeOverlay(chromeBounds, editor.viewport);
   }, [dragPreview, editor, selectedNodeIds]);
+  const frameSpacingOverlay = useMemo(() => {
+    if (!editor || selectedNodeIds.length !== 1 || !selectedNode || selectedNode.kind !== "frame") {
+      return null;
+    }
+
+    const frameBounds = getNodeBounds(editor.document, selectedNode.id);
+    if (!frameBounds) {
+      return null;
+    }
+
+    return createFrameSpacingOverlay(frameBounds, selectedNode, editor.viewport);
+  }, [editor, selectedNode, selectedNodeIds]);
   const snapGuideOverlays = useMemo(() => {
     if (!editor || !snapGuides.length) {
       return [];
@@ -3122,6 +3316,40 @@ export function App() {
                 >
                   {selectionChromeOverlay.badge.text}
                 </div>
+              </div>
+            ) : null}
+            {frameSpacingOverlay ? (
+              <div className="frame-spacing-overlay" data-testid="frame-spacing-overlay" aria-hidden="true">
+                {frameSpacingOverlay.segments.map((segment) => (
+                  <div key={segment.id}>
+                    <div
+                      className={`frame-spacing-line frame-spacing-line-${segment.orientation}`}
+                      style={
+                        segment.orientation === "horizontal"
+                          ? {
+                              left: segment.left,
+                              top: segment.top,
+                              width: segment.width
+                            }
+                          : {
+                              left: segment.left,
+                              top: segment.top,
+                              height: segment.height
+                            }
+                      }
+                    />
+                    <div
+                      className="frame-spacing-label"
+                      data-testid={segment.testId}
+                      style={{
+                        left: segment.labelLeft,
+                        top: segment.labelTop
+                      }}
+                    >
+                      {segment.text}
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : null}
             {areaSelectionBox ? (

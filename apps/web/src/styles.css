@@ -374,6 +374,43 @@ button:disabled {
   white-space: nowrap;
 }
 
+.frame-spacing-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.frame-spacing-line {
+  position: absolute;
+  background: var(--editor-color-mcp);
+}
+
+.frame-spacing-line-horizontal {
+  height: var(--editor-border-hairline);
+}
+
+.frame-spacing-line-vertical {
+  width: var(--editor-border-hairline);
+}
+
+.frame-spacing-label {
+  position: absolute;
+  min-width: var(--editor-space-lg);
+  transform: translate(-50%, -50%);
+  border: var(--editor-border-hairline) solid var(--editor-color-mcp);
+  border-radius: var(--editor-radius-xs);
+  background: var(--editor-color-panel);
+  color: var(--editor-color-mcp);
+  padding: var(--editor-space-xxs) var(--editor-space-xs);
+  font-size: var(--editor-text-small-size);
+  font-weight: var(--editor-text-control-weight);
+  line-height: var(--editor-text-small-line);
+  letter-spacing: var(--editor-letter-spacing);
+  text-align: center;
+  white-space: nowrap;
+}
+
 .remote-cursor,
 .remote-selection {
   position: absolute;
