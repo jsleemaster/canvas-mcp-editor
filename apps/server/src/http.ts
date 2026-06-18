@@ -1,11 +1,21 @@
 import Fastify from "fastify";
 import type { AgentBatchInput, AgentFindQuery } from "./agent-control.js";
-import { FileStorage, type CreateAssetInput, type DesignNode, type GeometryPatch } from "./storage.js";
+import {
+  FileStorage,
+  INPUT_VALIDATION_ERROR_CODE,
+  type CreateAssetInput,
+  type DesignNode,
+  type GeometryPatch
+} from "./storage.js";
 
 export function createHttpServer(storage = new FileStorage()) {
   const server = Fastify({ logger: true });
 
   server.setErrorHandler((error, _request, reply) => {
+    if ((error as { code?: string }).code === INPUT_VALIDATION_ERROR_CODE) {
+      return reply.code(400).send({ error: (error as Error).message });
+    }
+
     if ((error as { code?: string }).code === "ENOENT") {
       return reply.code(404).send({ error: "not found" });
     }

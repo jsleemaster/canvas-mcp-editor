@@ -180,6 +180,24 @@ describe("HTTP server", () => {
     expect(served.rawPayload.length).toBe(asset.byteLength);
   });
 
+  test("rejects image assets whose bytes do not match the declared mime type", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
+    const server = createHttpServer(new FileStorage(tempRoot));
+
+    const rejected = await server.inject({
+      method: "POST",
+      url: "/assets",
+      payload: {
+        name: "fake.png",
+        mimeType: "image/png",
+        dataBase64: Buffer.from("not a png").toString("base64")
+      }
+    });
+
+    expect(rejected.statusCode).toBe(400);
+    expect(rejected.json()).toEqual({ error: "asset data does not match image/png" });
+  });
+
   test("updates node geometry, fill, text, and creates nodes", async () => {
     const server = await createServerWithDocument();
 

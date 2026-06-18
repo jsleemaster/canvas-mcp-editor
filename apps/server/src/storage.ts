@@ -28,6 +28,8 @@ import {
 import { sampleDocument } from "./sample-document.js";
 
 const LEGACY_SAMPLE_PROJECT_ID = "sample-project";
+export const INPUT_VALIDATION_ERROR_CODE = "CANVAS_INPUT_VALIDATION";
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 export interface NodeLayout {
   mode: "none" | "auto";
@@ -547,6 +549,7 @@ export class FileStorage {
     if (data.length === 0) {
       throw new Error("asset data is required");
     }
+    assertImageBytesMatchMimeType(data, mimeType);
 
     await mkdir(this.assetsDir, { recursive: true });
     const assetId = createStorageId("asset");
@@ -743,6 +746,34 @@ function normalizeImageMimeType(value: string) {
   }
 
   return mimeType;
+}
+
+function assertImageBytesMatchMimeType(data: Buffer, mimeType: string) {
+  if (mimeType === "image/png" && data.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
+    return;
+  }
+
+  if (mimeType === "image/jpeg" && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {
+    return;
+  }
+
+  const header = data.subarray(0, 12).toString("ascii");
+  if (mimeType === "image/gif" && (header.startsWith("GIF87a") || header.startsWith("GIF89a"))) {
+    return;
+  }
+
+  if (mimeType === "image/webp" && header.startsWith("RIFF") && header.slice(8, 12) === "WEBP") {
+    return;
+  }
+
+  throw inputValidationError(`asset data does not match ${mimeType}`);
+}
+
+function inputValidationError(message: string) {
+  const error = new Error(message) as Error & { code: string; statusCode: number };
+  error.code = INPUT_VALIDATION_ERROR_CODE;
+  error.statusCode = 400;
+  return error;
 }
 
 function parseStoredAsset(input: unknown): StoredAsset {
