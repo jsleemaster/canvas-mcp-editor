@@ -1,6 +1,6 @@
 # Figma Core Interaction Rules
 
-Last checked: 2026-06-17
+Last checked: 2026-06-18
 
 This document records the Figma Design interaction rules that Canvas MCP Editor should adopt for core editing. It is intentionally scoped to direct manipulation behavior, not every Figma product surface. User-facing Canvas MCP Editor UI remains Korean-first.
 
@@ -30,10 +30,10 @@ This document records the Figma Design interaction rules that Canvas MCP Editor 
 | Delete | Selected canvas layer can be removed with Delete or Backspace. In auto layout, siblings close the gap. Instances should not delete nested instance internals. | `delete_node` command exists; no keyboard shortcut. | Adopt now for selected node deletion. Instance nested delete can stay blocked by current parent-selection behavior. |
 | Duplicate | Cmd/Ctrl+D duplicates selection. Top-level frames appear to the right; other objects are placed on top of the original. Option/Alt-drag duplicates while moving. | No keyboard duplicate helper. | Adopt now for selected node duplication. Start with non-top-level object duplicate in place. |
 | Copy/paste | Cmd/Ctrl+C copies selected object; Cmd/Ctrl+V pastes to page/frame; paste here uses pointer location. | Not implemented. | Adopt after duplicate. Needs clipboard/session buffer and target parent rules. |
-| Drag move | Move tool drags selected objects. Option/Alt-drag duplicates while dragging. Auto layout children reorder instead of free-moving inside layout flow. | Drag move exists. Auto layout relayout can override direct child position. No Alt-drag duplicate/reorder. | Adopt in stages. First add duplicate/delete shortcuts; then reorder and drag preview. |
+| Drag move | Move tool drags selected objects. Option/Alt-drag duplicates while dragging. Auto layout children reorder instead of free-moving inside layout flow. | Single drag, component-instance drag, and grouped selected-layer drag exist. Auto layout relayout can override direct child position. No Alt-drag duplicate/reorder. | Adopted for grouped drag. Alt-drag duplicate and auto-layout reorder remain later. |
 | Resize | Objects resize through handles; Shift preserves aspect ratio; constraints can be ignored while resizing with platform command modifier. | Bottom-right resize only. | Adopt in precision canvas lane. |
 | Alignment/distribution | Align controls align selected layers; distribute requires multiple selected layers and keeps outer objects fixed; tidy up adds stricter row/column/grid logic. | Toolbar alignment and distribution controls operate on `selection.nodeIds` through one batch geometry command. | Adopted for selected-layer alignment/distribution. Tidy up remains deferred. |
-| Snap/guides | Snap settings help align centers and bounds; rulers are required before creating guides; guides can be canvas-level or frame-level. | Not implemented. | Adopt after live drag preview. Needs overlay guide rendering and snap metadata. |
+| Snap/guides | Snap settings help align centers and bounds; rulers are required before creating guides; guides can be canvas-level or frame-level. | Live transient snap guides render while dragging selected layers and snap against page-level peer bounds/centers. | Adopted first slice. Rulers, manual guides, nested target tuning, and configurable snap settings remain later. |
 | Constraints | Constraints apply only to layers inside frames, not outside frames or inside auto layout frames. | Constraints implemented broadly in inspector. | Adjust later: disable/ignore constraints controls for auto-layout children. |
 | Auto layout | Vertical and horizontal auto layout objects follow y-axis or x-axis when added, removed, or reordered. | Basic vertical/horizontal auto layout landed. | Continue. Delete should trigger relayout through existing command pipeline. |
 
@@ -43,15 +43,15 @@ This document records the Figma Design interaction rules that Canvas MCP Editor 
 2. Keep selected-layer Delete/Backspace and Cmd/Ctrl+D duplicate green.
 3. Keep Shift-click multi-selection and drag 영역 선택 green.
 4. Keep alignment/distribute commands green for multi-selected layers.
-5. Add live snap guides after drag preview and multi-selection bounds are stable.
+5. Extend the landed live snap guide slice with rulers, manual guides, and snap settings after resize handles are stable.
 6. Add copy/paste and paste-here after duplicate helper establishes clone/id/parent behavior.
 
 ## Remaining Non-Goals
 
-- Multi-node drag movement.
 - Multi-node delete/duplicate.
 - Clipboard integration.
-- Snap guide rendering.
+- Manual guide creation and rulers.
+- Configurable snap settings and nested snap-target controls.
 - Tidy-up grid or smart spacing controls.
 - All resize handles, rotate, flip, and aspect-ratio resize.
 - Nested layer keyboard navigation.

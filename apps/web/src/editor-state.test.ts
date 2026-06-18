@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { RendererDocument } from "@canvas-mcp-editor/renderer";
 import {
   alignSelectedNodes,
+  calculateSnapForMovingBounds,
   createEditorState,
   deleteSelectedNode,
   distributeSelectedNodes,
@@ -11,6 +12,8 @@ import {
   createRectangleNode,
   createTextNode,
   getNodeAbsolutePosition,
+  getSelectionBoundsForNodeIds,
+  moveSelectedNodesBy,
   nudgeSelectedNode,
   panViewport,
   redo,
@@ -323,6 +326,62 @@ describe("editor state commands", () => {
     expect(findNodeById(distributed.document, "rectangle-1")?.transform.x).toBe(506);
     expect(findNodeById(distributed.document, "text-2")?.transform.x).toBe(760);
     expect(distributed.selection.nodeIds).toEqual(["text-1", "rectangle-1", "text-2"]);
+  });
+
+  test("moves multiple selected nodes together with one undo step", () => {
+    const initial = setMultiSelection(
+      createEditorState(sampleDocumentWithTopLevelRectangle()),
+      ["text-1", "rectangle-1"],
+      "rectangle-1"
+    );
+
+    const moved = moveSelectedNodesBy(initial, { x: 40, y: 24 });
+
+    expect(getNodeAbsolutePosition(moved.document, "text-1")).toEqual({ x: 192, y: 144 });
+    expect(findNodeById(moved.document, "rectangle-1")?.transform).toMatchObject({
+      x: 220,
+      y: 164
+    });
+    expect(moved.selection.nodeIds).toEqual(["text-1", "rectangle-1"]);
+    expect(moved.history.past).toHaveLength(1);
+
+    const undone = undo(moved);
+    expect(getNodeAbsolutePosition(undone.document, "text-1")).toEqual({ x: 152, y: 120 });
+    expect(findNodeById(undone.document, "rectangle-1")?.transform).toMatchObject({
+      x: 180,
+      y: 140
+    });
+    expect(undone.history.future).toHaveLength(1);
+  });
+
+  test("calculates snap delta and guide against unselected node bounds", () => {
+    const document = sampleDocumentWithTopLevelRectangle();
+    document.pages[0]?.children.push({
+      id: "target-1",
+      kind: "rectangle",
+      name: "스냅 기준",
+      transform: { x: 480, y: 130, rotation: 0 },
+      size: { width: 160, height: 96 },
+      style: { fill: "#f8fafc", stroke: "#64748b", stroke_width: 1, opacity: 1 },
+      content: { type: "empty" },
+      children: []
+    });
+
+    const selectionBounds = getSelectionBoundsForNodeIds(document, ["text-1", "rectangle-1"]);
+    expect(selectionBounds).toEqual({ x: 152, y: 120, width: 260, height: 116 });
+
+    const snapped = calculateSnapForMovingBounds(
+      document,
+      ["text-1", "rectangle-1"],
+      selectionBounds!,
+      { x: 65, y: 0 },
+      6
+    );
+
+    expect(snapped.delta).toEqual({ x: 68, y: 0 });
+    expect(snapped.guides).toContainEqual(
+      expect.objectContaining({ orientation: "vertical", x: 480 })
+    );
   });
 
   test("creates predictable default rectangle and text nodes for toolbar actions", () => {

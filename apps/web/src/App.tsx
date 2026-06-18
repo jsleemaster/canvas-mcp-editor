@@ -46,6 +46,7 @@ import {
 import { createIndexedDbProjectStore } from "./project-store";
 import {
   alignSelectedNodes,
+  calculateSnapForMovingBounds,
   createEditorState,
   createRectangleNode,
   createTextNode,
@@ -54,7 +55,10 @@ import {
   duplicateSelectedNode,
   executeEditorCommand,
   findNodeById,
+  getNodeDragGeometriesForNodeIds,
   getNodeAbsolutePosition,
+  getSelectionBoundsForNodeIds,
+  moveSelectedNodesBy,
   nudgeSelectedNode,
   panViewport,
   redo,
@@ -66,6 +70,7 @@ import {
   type EditorState,
   type GeometryPatch,
   type SelectionBounds,
+  type SnapGuide,
   undo,
   zoomViewport,
   zoomViewportAtPoint
@@ -107,6 +112,21 @@ interface AreaSelectionSession {
   current: { x: number; y: number };
   mode: "replace" | "add";
   hasDragged: boolean;
+}
+
+interface NodeDragSession {
+  nodeId: string;
+  selectedNodeIds: string[];
+  startPosition: { x: number; y: number };
+  startPointer: { x: number; y: number };
+  selectionBounds: SelectionBounds;
+  hasMoved: boolean;
+}
+
+interface NodeDragPreview {
+  primaryNodeId: string;
+  nodeIds: string[];
+  delta: { x: number; y: number };
 }
 
 function remotePresenceSignature(member: CollaborationPresence) {
@@ -182,6 +202,31 @@ function documentPointFromStagePointer(
   };
 }
 
+function documentPointFromKonvaEvent(
+  event: KonvaEventObject<MouseEvent | TouchEvent | DragEvent>,
+  viewport: EditorState["viewport"],
+  stageFrame: HTMLDivElement | null
+): { x: number; y: number } | null {
+  const stagePointer = event.target.getStage()?.getPointerPosition();
+  if (stagePointer) {
+    return documentPointFromStagePointer(stagePointer, viewport);
+  }
+
+  const clientPoint = pointerClientPoint(event.evt as MouseEvent | TouchEvent);
+  if (!clientPoint || !stageFrame) {
+    return null;
+  }
+
+  const bounds = stageFrame.getBoundingClientRect();
+  return documentPointFromStagePointer(
+    {
+      x: clientPoint.x - bounds.left,
+      y: clientPoint.y - bounds.top
+    },
+    viewport
+  );
+}
+
 function selectionBoundsFromPoints(
   start: { x: number; y: number },
   current: { x: number; y: number }
@@ -206,9 +251,13 @@ function renderNode({
   hasSelectedAncestor = false,
   hasComponentInstanceAncestor = false,
   isCanvasPanning = false,
+  dragPreview = null,
   onSelect,
   onGeometryChange,
-  onResizeStart
+  onResizeStart,
+  onDragStart,
+  onDragMove,
+  onDragEnd
 }: {
   node: RendererNode;
   selectedNodeId: string | null;
@@ -216,14 +265,27 @@ function renderNode({
   hasSelectedAncestor?: boolean;
   hasComponentInstanceAncestor?: boolean;
   isCanvasPanning?: boolean;
-  onSelect: (nodeId: string, additive: boolean) => void;
+  dragPreview?: NodeDragPreview | null;
+  onSelect: (nodeId: string, additive: boolean, preserveMultiSelection?: boolean) => void;
   onGeometryChange: (nodeId: string, patch: GeometryPatch) => void;
   onResizeStart: (nodeId: string) => void;
+  onDragStart: (
+    nodeId: string,
+    event: KonvaEventObject<MouseEvent | TouchEvent | DragEvent>
+  ) => void;
+  onDragMove: (nodeId: string, event: KonvaEventObject<DragEvent>) => void;
+  onDragEnd: (nodeId: string, event: KonvaEventObject<DragEvent>) => void;
 }) {
   const isSelected = selectedNodeIds.includes(node.id);
   const isPrimarySelected = node.id === selectedNodeId;
   const shouldDeferToAncestor = hasSelectedAncestor || hasComponentInstanceAncestor;
   const canResize = isPrimarySelected && selectedNodeIds.length === 1;
+  const previewDelta =
+    dragPreview &&
+    dragPreview.primaryNodeId !== node.id &&
+    dragPreview.nodeIds.includes(node.id)
+      ? dragPreview.delta
+      : null;
   const handleSize = editorKonvaTokens.selection.handleSize;
   const resizeHitSize = editorKonvaTokens.selection.resizeHitSize;
   const startResize = (event: KonvaEventObject<MouseEvent> | KonvaEventObject<TouchEvent>) => {
@@ -240,13 +302,22 @@ function renderNode({
 
     event.cancelBubble = true;
     const additive = "shiftKey" in event.evt ? event.evt.shiftKey : false;
-    if (additive || !isPrimarySelected) {
+    if (additive) {
       onSelect(node.id, additive);
+      return;
     }
-    if (!additive && !isPrimarySelected) {
-      event.currentTarget.draggable(true);
-      event.currentTarget.startDrag();
+    if (isSelected) {
+      if (!isPrimarySelected) {
+        onSelect(node.id, false, true);
+      }
+      onDragStart(node.id, event);
+      return;
     }
+
+    onSelect(node.id, false);
+    onDragStart(node.id, event);
+    event.currentTarget.draggable(true);
+    event.currentTarget.startDrag();
   };
   const selectFromClick = (event: KonvaEventObject<MouseEvent> | KonvaEventObject<TouchEvent>) => {
     if (isCanvasPanning) {
@@ -258,7 +329,7 @@ function renderNode({
 
     event.cancelBubble = true;
     const additive = "shiftKey" in event.evt ? event.evt.shiftKey : false;
-    onSelect(node.id, additive);
+    onSelect(node.id, additive, !additive && isSelected);
   };
 
   const body =
@@ -286,20 +357,17 @@ function renderNode({
   return (
     <Group
       key={node.id}
-      x={node.transform.x}
-      y={node.transform.y}
+      x={node.transform.x + (previewDelta?.x ?? 0)}
+      y={node.transform.y + (previewDelta?.y ?? 0)}
       rotation={node.transform.rotation}
-      draggable={isPrimarySelected && !isCanvasPanning}
+      draggable={!shouldDeferToAncestor && isSelected && !isCanvasPanning}
       onMouseDown={selectAndPrimeDrag}
       onTouchStart={selectAndPrimeDrag}
       onClick={selectFromClick}
       onTap={selectFromClick}
-      onDragEnd={(event) => {
-        onGeometryChange(node.id, {
-          x: Math.round(event.target.x()),
-          y: Math.round(event.target.y())
-        });
-      }}
+      onDragStart={(event) => onDragStart(node.id, event)}
+      onDragMove={(event) => onDragMove(node.id, event)}
+      onDragEnd={(event) => onDragEnd(node.id, event)}
     >
       {body}
       {isSelected ? (
@@ -346,9 +414,13 @@ function renderNode({
           hasSelectedAncestor: hasSelectedAncestor || isSelected,
           hasComponentInstanceAncestor: hasComponentInstanceAncestor || node.kind === "component_instance",
           isCanvasPanning,
+          dragPreview,
           onSelect,
           onGeometryChange,
-          onResizeStart
+          onResizeStart,
+          onDragStart,
+          onDragMove,
+          onDragEnd
         })
       )}
     </Group>
@@ -703,8 +775,11 @@ export function App() {
   const [presence, setPresence] = useState<CollaborationPresence[]>([]);
   const [presenceClock, setPresenceClock] = useState(() => Date.now());
   const [areaSelection, setAreaSelection] = useState<AreaSelectionSession | null>(null);
+  const [dragPreview, setDragPreview] = useState<NodeDragPreview | null>(null);
+  const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
   const resizeSessionRef = useRef<{ nodeId: string } | null>(null);
   const areaSelectionRef = useRef<AreaSelectionSession | null>(null);
+  const dragSessionRef = useRef<NodeDragSession | null>(null);
   const panSessionRef = useRef<{
     clientX: number;
     clientY: number;
@@ -845,6 +920,49 @@ export function App() {
       height: bounds.height * editor.viewport.scale
     };
   }, [areaSelection, editor]);
+  const snapGuideOverlays = useMemo(() => {
+    if (!editor || !snapGuides.length) {
+      return [];
+    }
+
+    return snapGuides.map((guide, index) => {
+      if (guide.orientation === "vertical") {
+        const start = documentPointToViewport(
+          { x: guide.x, y: guide.y1, space: "document" },
+          editor.viewport
+        );
+        const end = documentPointToViewport(
+          { x: guide.x, y: guide.y2, space: "document" },
+          editor.viewport
+        );
+
+        return {
+          id: `vertical-${index}`,
+          orientation: guide.orientation,
+          left: Math.round(start.x),
+          top: Math.round(Math.min(start.y, end.y)),
+          height: Math.max(1, Math.round(Math.abs(end.y - start.y)))
+        };
+      }
+
+      const start = documentPointToViewport(
+        { x: guide.x1, y: guide.y, space: "document" },
+        editor.viewport
+      );
+      const end = documentPointToViewport(
+        { x: guide.x2, y: guide.y, space: "document" },
+        editor.viewport
+      );
+
+      return {
+        id: `horizontal-${index}`,
+        orientation: guide.orientation,
+        left: Math.round(Math.min(start.x, end.x)),
+        top: Math.round(start.y),
+        width: Math.max(1, Math.round(Math.abs(end.x - start.x)))
+      };
+    });
+  }, [editor, snapGuides]);
   const components = editor?.document.components ?? [];
   const selectedComponent = selectedNode
     ? components.find((component) => component.source_node.id === selectedNode.id)
@@ -1107,13 +1225,27 @@ export function App() {
     setEditor(nextState);
   };
 
-  const selectNode = (nodeId: string, additive = false) => {
+  const selectNode = (nodeId: string, additive = false, preserveMultiSelection = false) => {
+    if (dragSessionRef.current && !dragSessionRef.current.hasMoved) {
+      dragSessionRef.current = null;
+      setDragPreview(null);
+      setSnapGuides([]);
+    }
+
     setEditor((current) => {
       if (!current) {
         return current;
       }
 
-      const nextState = additive ? toggleSelection(current, nodeId) : setSelection(current, nodeId);
+      const isAlreadyInMultiSelection =
+        preserveMultiSelection &&
+        current.selection.nodeIds.length > 1 &&
+        current.selection.nodeIds.includes(nodeId);
+      const nextState = additive
+        ? toggleSelection(current, nodeId)
+        : isAlreadyInMultiSelection
+          ? setMultiSelection(current, current.selection.nodeIds, nodeId)
+          : setSelection(current, nodeId);
       publishEditorPresence(nextState, { activeTool: "select" });
       return nextState;
     });
@@ -1121,6 +1253,132 @@ export function App() {
 
   const updateGeometry = (nodeId: string, patch: GeometryPatch) => {
     dispatch({ type: "update_node_geometry", nodeId, patch });
+  };
+
+  const startNodeDrag = (
+    nodeId: string,
+    event: KonvaEventObject<MouseEvent | TouchEvent | DragEvent>
+  ) => {
+    if (!editor) {
+      return;
+    }
+    const activeDrag = dragSessionRef.current;
+    if (activeDrag?.nodeId === nodeId && !activeDrag.hasMoved) {
+      return;
+    }
+
+    const startPointer = documentPointFromKonvaEvent(event, editor.viewport, stageFrameRef.current);
+    if (!startPointer) {
+      return;
+    }
+
+    const candidateNodeIds = editor.selection.nodeIds.includes(nodeId)
+      ? editor.selection.nodeIds
+      : [nodeId];
+    const movingGeometries = getNodeDragGeometriesForNodeIds(editor.document, candidateNodeIds);
+    const movingNodeIds = movingGeometries.map((geometry) => geometry.nodeId);
+    const primaryGeometry = movingGeometries.find((geometry) => geometry.nodeId === nodeId);
+    const selectionBounds = getSelectionBoundsForNodeIds(editor.document, movingNodeIds);
+    if (!primaryGeometry || !selectionBounds) {
+      dragSessionRef.current = null;
+      setDragPreview(null);
+      setSnapGuides([]);
+      return;
+    }
+
+    dragSessionRef.current = {
+      nodeId,
+      selectedNodeIds: movingNodeIds,
+      startPosition: {
+        x: primaryGeometry.transform.x,
+        y: primaryGeometry.transform.y
+      },
+      startPointer,
+      selectionBounds,
+      hasMoved: false
+    };
+    setDragPreview({ primaryNodeId: nodeId, nodeIds: movingNodeIds, delta: { x: 0, y: 0 } });
+    setSnapGuides([]);
+  };
+
+  const updateNodeDragPreview = (nodeId: string, event: KonvaEventObject<DragEvent>) => {
+    const activeDrag = dragSessionRef.current;
+    if (!editor || !activeDrag || activeDrag.nodeId !== nodeId) {
+      return null;
+    }
+
+    const documentPoint = documentPointFromKonvaEvent(event, editor.viewport, stageFrameRef.current);
+    const pointerDelta = documentPoint
+      ? (() => {
+          return {
+            x: documentPoint.x - activeDrag.startPointer.x,
+            y: documentPoint.y - activeDrag.startPointer.y
+          };
+        })()
+      : {
+          x: event.target.x() - activeDrag.startPosition.x,
+          y: event.target.y() - activeDrag.startPosition.y
+        };
+    const rawDelta = {
+      x: Math.round(pointerDelta.x),
+      y: Math.round(pointerDelta.y)
+    };
+    activeDrag.hasMoved = true;
+    const snapped = calculateSnapForMovingBounds(
+      editor.document,
+      activeDrag.selectedNodeIds,
+      activeDrag.selectionBounds,
+      rawDelta
+    );
+
+    if (activeDrag.selectedNodeIds.length === 1 && !snapped.guides.length) {
+      setSnapGuides([]);
+      return { ...snapped, nativePosition: true };
+    }
+
+    event.target.position({
+      x: activeDrag.startPosition.x + snapped.delta.x,
+      y: activeDrag.startPosition.y + snapped.delta.y
+    });
+    setDragPreview({
+      primaryNodeId: activeDrag.nodeId,
+      nodeIds: activeDrag.selectedNodeIds,
+      delta: snapped.delta
+    });
+    setSnapGuides(snapped.guides);
+    return snapped;
+  };
+
+  const finishNodeDrag = (nodeId: string, event: KonvaEventObject<DragEvent>) => {
+    const activeDrag = dragSessionRef.current;
+    if (!activeDrag || activeDrag.nodeId !== nodeId) {
+      updateGeometry(nodeId, {
+        x: Math.round(event.target.x()),
+        y: Math.round(event.target.y())
+      });
+      return;
+    }
+
+    const snapped = updateNodeDragPreview(nodeId, event);
+    if (snapped && "nativePosition" in snapped && snapped.nativePosition) {
+      dragSessionRef.current = null;
+      setDragPreview(null);
+      setSnapGuides([]);
+      updateGeometry(nodeId, {
+        x: Math.round(event.target.x()),
+        y: Math.round(event.target.y())
+      });
+      return;
+    }
+
+    const finalDelta = snapped?.delta ?? { x: 0, y: 0 };
+    dragSessionRef.current = null;
+    setDragPreview(null);
+    setSnapGuides([]);
+    updateViewportFromInteraction((state) => {
+      const selected = setMultiSelection(state, activeDrag.selectedNodeIds, activeDrag.nodeId);
+      return moveSelectedNodesBy(selected, finalDelta, activeDrag.selectedNodeIds);
+    });
   };
 
   const updateLayout = (nodeId: string, layout: NodeLayout) => {
@@ -2228,13 +2486,17 @@ export function App() {
                     selectedNodeId: editor.selection.nodeId,
                     selectedNodeIds: editor.selection.nodeIds,
                     isCanvasPanning: isSpacePanning,
+                    dragPreview,
                     onSelect: selectNode,
                     onGeometryChange: updateGeometry,
                     onResizeStart: (nodeId) => {
                       const nextResizeSession = { nodeId };
                       resizeSessionRef.current = nextResizeSession;
                       setResizeSession(nextResizeSession);
-                    }
+                    },
+                    onDragStart: startNodeDrag,
+                    onDragMove: updateNodeDragPreview,
+                    onDragEnd: finishNodeDrag
                   })
                 )}
               </Layer>
@@ -2247,6 +2509,31 @@ export function App() {
                 viewport={editor.viewport}
               />
             ) : null}
+            {snapGuideOverlays.map((guide) => (
+              <div
+                key={guide.id}
+                className={`snap-guide snap-guide-${guide.orientation}`}
+                data-testid={
+                  guide.orientation === "vertical"
+                    ? "snap-guide-vertical"
+                    : "snap-guide-horizontal"
+                }
+                aria-hidden="true"
+                style={
+                  guide.orientation === "vertical"
+                    ? {
+                        left: guide.left,
+                        top: guide.top,
+                        height: guide.height
+                      }
+                    : {
+                        left: guide.left,
+                        top: guide.top,
+                        width: guide.width
+                      }
+                }
+              />
+            ))}
             {areaSelectionBox ? (
               <div
                 className="area-selection-box"
