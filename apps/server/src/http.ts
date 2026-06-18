@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 import type { AgentBatchInput, AgentFindQuery } from "./agent-control.js";
-import { FileStorage, type DesignNode, type GeometryPatch } from "./storage.js";
+import { FileStorage, type CreateAssetInput, type DesignNode, type GeometryPatch } from "./storage.js";
 
 export function createHttpServer(storage = new FileStorage()) {
   const server = Fastify({ logger: true });
@@ -23,6 +23,17 @@ export function createHttpServer(storage = new FileStorage()) {
 
   server.options("*", async (_request, reply) => {
     return reply.code(204).send();
+  });
+
+  server.post<{ Body: CreateAssetInput }>("/assets", async (request) => {
+    return { asset: await storage.createAsset(request.body) };
+  });
+
+  server.get<{ Params: { assetId: string } }>("/assets/:assetId", async (request, reply) => {
+    const asset = await storage.readAsset(request.params.assetId);
+    reply.header("Content-Type", asset.mimeType);
+    reply.header("Cache-Control", "no-store");
+    return reply.send(asset.data);
   });
 
   server.get("/projects", async () => {
