@@ -124,6 +124,8 @@ test("duplicates and deletes a saved project from the project panel", async ({ p
 
 test("canvas editor MVP supports Korean-first select, inspect, edit, undo, create, and zoom", async ({ page }) => {
   const { documentId } = await createProjectFromEmptyState(page);
+  await expect(page.getByRole("button", { name: "되돌리기" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "다시 실행" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "헤드라인" }).click();
   await expect(page.getByTestId("inspector-x")).toHaveValue("32");
@@ -168,10 +170,11 @@ test("canvas editor MVP supports Korean-first select, inspect, edit, undo, creat
   await expect(page.getByTestId("inspector-height")).toHaveValue("60");
   await expect(page.getByTestId("inspector-text")).toHaveValue("검증된 MVP 헤드라인");
 
-  await page.getByRole("button", { name: "되돌리기" }).click();
+  await page.getByRole("button", { name: "확대" }).focus();
+  await page.keyboard.press("Control+Z");
   await expect(page.getByTestId("inspector-text")).toHaveValue("캔버스 MCP 에디터");
 
-  await page.getByRole("button", { name: "다시 실행" }).click();
+  await page.keyboard.press("Control+Shift+Z");
   await expect(page.getByTestId("inspector-text")).toHaveValue("검증된 MVP 헤드라인");
 
   await page.getByRole("button", { name: "사각형 만들기" }).click();
@@ -448,8 +451,10 @@ test("Figma-like multi-selection drags together and shows snap guides", async ({
   await expect(page.getByTestId("inspector-x")).toHaveValue("100");
 });
 
-test("Figma-like alignment and distribution toolbar controls selected layers", async ({ page }) => {
+test("Figma-like alignment and distribution inspector controls selected layers", async ({ page }) => {
   await createProjectFromEmptyState(page);
+  await expect(page.getByRole("button", { name: "왼쪽 정렬" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "가로 분배" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "사각형 만들기" }).click();
   await page.getByRole("button", { name: "텍스트 만들기" }).click();
@@ -471,7 +476,7 @@ test("Figma-like alignment and distribution toolbar controls selected layers", a
   await expect(helperTextLayer).toHaveClass(/is-selected/);
   await expect(page.getByText("3개 레이어 선택됨")).toBeVisible();
 
-  await page.getByRole("button", { name: "왼쪽 정렬" }).click();
+  await page.getByRole("button", { name: "검사기 왼쪽 맞춤" }).click();
   await rectangleLayer.click();
   await expect(page.getByTestId("inspector-x")).toHaveValue("152");
 
@@ -483,7 +488,7 @@ test("Figma-like alignment and distribution toolbar controls selected layers", a
   await rectangleLayer.click();
   await headlineLayer.click();
   await page.keyboard.up("Shift");
-  await page.getByRole("button", { name: "가로 분배" }).click();
+  await page.getByRole("button", { name: "검사기 가로 간격 균등" }).click();
 
   await rectangleLayer.click();
   await expect(page.getByTestId("inspector-x")).toHaveValue("506");
@@ -514,6 +519,54 @@ test("Figma-like measurement overlay and inspector alignment controls selected l
   await expect(page.getByTestId("measurement-overlay")).toBeVisible();
   await expect(page.getByTestId("measurement-size-label")).toHaveText("160 x 96");
   await expect(page.getByTestId("measurement-distance-horizontal")).toContainText("80");
+});
+
+test("selected layers expose four corner resize handles and an immediate size badge", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+
+  await page.getByRole("button", { name: "헤드라인" }).click();
+
+  await expect(page.getByTestId("selection-size-badge")).toHaveText("260 x 48");
+  await expect(page.getByTestId("resize-handle-top-left")).toBeVisible();
+  await expect(page.getByTestId("resize-handle-top-right")).toBeVisible();
+  await expect(page.getByTestId("resize-handle-bottom-left")).toBeVisible();
+  await expect(page.getByTestId("resize-handle-bottom-right")).toBeVisible();
+
+  const topLeftHandleBox = await page.getByTestId("resize-handle-top-left").boundingBox();
+  if (!topLeftHandleBox) {
+    throw new Error("top-left resize handle was not visible");
+  }
+
+  const handleCenter = {
+    x: topLeftHandleBox.x + topLeftHandleBox.width / 2,
+    y: topLeftHandleBox.y + topLeftHandleBox.height / 2
+  };
+
+  await page.mouse.move(handleCenter.x, handleCenter.y);
+  await page.mouse.down();
+  await page.mouse.move(handleCenter.x - 20, handleCenter.y - 20);
+  await page.mouse.up();
+
+  await expect(page.getByTestId("inspector-x")).toHaveValue("12");
+  await expect(page.getByTestId("inspector-y")).toHaveValue("20");
+  await expect(page.getByTestId("inspector-width")).toHaveValue("280");
+  await expect(page.getByTestId("inspector-height")).toHaveValue("68");
+  await expect(page.getByTestId("selection-size-badge")).toHaveText("280 x 68");
+});
+
+test("selected frames show thin padding and child spacing guides", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+  await page.getByRole("button", { name: "사각형 만들기" }).click();
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+
+  await expect(page.getByTestId("frame-spacing-overlay")).toBeVisible();
+  await expect(page.getByTestId("frame-padding-left")).toHaveText("32");
+  await expect(page.getByTestId("frame-padding-top")).toHaveText("40");
+  await expect(page.getByTestId("frame-padding-right")).toHaveText("80");
+  await expect(page.getByTestId("frame-padding-bottom")).toHaveText("44");
+  await expect(page.getByTestId("frame-spacing-vertical")).toHaveText("52");
 });
 
 test("component instances drag as a single selected object from nested content", async ({ page }) => {

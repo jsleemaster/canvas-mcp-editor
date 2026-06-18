@@ -19,7 +19,7 @@ This roadmap translates `docs/product/figma-feature-inventory.md` into implement
 The current main branch already has:
 
 - Rust/TypeScript document primitives for pages, frames, rectangles, text, images, components, instances, and geometry.
-- Browser editor shell with creation, selection, dragging, bottom-right resizing, inspector geometry, color/text editing, undo/redo, and zoom.
+- Browser editor shell with creation, selection, dragging, four corner resizing, selection size badges, inspector geometry, inspector alignment/distribution, color/text editing, undo/redo shortcuts, zoom, hover measurement overlays, and selected-frame padding/child-spacing guides.
 - Shift-click and marquee multi-selection, selected-layer alignment/distribution, grouped selected-layer dragging, and transient snap guides for page-level peer bounds/centers.
 - Component definitions, instances, and detach.
 - HTTP and MCP agent control for inspect, find, command application, validation, change summaries, components, and code export.
@@ -57,10 +57,10 @@ Non-goals for the first slice:
 
 Figma capabilities to bring over:
 
-- All edge and corner resize handles.
+- Edge resize handles, with the four corner handles already landed.
 - Rotate and flip.
-- Align left/center/right/top/middle/bottom.
-- Distribute spacing.
+- Align left/center/right/top/middle/bottom through the right inspector.
+- Distribute spacing through the right inspector.
 - Keyboard nudge and configurable big nudge.
 - Snap lines, rulers, and layout guides.
 - Layer reorder and parent changes through drag/drop.
@@ -92,6 +92,9 @@ Implementation shape:
 - Add a Code Connect-inspired mapping layer for repo components after variants and variables are stable.
 
 ## Lane 4: Collaboration, Review, And History
+
+Team setup and ownership sequencing is tracked separately in
+`docs/product/team-collaboration-roadmap.md`.
 
 Figma capabilities to bring over:
 
@@ -158,5 +161,5 @@ Implementation shape:
 2. Keep the core shortcut slice from `docs/product/figma-core-interaction-rules.md` green: selected-layer Delete/Backspace and Cmd/Ctrl+D duplicate.
 3. Keep Shift-click multi-selection and drag 영역 선택 green.
 4. Keep alignment/distribute commands green for multi-selected layers.
-5. Extend the landed grouped drag and snap guide slice with all resize handles, rotation, rulers, manual guides, and snap settings.
+5. Extend the landed grouped drag, measurement, frame-spacing, and corner-resize slices with edge resize handles, rotation, rulers, manual guides, and snap settings.
 6. Merge only after `pnpm test`, `pnpm typecheck`, web build, relevant Playwright suites, and direct live UI interaction verification pass.
