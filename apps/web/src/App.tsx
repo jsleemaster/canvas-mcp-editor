@@ -313,7 +313,7 @@ function CanvasImageBody({
 
   return (
     <>
-      <Rect width={width} height={height} fill="#f3f4f6" opacity={opacity} />
+      <Rect width={width} height={height} fill={editorKonvaTokens.image.placeholderFill} opacity={opacity} />
       {image ? <KonvaImage image={image} width={width} height={height} opacity={opacity} /> : null}
     </>
   );
