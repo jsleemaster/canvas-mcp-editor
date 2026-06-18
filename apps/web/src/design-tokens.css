@@ -48,6 +48,7 @@
   --editor-size-toolbar: 48px;
   --editor-size-stage-width: 960px;
   --editor-size-stage-height: 640px;
+  --editor-size-selection-handle: 10px;
   --editor-border-hairline: 1px;
   --editor-shadow-stage: 0 10px 30px var(--editor-color-stage-shadow);
 }

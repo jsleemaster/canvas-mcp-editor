@@ -135,6 +135,13 @@ interface NodeDragPreview {
   delta: { x: number; y: number };
 }
 
+type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
+
+interface ResizeSession {
+  nodeId: string;
+  corner: ResizeCorner;
+}
+
 interface MeasurementLineOverlay {
   left: number;
   top: number;
@@ -151,6 +158,14 @@ interface MeasurementOverlay {
   horizontal: MeasurementLineOverlay | null;
   vertical: MeasurementLineOverlay | null;
 }
+
+interface SelectionChromeOverlay {
+  badge: { left: number; top: number; text: string };
+  handles: Array<{ corner: ResizeCorner; left: number; top: number }>;
+}
+
+const RESIZE_CORNERS: ResizeCorner[] = ["top-left", "top-right", "bottom-left", "bottom-right"];
+const MIN_RESIZE_SIZE = 1;
 
 function remotePresenceSignature(member: CollaborationPresence) {
   return JSON.stringify({
@@ -427,6 +442,113 @@ function createMeasurementOverlay(
   };
 }
 
+function createSelectionChromeOverlay(
+  bounds: SelectionBounds,
+  viewport: EditorState["viewport"]
+): SelectionChromeOverlay {
+  const viewportRect = viewportBounds(bounds, viewport);
+  const handleOffset = editorKonvaTokens.selection.handleSize / 2;
+  const centerX = viewportRect.left + viewportRect.width / 2;
+
+  return {
+    badge: {
+      left: Math.round(centerX),
+      top: Math.round(viewportRect.top + viewportRect.height + 20),
+      text: `${Math.round(bounds.width)} x ${Math.round(bounds.height)}`
+    },
+    handles: RESIZE_CORNERS.map((corner) => {
+      const isRight = corner.endsWith("right");
+      const isBottom = corner.startsWith("bottom");
+      return {
+        corner,
+        left: Math.round((isRight ? viewportRect.left + viewportRect.width : viewportRect.left) - handleOffset),
+        top: Math.round((isBottom ? viewportRect.top + viewportRect.height : viewportRect.top) - handleOffset)
+      };
+    })
+  };
+}
+
+function cornerPoint(bounds: SelectionBounds, corner: ResizeCorner): { x: number; y: number } {
+  return {
+    x: corner.endsWith("right") ? bounds.x + bounds.width : bounds.x,
+    y: corner.startsWith("bottom") ? bounds.y + bounds.height : bounds.y
+  };
+}
+
+function resizeCornerAtPoint(
+  bounds: SelectionBounds,
+  point: { x: number; y: number }
+): ResizeCorner | null {
+  for (const corner of RESIZE_CORNERS) {
+    const candidate = cornerPoint(bounds, corner);
+    const hitRadius = resizeHitSizeForCorner(corner) / 2;
+    if (
+      point.x >= candidate.x - hitRadius &&
+      point.x <= candidate.x + hitRadius &&
+      point.y >= candidate.y - hitRadius &&
+      point.y <= candidate.y + hitRadius
+    ) {
+      return corner;
+    }
+  }
+
+  return null;
+}
+
+function resizeHitSizeForCorner(corner: ResizeCorner): number {
+  return corner === "bottom-right"
+    ? editorKonvaTokens.selection.resizeHitSize
+    : editorKonvaTokens.selection.handleSize + 8;
+}
+
+function resizePatchFromCorner(
+  node: RendererNode,
+  absolute: { x: number; y: number },
+  pointer: { x: number; y: number },
+  corner: ResizeCorner
+): GeometryPatch {
+  const right = absolute.x + node.size.width;
+  const bottom = absolute.y + node.size.height;
+  const nextLeft = corner.endsWith("left")
+    ? Math.min(Math.round(pointer.x), right - MIN_RESIZE_SIZE)
+    : absolute.x;
+  const nextTop = corner.startsWith("top")
+    ? Math.min(Math.round(pointer.y), bottom - MIN_RESIZE_SIZE)
+    : absolute.y;
+  const nextRight = corner.endsWith("right")
+    ? Math.max(Math.round(pointer.x), absolute.x + MIN_RESIZE_SIZE)
+    : right;
+  const nextBottom = corner.startsWith("bottom")
+    ? Math.max(Math.round(pointer.y), absolute.y + MIN_RESIZE_SIZE)
+    : bottom;
+  const patch: GeometryPatch = {
+    width: Math.round(nextRight - nextLeft),
+    height: Math.round(nextBottom - nextTop)
+  };
+
+  if (nextLeft !== absolute.x) {
+    patch.x = Math.round(node.transform.x + nextLeft - absolute.x);
+  }
+  if (nextTop !== absolute.y) {
+    patch.y = Math.round(node.transform.y + nextTop - absolute.y);
+  }
+
+  return patch;
+}
+
+function konvaResizeHandleRect(
+  node: RendererNode,
+  corner: ResizeCorner,
+  size: number
+): { x: number; y: number; width: number; height: number } {
+  return {
+    x: (corner.endsWith("right") ? node.size.width : 0) - size / 2,
+    y: (corner.startsWith("bottom") ? node.size.height : 0) - size / 2,
+    width: size,
+    height: size
+  };
+}
+
 function renderNode({
   node,
   selectedNodeId,
@@ -451,7 +573,7 @@ function renderNode({
   dragPreview?: NodeDragPreview | null;
   onSelect: (nodeId: string, additive: boolean, preserveMultiSelection?: boolean) => void;
   onGeometryChange: (nodeId: string, patch: GeometryPatch) => void;
-  onResizeStart: (nodeId: string) => void;
+  onResizeStart: (nodeId: string, corner: ResizeCorner) => void;
   onDragStart: (
     nodeId: string,
     event: KonvaEventObject<MouseEvent | TouchEvent | DragEvent>
@@ -462,7 +584,7 @@ function renderNode({
   const isSelected = selectedNodeIds.includes(node.id);
   const isPrimarySelected = node.id === selectedNodeId;
   const shouldDeferToAncestor = hasSelectedAncestor || hasComponentInstanceAncestor;
-  const canResize = isPrimarySelected && selectedNodeIds.length === 1;
+  const canResize = isPrimarySelected && selectedNodeIds.length === 1 && !isCanvasPanning;
   const previewDelta =
     dragPreview &&
     dragPreview.primaryNodeId !== node.id &&
@@ -470,10 +592,12 @@ function renderNode({
       ? dragPreview.delta
       : null;
   const handleSize = editorKonvaTokens.selection.handleSize;
-  const resizeHitSize = editorKonvaTokens.selection.resizeHitSize;
-  const startResize = (event: KonvaEventObject<MouseEvent> | KonvaEventObject<TouchEvent>) => {
+  const startResize = (
+    corner: ResizeCorner,
+    event: KonvaEventObject<MouseEvent> | KonvaEventObject<TouchEvent>
+  ) => {
     event.cancelBubble = true;
-    onResizeStart(node.id);
+    onResizeStart(node.id, corner);
   };
   const selectAndPrimeDrag = (event: KonvaEventObject<MouseEvent> | KonvaEventObject<TouchEvent>) => {
     if (isCanvasPanning) {
@@ -564,27 +688,29 @@ function renderNode({
           />
           {canResize ? (
             <>
-              <Rect
-                x={node.size.width - resizeHitSize}
-                y={node.size.height - resizeHitSize}
-                width={resizeHitSize}
-                height={resizeHitSize}
-                fill={editorKonvaTokens.selection.handleFill}
-                opacity={0.01}
-                onMouseDown={startResize}
-                onTouchStart={startResize}
-              />
-              <Rect
-                x={node.size.width - handleSize}
-                y={node.size.height - handleSize}
-                width={handleSize}
-                height={handleSize}
-                fill={editorKonvaTokens.selection.handleFill}
-                stroke={editorKonvaTokens.selection.stroke}
-                strokeWidth={editorKonvaTokens.selection.strokeWidth}
-                onMouseDown={startResize}
-                onTouchStart={startResize}
-              />
+              {RESIZE_CORNERS.map((corner) => {
+                const hitRect = konvaResizeHandleRect(node, corner, resizeHitSizeForCorner(corner));
+                const visualRect = konvaResizeHandleRect(node, corner, handleSize);
+                return (
+                  <Group key={corner}>
+                    <Rect
+                      {...hitRect}
+                      fill={editorKonvaTokens.selection.handleFill}
+                      opacity={0.01}
+                      onMouseDown={(event) => startResize(corner, event)}
+                      onTouchStart={(event) => startResize(corner, event)}
+                    />
+                    <Rect
+                      {...visualRect}
+                      fill={editorKonvaTokens.selection.handleFill}
+                      stroke={editorKonvaTokens.selection.stroke}
+                      strokeWidth={editorKonvaTokens.selection.strokeWidth}
+                      onMouseDown={(event) => startResize(corner, event)}
+                      onTouchStart={(event) => startResize(corner, event)}
+                    />
+                  </Group>
+                );
+              })}
             </>
           ) : null}
         </>
@@ -1041,7 +1167,7 @@ function Inspector({
 
 export function App() {
   const [editor, setEditor] = useState<EditorState | null>(null);
-  const [resizeSession, setResizeSession] = useState<{ nodeId: string } | null>(null);
+  const [resizeSession, setResizeSession] = useState<ResizeSession | null>(null);
   const [teamName, setTeamName] = useState("디자인 팀");
   const [relayUrl, setRelayUrl] = useState("");
   const [relayToken, setRelayToken] = useState("");
@@ -1066,7 +1192,7 @@ export function App() {
   const [areaSelection, setAreaSelection] = useState<AreaSelectionSession | null>(null);
   const [dragPreview, setDragPreview] = useState<NodeDragPreview | null>(null);
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
-  const resizeSessionRef = useRef<{ nodeId: string } | null>(null);
+  const resizeSessionRef = useRef<ResizeSession | null>(null);
   const areaSelectionRef = useRef<AreaSelectionSession | null>(null);
   const dragSessionRef = useRef<NodeDragSession | null>(null);
   const panSessionRef = useRef<{
@@ -1246,6 +1372,23 @@ export function App() {
 
     return createMeasurementOverlay(sourceBounds, targetBounds, editor.viewport);
   }, [dragPreview, editor, measurementTargetNodeId, selectedNodeIds]);
+  const selectionChromeOverlay = useMemo(() => {
+    if (!editor || selectedNodeIds.length !== 1) {
+      return null;
+    }
+
+    const selectedBounds = getSelectionBoundsForNodeIds(editor.document, selectedNodeIds);
+    if (!selectedBounds) {
+      return null;
+    }
+
+    const chromeBounds =
+      dragPreview && selectedNodeIds.every((nodeId) => dragPreview.nodeIds.includes(nodeId))
+        ? translateBounds(selectedBounds, dragPreview.delta)
+        : selectedBounds;
+
+    return createSelectionChromeOverlay(chromeBounds, editor.viewport);
+  }, [dragPreview, editor, selectedNodeIds]);
   const snapGuideOverlays = useMemo(() => {
     if (!editor || !snapGuides.length) {
       return [];
@@ -2122,21 +2265,19 @@ export function App() {
     const stage = event.target.getStage();
     const pointer = stage?.getPointerPosition();
     const absolute = getNodeAbsolutePosition(editor.document, activeResize.nodeId);
-    if (!pointer || !absolute) {
+    const node = findNodeById(editor.document, activeResize.nodeId);
+    if (!pointer || !absolute || !node) {
       resizeSessionRef.current = null;
       setResizeSession(null);
       return;
     }
 
-    const stagePoint = {
-      x: (pointer.x - editor.viewport.x) / editor.viewport.scale,
-      y: (pointer.y - editor.viewport.y) / editor.viewport.scale
-    };
+    const stagePoint = documentPointFromStagePointer(pointer, editor.viewport);
 
-    updateGeometry(activeResize.nodeId, {
-      width: Math.round(stagePoint.x - absolute.x),
-      height: Math.round(stagePoint.y - absolute.y)
-    });
+    updateGeometry(
+      activeResize.nodeId,
+      resizePatchFromCorner(node, absolute, stagePoint, activeResize.corner)
+    );
     resizeSessionRef.current = null;
     setResizeSession(null);
   };
@@ -2202,7 +2343,7 @@ export function App() {
   };
 
   const startResizeFromPointer = (event: KonvaEventObject<MouseEvent>) => {
-    if (!editor || !selectedNode) {
+    if (!editor || !selectedNode || editor.selection.nodeIds.length !== 1) {
       return false;
     }
 
@@ -2213,22 +2354,15 @@ export function App() {
       return false;
     }
 
-    const stagePoint = {
-      x: (pointer.x - editor.viewport.x) / editor.viewport.scale,
-      y: (pointer.y - editor.viewport.y) / editor.viewport.scale
-    };
-    const hitSize = editorKonvaTokens.selection.resizeHitSize;
-    const handleLeft = absolute.x + selectedNode.size.width - hitSize;
-    const handleTop = absolute.y + selectedNode.size.height - hitSize;
+    const stagePoint = documentPointFromStagePointer(pointer, editor.viewport);
+    const corner = resizeCornerAtPoint(
+      { x: absolute.x, y: absolute.y, width: selectedNode.size.width, height: selectedNode.size.height },
+      stagePoint
+    );
 
-    if (
-      stagePoint.x >= handleLeft &&
-      stagePoint.x <= absolute.x + selectedNode.size.width &&
-      stagePoint.y >= handleTop &&
-      stagePoint.y <= absolute.y + selectedNode.size.height
-    ) {
+    if (corner) {
       event.cancelBubble = true;
-      const nextResizeSession = { nodeId: selectedNode.id };
+      const nextResizeSession = { nodeId: selectedNode.id, corner };
       resizeSessionRef.current = nextResizeSession;
       setResizeSession(nextResizeSession);
       return true;
@@ -2853,8 +2987,8 @@ export function App() {
                     dragPreview,
                     onSelect: selectNode,
                     onGeometryChange: updateGeometry,
-                    onResizeStart: (nodeId) => {
-                      const nextResizeSession = { nodeId };
+                    onResizeStart: (nodeId, corner) => {
+                      const nextResizeSession = { nodeId, corner };
                       resizeSessionRef.current = nextResizeSession;
                       setResizeSession(nextResizeSession);
                     },
@@ -2963,6 +3097,31 @@ export function App() {
                     </div>
                   </>
                 ) : null}
+              </div>
+            ) : null}
+            {selectionChromeOverlay ? (
+              <div className="selection-chrome-overlay" aria-hidden="true">
+                {selectionChromeOverlay.handles.map((handle) => (
+                  <div
+                    key={handle.corner}
+                    className="selection-corner-handle"
+                    data-testid={`resize-handle-${handle.corner}`}
+                    style={{
+                      left: handle.left,
+                      top: handle.top
+                    }}
+                  />
+                ))}
+                <div
+                  className="selection-size-badge"
+                  data-testid="selection-size-badge"
+                  style={{
+                    left: selectionChromeOverlay.badge.left,
+                    top: selectionChromeOverlay.badge.top
+                  }}
+                >
+                  {selectionChromeOverlay.badge.text}
+                </div>
               </div>
             ) : null}
             {areaSelectionBox ? (

@@ -516,6 +516,39 @@ test("Figma-like measurement overlay and inspector alignment controls selected l
   await expect(page.getByTestId("measurement-distance-horizontal")).toContainText("80");
 });
 
+test("selected layers expose four corner resize handles and an immediate size badge", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+
+  await page.getByRole("button", { name: "헤드라인" }).click();
+
+  await expect(page.getByTestId("selection-size-badge")).toHaveText("260 x 48");
+  await expect(page.getByTestId("resize-handle-top-left")).toBeVisible();
+  await expect(page.getByTestId("resize-handle-top-right")).toBeVisible();
+  await expect(page.getByTestId("resize-handle-bottom-left")).toBeVisible();
+  await expect(page.getByTestId("resize-handle-bottom-right")).toBeVisible();
+
+  const topLeftHandleBox = await page.getByTestId("resize-handle-top-left").boundingBox();
+  if (!topLeftHandleBox) {
+    throw new Error("top-left resize handle was not visible");
+  }
+
+  const handleCenter = {
+    x: topLeftHandleBox.x + topLeftHandleBox.width / 2,
+    y: topLeftHandleBox.y + topLeftHandleBox.height / 2
+  };
+
+  await page.mouse.move(handleCenter.x, handleCenter.y);
+  await page.mouse.down();
+  await page.mouse.move(handleCenter.x - 20, handleCenter.y - 20);
+  await page.mouse.up();
+
+  await expect(page.getByTestId("inspector-x")).toHaveValue("12");
+  await expect(page.getByTestId("inspector-y")).toHaveValue("20");
+  await expect(page.getByTestId("inspector-width")).toHaveValue("280");
+  await expect(page.getByTestId("inspector-height")).toHaveValue("68");
+  await expect(page.getByTestId("selection-size-badge")).toHaveText("280 x 68");
+});
+
 test("component instances drag as a single selected object from nested content", async ({ page }) => {
   await createProjectFromEmptyState(page);
   await page.getByRole("button", { name: "랜딩 프레임" }).click();
