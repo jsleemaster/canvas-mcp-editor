@@ -143,6 +143,43 @@ describe("collaborative design document", () => {
     second.destroy();
   });
 
+  test("keeps seeded page identity stable when a synced collaborator adds a node", () => {
+    const first = createCollaborativeDesignDocument({ document: sampleDocument() });
+    const second = createCollaborativeDesignDocument({ document: sampleDocument() });
+
+    Y.applyUpdate(second.ydoc, Y.encodeStateAsUpdate(first.ydoc));
+    Y.applyUpdate(first.ydoc, Y.encodeStateAsUpdate(second.ydoc));
+
+    first.transact("create-text", (current) => {
+      const next = structuredClone(current);
+      next.pages[0]?.children.push({
+        id: "text-2",
+        kind: "text",
+        name: "Text 2",
+        transform: { x: 80, y: 120, rotation: 0 },
+        size: { width: 180, height: 40 },
+        style: { fill: "#111827", stroke: null, stroke_width: 0, opacity: 1 },
+        content: {
+          type: "text",
+          value: "Synced text",
+          font_size: 20,
+          font_family: "Inter"
+        },
+        children: []
+      });
+      return next;
+    });
+
+    Y.applyUpdate(second.ydoc, Y.encodeStateAsUpdate(first.ydoc));
+
+    const synced = second.getDocument();
+    expect(synced.pages.map((page) => page.id)).toEqual(["page-1"]);
+    expect(synced.pages[0]?.children.map((node) => node.id)).toEqual(["text-1", "text-2"]);
+
+    first.destroy();
+    second.destroy();
+  });
+
   test("rejects invalid document payloads", () => {
     const document = createCollaborativeDesignDocument({ document: sampleDocument() });
 

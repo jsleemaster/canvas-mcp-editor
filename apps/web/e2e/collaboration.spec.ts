@@ -177,6 +177,57 @@ test("relay team syncs document edits between two browser contexts", async ({ br
   }
 });
 
+test("two editors keep independent node move and text edits", async ({ browser }) => {
+  await rm(".canvas-mcp-editor/files/sample-file.json", { force: true });
+  await rm("apps/server/.canvas-mcp-editor/files/sample-file.json", { force: true });
+  const downloadDir = await mkdtemp(join(tmpdir(), "canvas-manifest-"));
+
+  const firstContext = await browser.newContext();
+  const secondContext = await browser.newContext();
+  const firstPage = await firstContext.newPage();
+  const secondPage = await secondContext.newPage();
+
+  try {
+    await createProjectFromEmptyState(firstPage);
+    await secondPage.goto("http://127.0.0.1:5173/");
+
+    await firstPage.getByRole("tab", { name: "실시간 협업" }).click();
+    await firstPage.getByTestId("relay-url").fill("ws://127.0.0.1:4327");
+    await firstPage.getByRole("button", { name: "협업 팀 만들기" }).click();
+    await expect(firstPage.getByTestId("team-status")).toContainText("동기화됨", { timeout: 8000 });
+
+    await firstPage.getByRole("tab", { name: "팀 설정" }).click();
+    const downloadPromise = firstPage.waitForEvent("download");
+    await firstPage.getByRole("button", { name: "파일로 저장" }).click();
+    const download = await downloadPromise;
+    const downloadedManifestPath = join(downloadDir, download.suggestedFilename());
+    await download.saveAs(downloadedManifestPath);
+
+    await secondPage.getByRole("tab", { name: "팀 설정" }).click();
+    await secondPage.getByTestId("team-manifest-file").setInputFiles(downloadedManifestPath);
+    await expect(secondPage.getByTestId("team-status")).toContainText("동기화됨", { timeout: 8000 });
+
+    await firstPage.getByRole("button", { name: "헤드라인" }).click();
+    await secondPage.getByRole("button", { name: "헤드라인" }).click();
+
+    await firstPage.getByTestId("inspector-x").fill("96");
+    await secondPage.getByTestId("inspector-text").fill("Concurrent headline");
+
+    await expect(firstPage.getByTestId("inspector-x")).toHaveValue("96", { timeout: 8000 });
+    await expect(firstPage.getByTestId("inspector-text")).toHaveValue("Concurrent headline", {
+      timeout: 8000
+    });
+    await expect(secondPage.getByTestId("inspector-x")).toHaveValue("96", { timeout: 8000 });
+    await expect(secondPage.getByTestId("inspector-text")).toHaveValue("Concurrent headline", {
+      timeout: 8000
+    });
+  } finally {
+    await firstContext.close();
+    await secondContext.close();
+    await rm(downloadDir, { force: true, recursive: true });
+  }
+});
+
 test("encrypted relay team syncs document edits without exporting the passphrase", async ({ browser }) => {
   const contextA = await browser.newContext();
   const contextB = await browser.newContext();

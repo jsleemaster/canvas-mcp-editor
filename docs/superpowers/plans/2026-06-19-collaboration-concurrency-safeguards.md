@@ -10,6 +10,28 @@
 
 ---
 
+## Execution Status
+
+Completed on 2026-06-19.
+
+Implemented outcomes:
+- Granular Yjs node-field updates preserve independent geometry and text edits.
+- Seeded collaborators merge duplicate page ids when CRDT page items race.
+- Awareness presence carries soft editing claims.
+- Team asset metadata uses content-addressed ids.
+- Collaborative agent writes fail fast when remote state changes before apply.
+- Encrypted collaboration now carries Yjs sync protocol messages inside encrypted payloads and re-requests sync after remote awareness changes.
+- Playwright collaboration coverage includes a two-editor concurrent move/text edit flow.
+
+Verification evidence:
+- Focused red/green tests were run for each behavior before implementation.
+- `pnpm typecheck`
+- `pnpm test`
+- `pnpm --filter @canvas-mcp-editor/web build`
+- `pnpm test:e2e:collab` passed twice after the encrypted order-dependent failure was fixed.
+
+---
+
 ## File Structure
 
 - Modify `packages/collaboration/src/yjs-document.ts`

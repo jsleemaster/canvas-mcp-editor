@@ -220,7 +220,7 @@ function readDocumentFromYjs(ydoc: Y.Doc): RendererDocument {
   const document: RendererDocument = {
     id: String(meta.get("id") ?? ""),
     name: String(meta.get("name") ?? ""),
-    pages: pages.toArray().map((page) => ({
+    pages: mergeStoredPages(pages.toArray(), nodes).map((page) => ({
       id: page.id,
       name: page.name,
       children: page.children.map((nodeId) => readNode(nodes, nodeId))
@@ -261,6 +261,34 @@ function readNode(nodes: Y.Map<YNodeMap>, nodeId: string): RendererNode {
     node.constraints = structuredClone(nodeMap.get("constraints") as RendererNode["constraints"]);
   }
   return node;
+}
+
+function mergeStoredPages(pages: StoredPage[], nodes: Y.Map<YNodeMap>): StoredPage[] {
+  const mergedPages: StoredPage[] = [];
+  const pagesById = new Map<string, StoredPage>();
+
+  for (const page of pages) {
+    const existing = pagesById.get(page.id);
+    if (!existing) {
+      const nextPage = {
+        id: page.id,
+        name: page.name,
+        children: page.children.filter((nodeId) => nodes.has(nodeId))
+      };
+      pagesById.set(page.id, nextPage);
+      mergedPages.push(nextPage);
+      continue;
+    }
+
+    existing.name = page.name || existing.name;
+    for (const nodeId of page.children) {
+      if (nodes.has(nodeId) && !existing.children.includes(nodeId)) {
+        existing.children.push(nodeId);
+      }
+    }
+  }
+
+  return mergedPages;
 }
 
 function ensureMap<T = unknown>(parent: Y.Map<unknown>, key: string): Y.Map<T> {

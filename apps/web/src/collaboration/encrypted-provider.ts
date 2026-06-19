@@ -7,8 +7,11 @@ import {
   type EncryptedYjsUpdate,
   type SharedKeyEncryptionConfig
 } from "@canvas-mcp-editor/collaboration";
+import * as syncDecoding from "lib0/decoding";
+import * as syncEncoding from "lib0/encoding";
 import { Awareness } from "y-protocols/awareness";
 import * as awarenessProtocol from "y-protocols/awareness";
+import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 import type {
   CollabConnectionStatus,
@@ -36,6 +39,12 @@ interface EncryptedDocumentSnapshot {
   document: unknown;
 }
 
+interface EncryptedYjsSyncMessage {
+  version: 1;
+  kind: "yjs-sync-message";
+  message: string;
+}
+
 export function createEncryptedProvider(input: EncryptedProviderInput): CollaborationProvider {
   const statusListeners = new Set<(status: CollabConnectionStatus) => void>();
   const presenceListeners = new Set<() => void>();
@@ -46,6 +55,7 @@ export function createEncryptedProvider(input: EncryptedProviderInput): Collabor
   let socket: WebSocket | null = null;
   let key: CryptoKey | null = null;
   let destroyed = false;
+  let pendingFullStateSync = false;
 
   const emitStatus = (status: CollabConnectionStatus) => {
     for (const listener of statusListeners) {
@@ -64,22 +74,39 @@ export function createEncryptedProvider(input: EncryptedProviderInput): Collabor
     }
     outboundQueue.push(frame);
   };
-  const sendEncryptedSnapshot = async () => {
-    if (!key || input.access !== "sync") {
+  const sendEncryptedPayload = async (payload: Uint8Array) => {
+    if (input.access !== "sync") {
       return;
     }
-    const document = getCurrentDocumentSnapshot(input.ydoc);
-    if (!document) {
+    if (!key) {
+      pendingFullStateSync = true;
       return;
     }
-    sendFrame(encodeEncryptedSyncFrame(await encryptYjsUpdate(encodeDocumentSnapshot(document), key)));
+    sendFrame(encodeEncryptedSyncFrame(await encryptYjsUpdate(payload, key)));
   };
-  const onDocumentUpdate = (update: Uint8Array, origin: unknown) => {
+  const sendEncryptedSyncMessage = async (message: Uint8Array) => {
+    await sendEncryptedPayload(encodeYjsSyncMessage(message));
+  };
+  const sendEncryptedSyncStep1 = async () => {
+    const encoder = syncEncoding.createEncoder();
+    syncProtocol.writeSyncStep1(encoder, input.ydoc);
+    await sendEncryptedSyncMessage(syncEncoding.toUint8Array(encoder));
+  };
+  const sendEncryptedFullState = async () => {
+    const legacyDocument = getLegacyDocumentSnapshot(input.ydoc);
+    if (legacyDocument) {
+      await sendEncryptedPayload(encodeLegacyDocumentSnapshot(legacyDocument));
+      return;
+    }
+    const encoder = syncEncoding.createEncoder();
+    syncProtocol.writeSyncStep2(encoder, input.ydoc);
+    await sendEncryptedSyncMessage(syncEncoding.toUint8Array(encoder));
+  };
+  const onDocumentUpdate = (_update: Uint8Array, origin: unknown) => {
     if (origin === remoteEncryptedOrigin) {
       return;
     }
-    void update;
-    void sendEncryptedSnapshot().catch(() => emitStatus("error"));
+    void sendEncryptedFullState().catch(() => emitStatus("error"));
   };
   const sendAwarenessUpdate = () => {
     sendFrame(
@@ -95,7 +122,7 @@ export function createEncryptedProvider(input: EncryptedProviderInput): Collabor
     emitStatus("synced");
     sendAwarenessUpdate();
     if (input.access === "sync") {
-      sendFrame(encodeEncryptedSyncQueryFrame());
+      void sendEncryptedSyncStep1().catch(() => emitStatus("error"));
     }
     while (outboundQueue.length && socket?.readyState === WebSocketCtor.OPEN) {
       socket.send(outboundQueue.shift() as Uint8Array);
@@ -118,6 +145,10 @@ export function createEncryptedProvider(input: EncryptedProviderInput): Collabor
       socket.addEventListener("message", onSocketMessage);
       socket.addEventListener("close", onSocketClose);
       socket.addEventListener("error", onSocketError);
+      if (pendingFullStateSync) {
+        pendingFullStateSync = false;
+        void sendEncryptedFullState().catch(() => emitStatus("error"));
+      }
     } catch {
       emitStatus("error");
     }
@@ -133,18 +164,24 @@ export function createEncryptedProvider(input: EncryptedProviderInput): Collabor
       if (applyDocumentSnapshot(input.ydoc, update)) {
         return;
       }
+      if (await applyYjsSyncMessage(input.ydoc, update, sendEncryptedSyncMessage)) {
+        return;
+      }
       Y.applyUpdate(input.ydoc, update, remoteEncryptedOrigin);
       return;
     }
 
     if (frame.type === messageEncryptedSyncQuery) {
-      await sendEncryptedSnapshot();
+      await sendEncryptedFullState();
       return;
     }
 
     if (frame.type === messageAwareness && frame.payload) {
       awarenessProtocol.applyAwarenessUpdate(awareness, frame.payload, "remote-awareness");
       emitPresence();
+      if (input.access === "sync") {
+        void sendEncryptedSyncStep1().catch(() => emitStatus("error"));
+      }
       return;
     }
 
@@ -198,21 +235,6 @@ export function encodeEncryptedSyncQueryFrame(): Uint8Array {
   return encodeTypeFrame(messageEncryptedSyncQuery);
 }
 
-function getCurrentDocumentSnapshot(ydoc: Y.Doc): unknown | null {
-  const document = ydoc.getMap(documentMapName).get(documentJsonKey);
-  return document === undefined ? null : structuredClone(document);
-}
-
-function encodeDocumentSnapshot(document: unknown): Uint8Array {
-  return new TextEncoder().encode(
-    JSON.stringify({
-      version: 1,
-      kind: "document-snapshot",
-      document
-    } satisfies EncryptedDocumentSnapshot)
-  );
-}
-
 function applyDocumentSnapshot(ydoc: Y.Doc, bytes: Uint8Array): boolean {
   let snapshot: EncryptedDocumentSnapshot;
   try {
@@ -228,6 +250,62 @@ function applyDocumentSnapshot(ydoc: Y.Doc, bytes: Uint8Array): boolean {
   ydoc.transact(() => {
     ydoc.getMap(documentMapName).set(documentJsonKey, structuredClone(snapshot.document));
   }, remoteEncryptedOrigin);
+  return true;
+}
+
+function getLegacyDocumentSnapshot(ydoc: Y.Doc): unknown | null {
+  const document = ydoc.getMap(documentMapName).get(documentJsonKey);
+  return document === undefined ? null : structuredClone(document);
+}
+
+function encodeLegacyDocumentSnapshot(document: unknown): Uint8Array {
+  return new TextEncoder().encode(
+    JSON.stringify({
+      version: 1,
+      kind: "document-snapshot",
+      document
+    } satisfies EncryptedDocumentSnapshot)
+  );
+}
+
+function encodeYjsSyncMessage(message: Uint8Array): Uint8Array {
+  return new TextEncoder().encode(
+    JSON.stringify({
+      version: 1,
+      kind: "yjs-sync-message",
+      message: base64UrlEncode(message)
+    } satisfies EncryptedYjsSyncMessage)
+  );
+}
+
+async function applyYjsSyncMessage(
+  ydoc: Y.Doc,
+  bytes: Uint8Array,
+  sendReply: (message: Uint8Array) => Promise<void>
+): Promise<boolean> {
+  let payload: EncryptedYjsSyncMessage;
+  try {
+    payload = JSON.parse(new TextDecoder().decode(bytes)) as EncryptedYjsSyncMessage;
+  } catch {
+    return false;
+  }
+
+  if (payload.version !== 1 || payload.kind !== "yjs-sync-message") {
+    return false;
+  }
+
+  const decoder = syncDecoding.createDecoder(base64UrlDecode(payload.message));
+  const encoder = syncEncoding.createEncoder();
+  let syncError: Error | null = null;
+  syncProtocol.readSyncMessage(decoder, encoder, ydoc, remoteEncryptedOrigin, (error) => {
+    syncError = error;
+  });
+  if (syncError) {
+    throw syncError;
+  }
+  if (syncEncoding.length(encoder) > 0) {
+    await sendReply(syncEncoding.toUint8Array(encoder));
+  }
   return true;
 }
 
@@ -306,6 +384,24 @@ function concat(...parts: Uint8Array[]): Uint8Array {
     offset += part.byteLength;
   }
   return output;
+}
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlDecode(value: string): Uint8Array {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
 }
 
 function toUint8Array(data: unknown): Uint8Array {
