@@ -44,11 +44,13 @@ export async function applyAgentCommandsToCollaboration(input: {
     if (!hasRemoteDocument(document)) {
       document.setDocument(before, "agent-bootstrap");
     }
+    const beforeStateVector = Y.encodeStateVector(ydoc);
 
     const { document: preview, changedNodeIds } = applyAgentCommandsToDocument(
       before,
       input.commands
     );
+    assertUnchangedStateVector(beforeStateVector, ydoc);
     document.setDocument(preview, "agent-command");
     await waitForFlush();
     return { before, preview, changedNodeIds };
@@ -113,4 +115,18 @@ function waitForFlush(): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, 100);
   });
+}
+
+export function assertUnchangedStateVector(beforeStateVector: Uint8Array, ydoc: Y.Doc): void {
+  const applyStateVector = Y.encodeStateVector(ydoc);
+  if (!buffersEqual(beforeStateVector, applyStateVector)) {
+    throw new Error("collaboration document changed before agent apply; retry dryRun");
+  }
+}
+
+function buffersEqual(first: Uint8Array, second: Uint8Array): boolean {
+  if (first.byteLength !== second.byteLength) {
+    return false;
+  }
+  return first.every((value, index) => value === second[index]);
 }
