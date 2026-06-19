@@ -24,6 +24,8 @@ export interface CollaborationPresence {
   displayName: string;
   color: string;
   selectedNodeId: string | null;
+  editingNodeId: string | null;
+  editingMode: "drag" | "resize" | "text" | "agent" | null;
   selectedNodeBounds: CollaborationSelectionBounds | null;
   cursor: CollaborationDocumentPoint | null;
   viewport: CollaborationViewport | null;
@@ -68,6 +70,8 @@ const presenceSchema = z
     displayName: z.string().trim().min(1),
     color: z.string().trim().min(1),
     selectedNodeId: z.string().nullable().default(null),
+    editingNodeId: z.string().nullable().default(null),
+    editingMode: z.enum(["drag", "resize", "text", "agent"]).nullable().default(null),
     selectedNodeBounds: selectionBoundsSchema.nullable().default(null),
     cursor: documentPointSchema.nullable().default(null),
     viewport: viewportSchema.nullable().default(null),
@@ -82,6 +86,8 @@ const presenceSchema = z
 export function createPresenceState(input: CollaborationPresenceInput): CollaborationPresence {
   return presenceSchema.parse({
     selectedNodeId: null,
+    editingNodeId: null,
+    editingMode: null,
     cursor: null,
     selectedNodeBounds: null,
     viewport: null,

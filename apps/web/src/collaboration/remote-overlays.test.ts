@@ -15,6 +15,8 @@ function presence(input: Partial<CollaborationPresence>): CollaborationPresence 
     displayName: input.displayName ?? "User",
     color: input.color ?? "#2563eb",
     selectedNodeId: input.selectedNodeId ?? null,
+    editingNodeId: input.editingNodeId ?? null,
+    editingMode: input.editingMode ?? null,
     selectedNodeBounds: input.selectedNodeBounds ?? null,
     cursor: input.cursor ?? null,
     viewport: input.viewport ?? null,

@@ -18,6 +18,8 @@ describe("collaboration awareness", () => {
       displayName: "Lee",
       color: "#2563eb",
       selectedNodeId: null,
+      editingNodeId: null,
+      editingMode: null,
       selectedNodeBounds: null,
       cursor: null,
       viewport: null,
@@ -33,6 +35,8 @@ describe("collaboration awareness", () => {
         displayName: "Lee",
         color: "#2563eb",
         selectedNodeId: "text-1",
+        editingNodeId: null,
+        editingMode: null,
         selectedNodeBounds: {
           x: 120,
           y: 80,
@@ -57,6 +61,8 @@ describe("collaboration awareness", () => {
         displayName: "Lee",
         color: "#2563eb",
         selectedNodeId: "text-1",
+        editingNodeId: null,
+        editingMode: null,
         selectedNodeBounds: {
           x: 120,
           y: 80,
@@ -71,6 +77,28 @@ describe("collaboration awareness", () => {
         activeTool: "select"
       }
     ]);
+  });
+
+  test("summarizes soft editing claims for selected nodes", () => {
+    const states = summarizeAwarenessStates([
+      {
+        sessionId: "session-a",
+        userId: "user-a",
+        displayName: "A",
+        color: "#2563eb",
+        selectedNodeId: "node-1",
+        editingNodeId: "node-1",
+        editingMode: "resize",
+        updatedAtMs: 100
+      }
+    ]);
+
+    expect(states[0]).toMatchObject({
+      userId: "user-a",
+      selectedNodeId: "node-1",
+      editingNodeId: "node-1",
+      editingMode: "resize"
+    });
   });
 
   test("defaults legacy document-space cursor and session fields", () => {
@@ -88,6 +116,8 @@ describe("collaboration awareness", () => {
       displayName: "Legacy",
       color: "#0f766e",
       selectedNodeId: "rectangle-1",
+      editingNodeId: null,
+      editingMode: null,
       selectedNodeBounds: null,
       cursor: { x: 8, y: 16, space: "document" },
       viewport: null,

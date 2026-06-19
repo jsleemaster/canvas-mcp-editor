@@ -170,6 +170,8 @@ function createTestProvider(input: {
       displayName: "Lee",
       color: "#2563eb",
       selectedNodeId: null,
+      editingNodeId: null,
+      editingMode: null,
       selectedNodeBounds: null,
       cursor: null,
       viewport: null,

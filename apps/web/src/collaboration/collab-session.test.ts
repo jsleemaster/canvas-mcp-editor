@@ -296,6 +296,8 @@ describe("web collaboration session", () => {
         displayName: "Lee",
         color: "#2563eb",
         selectedNodeId: "text-1",
+        editingNodeId: null,
+        editingMode: null,
         selectedNodeBounds: null,
         cursor: null,
         viewport: null,
@@ -303,6 +305,33 @@ describe("web collaboration session", () => {
         activeTool: "select"
       }
     ]);
+
+    session.destroy();
+  });
+
+  test("updates local presence with a soft editing claim", () => {
+    const team = createTeamManifest({
+      name: "Soft Claim Team",
+      currentUser: {
+        userId: "user-1",
+        displayName: "Lee",
+        color: "#2563eb"
+      }
+    });
+    const session = createCollabDocumentSession({
+      team,
+      documentId: "sample-file",
+      initialDocument: sampleDocument(),
+      enablePersistence: false
+    });
+
+    session.updatePresence({ selectedNodeId: "node-1", editingNodeId: "node-1", editingMode: "drag" });
+
+    expect(session.getLocalPresence()).toMatchObject({
+      selectedNodeId: "node-1",
+      editingNodeId: "node-1",
+      editingMode: "drag"
+    });
 
     session.destroy();
   });
