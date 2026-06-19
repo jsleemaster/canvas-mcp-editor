@@ -1,10 +1,12 @@
 import { describe, expect, test } from "vitest";
 import {
+  createCollaborativeDesignDocument,
   createSharedKeyEncryptionConfig,
   deriveSharedKey,
   encryptYjsUpdate,
   type SharedKeyEncryptionConfig
 } from "@canvas-mcp-editor/collaboration";
+import type { RendererDocument } from "@canvas-mcp-editor/renderer";
 import * as Y from "yjs";
 import {
   createEncryptedProvider,
@@ -57,6 +59,81 @@ class MockWebSocket {
 }
 
 describe("encrypted collaboration provider", () => {
+  test("sends encrypted granular Yjs updates between seeded collaborators", async () => {
+    MockWebSocket.instances = [];
+    const senderDocument = createCollaborativeDesignDocument({
+      document: sampleDocument(),
+      ydoc: new Y.Doc()
+    });
+    const receiverDocument = createCollaborativeDesignDocument({
+      document: sampleDocument(),
+      ydoc: new Y.Doc()
+    });
+    const sender = createTestProvider({ ydoc: senderDocument.ydoc, resetSockets: false });
+    const senderSocket = await waitForSocket(0);
+    senderSocket.sent.length = 0;
+    const receiver = createTestProvider({ ydoc: receiverDocument.ydoc, resetSockets: false });
+    const receiverSocket = await waitForSocket(1);
+
+    await waitFor(() => receiverSocket.sent.some((frame) => frame[0] === 10));
+    const receiverSyncStep1 = receiverSocket.sent.find((frame) => frame[0] === 10) as Uint8Array;
+    senderSocket.sent.length = 0;
+    senderSocket.emitMessage(receiverSyncStep1);
+    await waitFor(() => senderSocket.sent.some((frame) => frame[0] === 10));
+    receiverSocket.emitMessage(senderSocket.sent.find((frame) => frame[0] === 10) as Uint8Array);
+    await waitFor(() => {
+      try {
+        return receiverDocument.getDocument().name === "Sample File";
+      } catch {
+        return false;
+      }
+    });
+    senderSocket.sent.length = 0;
+
+    senderDocument.transact("create-text", (current) => {
+      const next = structuredClone(current);
+      next.pages[0]?.children.push({
+        id: "text-2",
+        kind: "text",
+        name: "Text 2",
+        transform: { x: 80, y: 120, rotation: 0 },
+        size: { width: 180, height: 40 },
+        style: { fill: "#111827", stroke: null, stroke_width: 0, opacity: 1 },
+        content: {
+          type: "text",
+          value: "Synced text",
+          font_size: 20,
+          font_family: "Inter"
+        },
+        children: []
+      });
+      return next;
+    });
+
+    await waitFor(() => senderSocket.sent.some((frame) => frame[0] === 10));
+    receiverSocket.emitMessage(senderSocket.sent.find((frame) => frame[0] === 10) as Uint8Array);
+
+    await waitFor(() => {
+      try {
+        return receiverDocument
+          .getDocument()
+          .pages[0]?.children.some((node) => node.id === "text-2");
+      } catch {
+        return false;
+      }
+    });
+    expect(receiverDocument.getDocument().pages.map((page) => page.id)).toEqual(["page-1"]);
+    expect(receiverDocument.getDocument().pages[0]?.children.map((node) => node.id)).toEqual([
+      "text-1",
+      "text-2"
+    ]);
+
+    sender.destroy();
+    receiver.destroy();
+    senderDocument.destroy();
+    receiverDocument.destroy();
+  });
+
   test("connects with e2ee query params and sends encrypted document updates", async () => {
     const ydoc = new Y.Doc();
     const provider = createTestProvider({ ydoc });
@@ -170,6 +247,8 @@ function createTestProvider(input: {
       displayName: "Lee",
       color: "#2563eb",
       selectedNodeId: null,
+      editingNodeId: null,
+      editingMode: null,
       selectedNodeBounds: null,
       cursor: null,
       viewport: null,
@@ -188,6 +267,36 @@ function setClientId(ydoc: Y.Doc, clientId: number) {
 
 function getDocumentName(ydoc: Y.Doc): string | undefined {
   return (ydoc.getMap("design").get("documentJson") as { name?: string } | undefined)?.name;
+}
+
+function sampleDocument(): RendererDocument {
+  return {
+    id: "sample-file",
+    name: "Sample File",
+    pages: [
+      {
+        id: "page-1",
+        name: "Page 1",
+        children: [
+          {
+            id: "text-1",
+            kind: "text",
+            name: "Headline",
+            transform: { x: 32, y: 40, rotation: 0 },
+            size: { width: 260, height: 48 },
+            style: { fill: "#111827", stroke: null, stroke_width: 0, opacity: 1 },
+            content: {
+              type: "text",
+              value: "Canvas MCP Editor",
+              font_size: 28,
+              font_family: "Inter"
+            },
+            children: []
+          }
+        ]
+      }
+    ]
+  };
 }
 
 function testEncryptionConfig(): SharedKeyEncryptionConfig {

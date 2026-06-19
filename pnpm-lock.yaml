@@ -97,6 +97,9 @@ importers:
       konva:
         specifier: ^10.0.0
         version: 10.3.0
+      lib0:
+        specifier: ^0.2.114
+        version: 0.2.117
       react:
         specifier: ^19.0.0
         version: 19.2.7
