@@ -64,6 +64,12 @@ export interface EditorState {
   history: EditorHistory;
 }
 
+export interface EditorNodeClipboard {
+  sourceNodeId: string;
+  parentId: string;
+  node: RendererNode;
+}
+
 export type GeometryPatch = Partial<{
   x: number;
   y: number;
@@ -149,6 +155,7 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 const DEFAULT_SNAP_THRESHOLD = 6;
 const DEFAULT_CONSTRAINTS: NodeConstraints = { horizontal: "left", vertical: "top" };
+const PASTE_OFFSET = 24;
 
 export function createEditorState(document: RendererDocument): EditorState {
   return {
@@ -574,6 +581,55 @@ export function duplicateSelectedNode(state: EditorState): EditorState {
   return executeEditorCommand(state, {
     type: "create_node",
     parentId: selected.parentId,
+    node: copiedNode
+  });
+}
+
+export function copySelectedNode(state: EditorState): EditorNodeClipboard | null {
+  const selected = findSelectedNodeWithParent(state);
+  if (!selected) {
+    return null;
+  }
+
+  return {
+    sourceNodeId: selected.node.id,
+    parentId: selected.parentId,
+    node: structuredClone(selected.node)
+  };
+}
+
+export function pasteCopiedNode(
+  state: EditorState,
+  clipboard: EditorNodeClipboard | null
+): EditorState {
+  if (!clipboard) {
+    return state;
+  }
+
+  const copyIndex = nextCopyIndex(state.document, clipboard.sourceNodeId);
+  const copiedNode = structuredClone(clipboard.node);
+  const copiedNodeId = `${clipboard.sourceNodeId}-copy-${copyIndex}`;
+  renameNodeTreeForCopy(copiedNode, clipboard.sourceNodeId, copiedNodeId);
+  copiedNode.name =
+    copyIndex === 1
+      ? `${clipboard.node.name} 복사본`
+      : `${clipboard.node.name} 복사본 ${copyIndex}`;
+  copiedNode.transform = {
+    ...copiedNode.transform,
+    x: copiedNode.transform.x + PASTE_OFFSET * copyIndex,
+    y: copiedNode.transform.y + PASTE_OFFSET * copyIndex
+  };
+
+  const parentId = findParentChildren(state.document, clipboard.parentId)
+    ? clipboard.parentId
+    : state.document.pages[0]?.id;
+  if (!parentId) {
+    return state;
+  }
+
+  return executeEditorCommand(state, {
+    type: "create_node",
+    parentId,
     node: copiedNode
   });
 }

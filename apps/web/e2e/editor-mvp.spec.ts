@@ -510,6 +510,32 @@ test("Figma-like edit shortcuts duplicate and delete selected layers", async ({ 
   await expect(page.getByRole("button", { name: "헤드라인 복사본" })).toBeVisible();
 });
 
+test("Figma-like object clipboard copies and pastes selected layers", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await page.keyboard.press("Control+C");
+  await page.keyboard.press("Control+V");
+
+  const firstPaste = page.getByRole("button", { name: "헤드라인 복사본" });
+  await expect(firstPaste).toBeVisible();
+  await expect(firstPaste).toHaveClass(/is-selected/);
+  await expect(page.getByTestId("inspector-x")).toHaveValue("56");
+  await expect(page.getByTestId("inspector-y")).toHaveValue("64");
+  await expect(page.getByTestId("inspector-text")).toHaveValue("캔버스 MCP 에디터");
+
+  await page.keyboard.press("Control+V");
+  const secondPaste = page.getByRole("button", { name: "헤드라인 복사본 2" });
+  await expect(secondPaste).toBeVisible();
+  await expect(secondPaste).toHaveClass(/is-selected/);
+  await expect(page.getByTestId("inspector-x")).toHaveValue("80");
+  await expect(page.getByTestId("inspector-y")).toHaveValue("88");
+
+  await page.keyboard.press("Control+Z");
+  await expect(secondPaste).toHaveCount(0);
+  await expect(firstPaste).toBeVisible();
+});
+
 test("Figma-like multi-selection supports Shift-click and area selection", async ({ page }) => {
   await createProjectFromEmptyState(page);
 

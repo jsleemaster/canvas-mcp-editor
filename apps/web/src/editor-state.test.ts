@@ -4,6 +4,7 @@ import {
   alignSelectedNodeToParent,
   alignSelectedNodes,
   calculateSnapForMovingBounds,
+  copySelectedNode,
   createEditorState,
   deleteSelectedNode,
   distributeSelectedNodes,
@@ -20,6 +21,7 @@ import {
   moveSelectedNodesBy,
   nudgeSelectedNode,
   panViewport,
+  pasteCopiedNode,
   redo,
   selectNodesInBounds,
   setMultiSelection,
@@ -511,6 +513,27 @@ describe("editor state commands", () => {
     expect(duplicate?.transform).toMatchObject({ x: 32, y: 40 });
     expect(duplicated.selection.nodeId).toBe("text-1-copy-1");
     expect(findNodeById(undo(duplicated).document, "text-1-copy-1")).toBeNull();
+  });
+
+  test("copies and pastes the selected node as undoable offset copies", () => {
+    const initial = setSelection(createEditorState(sampleDocument()), "text-1");
+
+    const clipboard = copySelectedNode(initial);
+    const pasted = pasteCopiedNode(initial, clipboard);
+    const firstPaste = findNodeById(pasted.document, "text-1-copy-1");
+
+    expect(clipboard?.sourceNodeId).toBe("text-1");
+    expect(firstPaste?.name).toBe("헤드라인 복사본");
+    expect(firstPaste?.transform).toMatchObject({ x: 56, y: 64 });
+    expect(pasted.selection.nodeId).toBe("text-1-copy-1");
+    expect(findNodeById(undo(pasted).document, "text-1-copy-1")).toBeNull();
+
+    const pastedAgain = pasteCopiedNode(pasted, clipboard);
+    const secondPaste = findNodeById(pastedAgain.document, "text-1-copy-2");
+
+    expect(secondPaste?.name).toBe("헤드라인 복사본 2");
+    expect(secondPaste?.transform).toMatchObject({ x: 80, y: 88 });
+    expect(pastedAgain.selection.nodeId).toBe("text-1-copy-2");
   });
 
   test("calculates absolute node position through parent transforms", () => {

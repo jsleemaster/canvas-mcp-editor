@@ -51,6 +51,7 @@ import {
   alignSelectedNodeToParent,
   alignSelectedNodes,
   calculateSnapForMovingBounds,
+  copySelectedNode,
   createEditorState,
   createImageNode,
   createRectangleNode,
@@ -68,6 +69,7 @@ import {
   moveSelectedNodesBy,
   nudgeSelectedNode,
   panViewport,
+  pasteCopiedNode,
   redo,
   selectNodesInBounds,
   setSelection,
@@ -76,6 +78,7 @@ import {
   toggleSelection,
   type AlignmentMode,
   type DistributionMode,
+  type EditorNodeClipboard,
   type EditorState,
   type GeometryPatch,
   type SelectionBounds,
@@ -1508,6 +1511,8 @@ export function App() {
   const [areaSelection, setAreaSelection] = useState<AreaSelectionSession | null>(null);
   const [dragPreview, setDragPreview] = useState<NodeDragPreview | null>(null);
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
+  const editorRef = useRef<EditorState | null>(null);
+  const objectClipboardRef = useRef<EditorNodeClipboard | null>(null);
   const resizeSessionRef = useRef<ResizeSession | null>(null);
   const areaSelectionRef = useRef<AreaSelectionSession | null>(null);
   const dragSessionRef = useRef<NodeDragSession | null>(null);
@@ -1535,6 +1540,10 @@ export function App() {
       ? "검색 결과 없음"
       : `${visibleProjects.length}개 프로젝트`
     : `${projects.length}개 프로젝트`;
+
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
 
   const loadProjectDocument = async (project: ProjectManifest, projectList = projects) => {
     const response = await fetch(`http://127.0.0.1:4317/files/${project.currentDocumentId}`);
@@ -1925,6 +1934,19 @@ export function App() {
           publishEditorPresence(nextState);
           return nextState;
         });
+        return;
+      }
+      if (isCommand && event.key.toLowerCase() === "c") {
+        const clipboard = editorRef.current ? copySelectedNode(editorRef.current) : null;
+        if (clipboard) {
+          event.preventDefault();
+          objectClipboardRef.current = clipboard;
+        }
+        return;
+      }
+      if (isCommand && event.key.toLowerCase() === "v" && objectClipboardRef.current) {
+        event.preventDefault();
+        updateViewportFromInteraction((state) => pasteCopiedNode(state, objectClipboardRef.current));
         return;
       }
       if (isCommand && event.key.toLowerCase() === "d") {
