@@ -65,3 +65,5 @@ Implement multi-selection group affordance first: combined bounding box, combine
 ## Implementation Follow-Up
 
 2026-06-22 first slice: implemented the combined multi-selection group outline and combined dimensions badge. Multi-selected bounding-box resize behavior remains a separate follow-up so the visual affordance can stay covered before transform semantics change.
+
+2026-06-22 second slice: separated Inspector alignment and distribution controls into distinct groups, added Korean tooltips, and made disabled distribution controls explicit for single-selection states.

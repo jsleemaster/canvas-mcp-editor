@@ -19,7 +19,7 @@ This roadmap translates `docs/product/figma-feature-inventory.md` into implement
 The current main branch already has:
 
 - Rust/TypeScript document primitives for pages, frames, rectangles, text, images, components, instances, and geometry.
-- Browser editor shell with creation, selection, dragging, four corner resizing, selection size badges, inspector geometry, inspector alignment/distribution, color/text editing, undo/redo shortcuts, zoom, hover measurement overlays, selected-frame padding/child-spacing guides, and a multi-selection group outline with combined dimensions.
+- Browser editor shell with creation, selection, dragging, four corner resizing, selection size badges, inspector geometry, grouped Inspector alignment/distribution controls, color/text editing, undo/redo shortcuts, zoom, hover measurement overlays, selected-frame padding/child-spacing guides, and a multi-selection group outline with combined dimensions.
 - Local image asset storage with browser clipboard paste and file drag/drop insertion for image nodes.
 - Shift-click and marquee multi-selection, selected-layer alignment/distribution, grouped selected-layer dragging, transient snap guides for page-level peer bounds/centers, and combined multi-selection group feedback.
 - Component definitions, instances, and detach.
@@ -163,7 +163,7 @@ Implementation shape:
 1. Keep the landed Lane 1 layout foundation and PR #20 navigation fixes green.
 2. Keep the core shortcut slice from `docs/product/figma-core-interaction-rules.md` green: selected-layer Delete/Backspace, Cmd/Ctrl+D duplicate, and single-object Cmd/Ctrl+C/V copy/paste.
 3. Keep Shift-click multi-selection and drag 영역 선택 green.
-4. Keep alignment/distribute commands green for multi-selected layers.
+4. Keep alignment/distribute commands and grouped Inspector affordances green for selected layers.
 5. Keep the multi-selection group outline and combined size badge green while deferring multi-selected bounding-box resize behavior to a separate slice.
 6. Extend the landed grouped drag, measurement, frame-spacing, corner-resize, and edge-resize slices with rotation, rulers, manual guides, and snap settings.
 7. Build full Figma file import separately on top of the local asset pipeline, starting with frames, rectangles, text, and exported image assets before variants or advanced effects.
