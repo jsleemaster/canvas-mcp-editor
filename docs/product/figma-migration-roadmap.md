@@ -160,7 +160,7 @@ Implementation shape:
 ## Immediate Implementation Order
 
 1. Keep the landed Lane 1 layout foundation and PR #20 navigation fixes green.
-2. Keep the core shortcut slice from `docs/product/figma-core-interaction-rules.md` green: selected-layer Delete/Backspace and Cmd/Ctrl+D duplicate.
+2. Keep the core shortcut slice from `docs/product/figma-core-interaction-rules.md` green: selected-layer Delete/Backspace, Cmd/Ctrl+D duplicate, and single-object Cmd/Ctrl+C/V copy/paste.
 3. Keep Shift-click multi-selection and drag 영역 선택 green.
 4. Keep alignment/distribute commands green for multi-selected layers.
 5. Extend the landed grouped drag, measurement, frame-spacing, and corner-resize slices with edge resize handles, rotation, rulers, manual guides, and snap settings.

@@ -1,6 +1,6 @@
 # Superpowers Plan Status
 
-Last audited: 2026-06-19
+Last audited: 2026-06-22
 
 This file is the routing source of truth for `docs/superpowers/plans/*`.
 The individual plan files are historical execution plans. Some older files still
@@ -41,6 +41,7 @@ Use this order when entering the repo:
 | `2026-06-18-multi-node-drag-snap.md` | Completed | Added grouped selected-layer drag using batch geometry commands, transient snap guide overlays during drag, page-level snap target calculation, state/e2e coverage, and direct headed Playwright CLI verification. Verified with `git diff --check`, `pnpm --filter @canvas-mcp-editor/web test -- src/editor-state.test.ts --runInBand`, `pnpm typecheck`, `pnpm --filter @canvas-mcp-editor/web build`, `pnpm test:e2e`, `pnpm test`, `cargo test --workspace`, `pnpm test:e2e:collab`, and `pnpm exec playwright test apps/web/e2e/editor-mvp.spec.ts --grep "multi-selection drags together" --headed --workers=1 --reporter=line`. |
 | `2026-06-18-image-paste-drop-import.md` | Completed | Added local image asset storage, `image` node creation, browser clipboard paste and file drag/drop insertion, persisted document node creation, Konva image rendering, product docs separating landed image insertion from later full Figma import, and Playwright coverage. Verified with baseline `pnpm test`, `git diff --check`, focused server/web tests, focused and headed image Playwright CLI tests, `pnpm typecheck`, `pnpm --filter @canvas-mcp-editor/web build`, `pnpm test`, and `pnpm test:e2e`. |
 | `2026-06-19-collaboration-concurrency-safeguards.md` | Completed | Added granular Yjs field-level merge coverage, page-id merge safeguards for independently seeded collaborators, soft editing awareness claims, team asset metadata contracts, collaborative agent stale-state guard, encrypted Yjs sync-envelope recovery, and two-browser concurrency e2e coverage. Verified with focused red/green tests, `pnpm typecheck`, `pnpm test`, `pnpm --filter @canvas-mcp-editor/web build`, and `pnpm test:e2e:collab` repeated after the encrypted order-dependent failure was fixed. |
+| `2026-06-22-object-copy-paste-shortcuts.md` | Completed | Added single selected-object Cmd/Ctrl+C and Cmd/Ctrl+V through an in-app session clipboard, deterministic copied ids/names, 24 px paste offsets, undoable create-node command behavior, focused state/e2e coverage, product docs, and headed Playwright CLI verification. Verified with focused RED/GREEN tests, `git diff --check`, `pnpm --dir apps/web exec vitest run src/editor-state.test.ts`, focused and headed Playwright object clipboard tests, `pnpm test:e2e`, `pnpm typecheck`, `pnpm --filter @canvas-mcp-editor/web build`, and `pnpm test`. |
 
 ## Current Active Plan
 
