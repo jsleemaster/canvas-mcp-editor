@@ -29,13 +29,24 @@ relay: ws://127.0.0.1:4327
 
 ## Web-only Deployment
 
-The web app can be built and served without a central collaboration backend. This is the default public deployment mode because it keeps the project open-source friendly and avoids a maintainer-operated collaboration service:
+The web app can be built and served without a central collaboration relay, but it still needs a project API server for project manifests, documents, and uploaded assets. A static-only host is useful for a shell preview only unless `VITE_API_BASE_URL` points at a reachable `apps/server` deployment.
 
 ```bash
-pnpm --filter @canvas-mcp-editor/web build
+VITE_API_BASE_URL=https://your-api.example.com pnpm --filter @canvas-mcp-editor/web build
 ```
 
-Serve `apps/web/dist` from GitHub Pages, Vercel static output, Netlify, nginx, or any static host. This repository does not install an automatic GitHub Pages deployment workflow; choose and configure the static host explicitly when publishing the web app.
+Serve `apps/web/dist` from Vercel static output, Netlify, nginx, or another static host only when the API server is deployed separately. This repository does not install an automatic GitHub Pages deployment workflow.
+
+## Full-stack web and API deployment
+
+For a remote editor that can create projects, save documents, upload images, and reload state, build the web shell under `/app/` and run the Node API server. The server serves the built web app from `/app/` while keeping API routes at `/projects`, `/files`, and `/assets/:assetId`.
+
+```bash
+pnpm build:fullstack
+HOST=0.0.0.0 PORT=4317 pnpm --filter @canvas-mcp-editor/server start
+```
+
+Set `WEB_DIST_DIR` if the built web directory is not `apps/web/dist`, and set `WEB_BASE_PATH` if the editor should not be served from `/app/`.
 
 Teams that need real-time editing configure their own relay URL inside the team manifest. Local-only teams continue to work without a relay.
 

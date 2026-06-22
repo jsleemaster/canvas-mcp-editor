@@ -7,6 +7,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
     "mcp": "tsx src/mcp.ts",
+    "start": "node dist/index.js",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit"

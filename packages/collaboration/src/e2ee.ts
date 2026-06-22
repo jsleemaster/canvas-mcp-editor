@@ -1,4 +1,4 @@
-import type { SharedKeyEncryptionConfig } from "./team-manifest";
+import type { SharedKeyEncryptionConfig } from "./team-manifest.js";
 
 export interface EncryptedYjsUpdate {
   iv: string;

@@ -1,4 +1,8 @@
-import Fastify from "fastify";
+import { existsSync } from "node:fs";
+import { readFile, stat } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import Fastify, { type FastifyInstance } from "fastify";
 import type { AgentBatchInput, AgentFindQuery } from "./agent-control.js";
 import {
   FileStorage,
@@ -8,7 +12,18 @@ import {
   type GeometryPatch
 } from "./storage.js";
 
-export function createHttpServer(storage = new FileStorage()) {
+export interface HttpServerOptions {
+  webBasePath?: string;
+  webDistDir?: string | null;
+}
+
+const DEFAULT_WEB_BASE_PATH = "/app/";
+const DEFAULT_WEB_DIST_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../web/dist"
+);
+
+export function createHttpServer(storage = new FileStorage(), options: HttpServerOptions = {}) {
   const server = Fastify({ logger: true });
 
   server.setErrorHandler((error, _request, reply) => {
@@ -242,5 +257,102 @@ export function createHttpServer(storage = new FileStorage()) {
     }
   );
 
+  const webDistDir = resolveWebDistDir(options.webDistDir);
+  if (webDistDir) {
+    registerStaticWebRoutes(server, {
+      basePath: normalizeWebBasePath(options.webBasePath ?? process.env.WEB_BASE_PATH),
+      distDir: webDistDir
+    });
+  }
+
   return server;
+}
+
+function resolveWebDistDir(configuredDistDir: string | null | undefined) {
+  if (configuredDistDir === null) {
+    return undefined;
+  }
+
+  const candidate = path.resolve(configuredDistDir ?? process.env.WEB_DIST_DIR ?? DEFAULT_WEB_DIST_DIR);
+  return existsSync(candidate) ? candidate : undefined;
+}
+
+function normalizeWebBasePath(basePath = DEFAULT_WEB_BASE_PATH) {
+  const trimmed = basePath.trim() || DEFAULT_WEB_BASE_PATH;
+  const withLeadingSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return withLeadingSlash.endsWith("/") ? withLeadingSlash : `${withLeadingSlash}/`;
+}
+
+function registerStaticWebRoutes(
+  server: FastifyInstance,
+  options: { basePath: string; distDir: string }
+) {
+  const distRoot = path.resolve(options.distDir);
+  const basePathWithoutTrailingSlash = options.basePath.slice(0, -1);
+
+  if (options.basePath !== "/") {
+    server.get("/", async (_request, reply) => reply.redirect(options.basePath));
+    server.get(basePathWithoutTrailingSlash, async (_request, reply) => reply.redirect(options.basePath));
+  }
+  server.get(`${options.basePath}*`, async (request, reply) => {
+    const requestPath = new URL(request.url, "http://canvas-mcp-editor.local").pathname;
+    const relativePath = decodeURIComponent(requestPath.slice(options.basePath.length)) || "index.html";
+    const response = await readStaticWebFile(distRoot, relativePath);
+
+    if (!response) {
+      return reply.code(404).send({ error: "not found" });
+    }
+
+    reply.header("Content-Type", response.contentType);
+    return reply.send(response.body);
+  });
+}
+
+async function readStaticWebFile(distRoot: string, relativePath: string) {
+  const candidate = path.resolve(distRoot, relativePath);
+  const insideDist = candidate === distRoot || candidate.startsWith(`${distRoot}${path.sep}`);
+  if (!insideDist) {
+    return undefined;
+  }
+
+  try {
+    const candidateStat = await stat(candidate);
+    if (candidateStat.isFile()) {
+      return {
+        body: await readFile(candidate),
+        contentType: contentTypeForPath(candidate)
+      };
+    }
+  } catch {
+    if (path.extname(relativePath)) {
+      return undefined;
+    }
+  }
+
+  return {
+    body: await readFile(path.join(distRoot, "index.html")),
+    contentType: "text/html; charset=utf-8"
+  };
+}
+
+function contentTypeForPath(filePath: string) {
+  switch (path.extname(filePath)) {
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".html":
+      return "text/html; charset=utf-8";
+    case ".js":
+    case ".mjs":
+      return "text/javascript; charset=utf-8";
+    case ".json":
+      return "application/json; charset=utf-8";
+    case ".png":
+      return "image/png";
+    case ".svg":
+      return "image/svg+xml";
+    case ".webp":
+      return "image/webp";
+    default:
+      return "application/octet-stream";
+  }
 }
