@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
@@ -178,6 +178,50 @@ describe("HTTP server", () => {
     expect(served.statusCode).toBe(200);
     expect(served.headers["content-type"]).toContain("image/png");
     expect(served.rawPayload.length).toBe(asset.byteLength);
+  });
+
+  test("serves built web assets under /app without intercepting API assets", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-mcp-editor-"));
+    const webDistDir = path.join(tempRoot, "web-dist");
+    await mkdir(path.join(webDistDir, "assets"), { recursive: true });
+    await writeFile(
+      path.join(webDistDir, "index.html"),
+      '<!doctype html><title>캔버스 MCP 에디터</title><script src="/app/assets/app.js"></script>'
+    );
+    await writeFile(path.join(webDistDir, "assets", "app.js"), "window.__canvasEditor = true;");
+    const server = createHttpServer(new FileStorage(path.join(tempRoot, "storage")), {
+      webDistDir,
+      webBasePath: "/app/"
+    });
+
+    const root = await server.inject({ method: "GET", url: "/" });
+    expect(root.statusCode).toBe(302);
+    expect(root.headers.location).toBe("/app/");
+
+    const shell = await server.inject({ method: "GET", url: "/app/" });
+    expect(shell.statusCode).toBe(200);
+    expect(shell.headers["content-type"]).toContain("text/html");
+    expect(shell.body).toContain("캔버스 MCP 에디터");
+
+    const bundle = await server.inject({ method: "GET", url: "/app/assets/app.js" });
+    expect(bundle.statusCode).toBe(200);
+    expect(bundle.headers["content-type"]).toContain("text/javascript");
+    expect(bundle.body).toContain("window.__canvasEditor");
+
+    const uploaded = await server.inject({
+      method: "POST",
+      url: "/assets",
+      payload: {
+        name: "pixel.png",
+        mimeType: "image/png",
+        dataBase64:
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+      }
+    });
+    expect(uploaded.statusCode).toBe(200);
+    const apiAsset = await server.inject({ method: "GET", url: uploaded.json().asset.url });
+    expect(apiAsset.statusCode).toBe(200);
+    expect(apiAsset.headers["content-type"]).toContain("image/png");
   });
 
   test("rejects image assets whose bytes do not match the declared mime type", async () => {

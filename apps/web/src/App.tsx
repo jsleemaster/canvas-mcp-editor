@@ -21,6 +21,7 @@ import {
   type CollaborationPresence,
   type TeamManifest
 } from "@canvas-mcp-editor/collaboration";
+import { apiUrl } from "./api-base";
 import { parseDocumentPayload } from "./document-api";
 import { editorKonvaTokens } from "./design-tokens";
 import { uploadImageAsset, type UploadedAsset } from "./asset-api";
@@ -256,7 +257,7 @@ function nodeKindLabel(kind: RendererNode["kind"]): string {
 }
 
 function assetUrlForId(assetId: string) {
-  return `http://127.0.0.1:4317/assets/${encodeURIComponent(assetId)}`;
+  return apiUrl(`/assets/${encodeURIComponent(assetId)}`);
 }
 
 function imageFilesFromList(files: FileList | File[]): File[] {
@@ -306,7 +307,7 @@ async function readImageFileSize(file: File): Promise<{ width: number; height: n
 }
 
 async function persistCreatedNode(fileId: string, parentId: string, node: RendererNode) {
-  const response = await fetch(`http://127.0.0.1:4317/files/${fileId}/nodes`, {
+  const response = await fetch(apiUrl(`/files/${fileId}/nodes`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ parentId, node })
@@ -1624,7 +1625,7 @@ export function App() {
   }, [editor]);
 
   const loadProjectDocument = async (project: ProjectManifest, projectList = projects) => {
-    const response = await fetch(`http://127.0.0.1:4317/files/${project.currentDocumentId}`);
+    const response = await fetch(apiUrl(`/files/${project.currentDocumentId}`));
     if (!response.ok) {
       throw new Error(`프로젝트 문서를 불러오지 못했습니다: ${response.status}`);
     }
@@ -1663,7 +1664,7 @@ export function App() {
           return;
         }
 
-        const response = await fetch(`http://127.0.0.1:4317/files/${selectedProject.currentDocumentId}`);
+        const response = await fetch(apiUrl(`/files/${selectedProject.currentDocumentId}`));
         if (!response.ok) {
           throw new Error(`프로젝트 문서를 불러오지 못했습니다: ${response.status}`);
         }

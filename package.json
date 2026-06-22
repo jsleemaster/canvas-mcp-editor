@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r build",
+    "build:fullstack": "pnpm --filter @canvas-mcp-editor/renderer build && pnpm --filter @canvas-mcp-editor/collaboration build && pnpm --filter @canvas-mcp-editor/web typecheck && pnpm --dir apps/web exec vite build --base=/app/ && pnpm --filter @canvas-mcp-editor/server build",
     "check:design-rules": "node scripts/check-design-rules.mjs",
     "dev": "pnpm --parallel --filter @canvas-mcp-editor/server --filter @canvas-mcp-editor/web dev",
     "dev:collab": "pnpm --filter @canvas-mcp-editor/collab-relay dev",

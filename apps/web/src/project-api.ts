@@ -1,4 +1,4 @@
-const API_BASE_URL = "http://127.0.0.1:4317";
+import { apiUrl } from "./api-base";
 
 export interface ProjectDocumentSummary {
   documentId: string;
@@ -23,7 +23,7 @@ export interface ProjectManifest {
 }
 
 export async function fetchProjects(fetcher: typeof fetch = fetch): Promise<ProjectManifest[]> {
-  const response = await fetcher(`${API_BASE_URL}/projects`);
+  const response = await fetcher(apiUrl("/projects"));
   const payload = await readJson(response);
   return (payload as { projects: ProjectManifest[] }).projects;
 }
@@ -32,7 +32,7 @@ export async function createProject(
   input: { name?: string; projectId?: string; documentId?: string; documentName?: string },
   fetcher: typeof fetch = fetch
 ): Promise<ProjectManifest> {
-  return writeProject(`${API_BASE_URL}/projects`, "POST", input, fetcher);
+  return writeProject(apiUrl("/projects"), "POST", input, fetcher);
 }
 
 export async function updateProject(
@@ -40,7 +40,7 @@ export async function updateProject(
   input: { name?: string; currentDocumentId?: string },
   fetcher: typeof fetch = fetch
 ): Promise<ProjectManifest> {
-  return writeProject(`${API_BASE_URL}/projects/${projectId}`, "PATCH", input, fetcher);
+  return writeProject(apiUrl(`/projects/${projectId}`), "PATCH", input, fetcher);
 }
 
 export async function duplicateProject(
@@ -48,7 +48,7 @@ export async function duplicateProject(
   input: { projectId?: string; name?: string; documentIdPrefix?: string },
   fetcher: typeof fetch = fetch
 ): Promise<ProjectManifest> {
-  return writeProject(`${API_BASE_URL}/projects/${projectId}/duplicate`, "POST", input, fetcher);
+  return writeProject(apiUrl(`/projects/${projectId}/duplicate`), "POST", input, fetcher);
 }
 
 export async function setProjectSharing(
@@ -56,14 +56,14 @@ export async function setProjectSharing(
   sharing: ProjectSharing,
   fetcher: typeof fetch = fetch
 ): Promise<ProjectManifest> {
-  return writeProject(`${API_BASE_URL}/projects/${projectId}/sharing`, "PATCH", sharing, fetcher);
+  return writeProject(apiUrl(`/projects/${projectId}/sharing`), "PATCH", sharing, fetcher);
 }
 
 export async function deleteProject(
   projectId: string,
   fetcher: typeof fetch = fetch
 ): Promise<ProjectManifest> {
-  return writeProject(`${API_BASE_URL}/projects/${projectId}`, "DELETE", undefined, fetcher);
+  return writeProject(apiUrl(`/projects/${projectId}`), "DELETE", undefined, fetcher);
 }
 
 async function writeProject(

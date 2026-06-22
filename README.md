@@ -230,7 +230,14 @@ The web app can be shared as a static build. Real-time collaboration is optional
 
 ## Deployment
 
-Canvas MCP Editor keeps static web hosting separate from real-time relay hosting. The static web app can be deployed from `apps/web/dist` with GitHub Pages or another static host, while each team runs its own team-owned relay only when it needs live collaboration.
+Canvas MCP Editor keeps the project API, static web shell, and real-time relay as separate deployment concerns. For a remote editor that can create, save, upload assets, and reload projects, deploy `apps/server` and build `apps/web` with the `/app/` base path so the Node server serves the web shell and same-origin API together:
+
+```bash
+pnpm build:fullstack
+HOST=0.0.0.0 PORT=4317 pnpm --filter @canvas-mcp-editor/server start
+```
+
+The browser API base can also be pointed at a separate server with `VITE_API_BASE_URL`. A web-only static host is only a shell unless that API server is reachable. Each team runs its own team-owned collaboration relay only when it needs live collaboration.
 
 The maintainers do not operate a default production relay. For self-hosting, use the Docker Compose template in `deploy/collab-relay/docker-compose.yml` with `deploy/collab-relay/.env.example`, or run `pnpm dev:collab` for local development.
 

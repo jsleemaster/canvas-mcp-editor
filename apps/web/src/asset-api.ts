@@ -1,4 +1,4 @@
-const API_BASE_URL = "http://127.0.0.1:4317";
+import { apiUrl } from "./api-base";
 
 export interface UploadedAsset {
   assetId: string;
@@ -17,7 +17,7 @@ export async function uploadImageAsset(
   }
 
   const dataBase64 = await readFileAsBase64(file);
-  const response = await fetcher(`${API_BASE_URL}/assets`, {
+  const response = await fetcher(apiUrl("/assets"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
