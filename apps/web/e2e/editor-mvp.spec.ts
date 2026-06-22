@@ -708,6 +708,37 @@ test("Figma-like alignment and distribution inspector controls selected layers",
   await expect(page.getByTestId("inspector-x")).toHaveValue("506");
 });
 
+test("inspector alignment controls expose grouped tooltips and disabled distribution state", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+  await page.getByRole("button", { name: "헤드라인" }).click();
+
+  await expect(page.getByTestId("inspector-align-group").getByRole("button")).toHaveCount(6);
+  await expect(page.getByTestId("inspector-distribute-group").getByRole("button")).toHaveCount(2);
+
+  const leftAlign = page.getByRole("button", { name: "검사기 왼쪽 맞춤" });
+  const horizontalDistribute = page.getByRole("button", { name: "검사기 가로 간격 균등" });
+  await expect(leftAlign).toBeEnabled();
+  await expect(leftAlign).toHaveAttribute("title", "왼쪽 맞춤");
+  await expect(horizontalDistribute).toBeDisabled();
+  await expect(horizontalDistribute).toHaveAttribute("title", "가로 간격 균등");
+  await expect(horizontalDistribute).toHaveClass(/is-disabled/);
+
+  await page.getByRole("button", { name: "사각형 만들기" }).click();
+  await page.getByRole("button", { name: "텍스트 만들기" }).click();
+  const headlineLayer = page.getByRole("button", { name: "헤드라인" });
+  const rectangleLayer = page.getByRole("button", { name: "사각형 3" });
+  const helperTextLayer = page.getByRole("button", { name: "텍스트 4" });
+  await expect(rectangleLayer).toBeVisible();
+  await expect(helperTextLayer).toBeVisible();
+
+  await headlineLayer.click();
+  await rectangleLayer.click({ modifiers: ["Shift"] });
+  await helperTextLayer.click({ modifiers: ["Shift"] });
+
+  await expect(horizontalDistribute).toBeEnabled();
+  await expect(horizontalDistribute).not.toHaveClass(/is-disabled/);
+});
+
 test("multi-selection group bounds show combined dimensions without resize handles", async ({ page }) => {
   await createProjectFromEmptyState(page);
 

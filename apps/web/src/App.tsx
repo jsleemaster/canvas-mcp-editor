@@ -1215,74 +1215,71 @@ function InspectorAlignmentControls({
   onAlign: (mode: AlignmentMode) => void;
   onDistribute: (mode: DistributionMode) => void;
 }) {
+  const alignmentActions: Array<{ mode: AlignmentMode; label: string; icon: string }> = [
+    { mode: "left", label: "왼쪽 맞춤", icon: "⇤" },
+    { mode: "center", label: "가로 가운데 맞춤", icon: "↔" },
+    { mode: "right", label: "오른쪽 맞춤", icon: "⇥" },
+    { mode: "top", label: "위쪽 맞춤", icon: "↥" },
+    { mode: "middle", label: "세로 가운데 맞춤", icon: "↕" },
+    { mode: "bottom", label: "아래쪽 맞춤", icon: "↧" }
+  ];
+  const distributionActions: Array<{ mode: DistributionMode; label: string; icon: string }> = [
+    { mode: "horizontal", label: "가로 간격 균등", icon: "⟷" },
+    { mode: "vertical", label: "세로 간격 균등", icon: "↕" }
+  ];
+
   return (
     <section className="inspector-section" aria-label="정렬">
       <h3>정렬</h3>
-      <div className="inspector-action-grid">
-        <button
-          type="button"
-          aria-label="검사기 왼쪽 맞춤"
-          disabled={!canAlign}
-          onClick={() => onAlign("left")}
+      <div className="inspector-control-groups">
+        <div
+          className="inspector-control-group"
+          data-testid="inspector-align-group"
+          aria-labelledby="inspector-align-label"
         >
-          ⇤
-        </button>
-        <button
-          type="button"
-          aria-label="검사기 가로 가운데 맞춤"
-          disabled={!canAlign}
-          onClick={() => onAlign("center")}
+          <span className="inspector-control-label" id="inspector-align-label">
+            맞춤
+          </span>
+          <div className="inspector-action-grid inspector-action-grid--align">
+            {alignmentActions.map((action) => (
+              <button
+                key={action.mode}
+                type="button"
+                aria-label={`검사기 ${action.label}`}
+                className={!canAlign ? "is-disabled" : undefined}
+                title={action.label}
+                disabled={!canAlign}
+                onClick={() => onAlign(action.mode)}
+              >
+                {action.icon}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div
+          className="inspector-control-group"
+          data-testid="inspector-distribute-group"
+          aria-labelledby="inspector-distribute-label"
         >
-          ↔
-        </button>
-        <button
-          type="button"
-          aria-label="검사기 오른쪽 맞춤"
-          disabled={!canAlign}
-          onClick={() => onAlign("right")}
-        >
-          ⇥
-        </button>
-        <button
-          type="button"
-          aria-label="검사기 위쪽 맞춤"
-          disabled={!canAlign}
-          onClick={() => onAlign("top")}
-        >
-          ↥
-        </button>
-        <button
-          type="button"
-          aria-label="검사기 세로 가운데 맞춤"
-          disabled={!canAlign}
-          onClick={() => onAlign("middle")}
-        >
-          ↕
-        </button>
-        <button
-          type="button"
-          aria-label="검사기 아래쪽 맞춤"
-          disabled={!canAlign}
-          onClick={() => onAlign("bottom")}
-        >
-          ↧
-        </button>
-        <button
-          type="button"
-          aria-label="검사기 가로 간격 균등"
-          disabled={!canDistribute}
-          onClick={() => onDistribute("horizontal")}
-        >
-          ⟷
-        </button>
-        <button
-          type="button"
-          aria-label="검사기 세로 간격 균등"
-          disabled={!canDistribute}
-          onClick={() => onDistribute("vertical")}
-        >
-          ↕
-        </button>
+          <span className="inspector-control-label" id="inspector-distribute-label">
+            간격 균등
+          </span>
+          <div className="inspector-action-grid inspector-action-grid--distribute">
+            {distributionActions.map((action) => (
+              <button
+                key={action.mode}
+                type="button"
+                aria-label={`검사기 ${action.label}`}
+                className={!canDistribute ? "is-disabled" : undefined}
+                title={action.label}
+                disabled={!canDistribute}
+                onClick={() => onDistribute(action.mode)}
+              >
+                {action.icon}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </section>
   );

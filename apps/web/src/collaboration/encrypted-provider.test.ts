@@ -80,6 +80,7 @@ describe("encrypted collaboration provider", () => {
       await waitForEncryptedFrame(receiverSocket);
       receiverSocket.sent.length = 0;
 
+      const senderUpdateStart = senderSocket.sent.length;
       senderDocument.transact("create-text", (current) => {
         const next = structuredClone(current);
         next.pages[0]?.children.push({
@@ -100,8 +101,7 @@ describe("encrypted collaboration provider", () => {
         return next;
       });
 
-      receiverSocket.emitMessage(await waitForEncryptedFrame(senderSocket));
-      await waitFor(() => {
+      await forwardEncryptedFramesUntil(senderSocket, receiverSocket, senderUpdateStart, () => {
         try {
           return receiverDocument
             .getDocument()
@@ -169,13 +169,15 @@ describe("encrypted collaboration provider", () => {
     const sender = createTestProvider({ ydoc: remote, resetSockets: false });
     const senderSocket = await waitForSocket(1);
     await waitFor(() => senderSocket.sent.length > 0);
-    senderSocket.sent.length = 0;
 
+    const senderUpdateStart = senderSocket.sent.length;
     remote.getMap("design").set("documentJson", { name: "Remote Update" });
-    await waitFor(() => senderSocket.sent.some((frame) => frame[0] === 10));
-    receiverSocket.emitMessage(senderSocket.sent.find((frame) => frame[0] === 10) as Uint8Array);
-
-    await waitFor(() => getDocumentName(local) === "Remote Update");
+    await forwardEncryptedFramesUntil(
+      senderSocket,
+      receiverSocket,
+      senderUpdateStart,
+      () => getDocumentName(local) === "Remote Update"
+    );
     expect(getDocumentName(local)).toBe("Remote Update");
     receiver.destroy();
     sender.destroy();
@@ -303,6 +305,25 @@ async function waitForSocket(index = 0): Promise<MockWebSocket> {
 async function waitForEncryptedFrame(socket: MockWebSocket, startIndex = 0): Promise<Uint8Array> {
   await waitFor(() => socket.sent.slice(startIndex).some((frame) => frame[0] === 10));
   return socket.sent.slice(startIndex).find((frame) => frame[0] === 10) as Uint8Array;
+}
+
+async function forwardEncryptedFramesUntil(
+  source: MockWebSocket,
+  target: MockWebSocket,
+  startIndex: number,
+  assertion: () => boolean
+): Promise<void> {
+  let nextIndex = startIndex;
+  await waitFor(() => {
+    const nextFrames = source.sent.slice(nextIndex);
+    nextIndex = source.sent.length;
+    for (const frame of nextFrames) {
+      if (frame[0] === 10) {
+        target.emitMessage(frame);
+      }
+    }
+    return assertion();
+  });
 }
 
 async function waitFor(assertion: () => boolean, timeoutMs = 10_000): Promise<void> {
