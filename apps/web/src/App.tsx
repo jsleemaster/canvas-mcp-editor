@@ -144,13 +144,9 @@ interface NodeDragPreview {
 
 type ResizeHandle =
   | "top-left"
-  | "top"
   | "top-right"
-  | "right"
   | "bottom-right"
-  | "bottom"
-  | "bottom-left"
-  | "left";
+  | "bottom-left";
 
 interface ResizeSession {
   nodeId: string;
@@ -204,27 +200,13 @@ interface FrameSpacingOverlay {
   segments: FrameSpacingSegment[];
 }
 
-// Corners stay first for coarse stage hit-testing; edges render later so exact edge drags win.
 const RESIZE_HANDLES: ResizeHandle[] = [
   "top-left",
   "top-right",
   "bottom-right",
   "bottom-left",
-  "top",
-  "right",
-  "bottom",
-  "left"
 ];
-const RESIZE_HIT_HANDLES: ResizeHandle[] = [
-  "top-left",
-  "top-right",
-  "bottom-right",
-  "bottom-left",
-  "top",
-  "right",
-  "bottom",
-  "left"
-];
+const RESIZE_HIT_HANDLES: ResizeHandle[] = RESIZE_HANDLES;
 const MIN_RESIZE_SIZE = 1;
 const IMPORTED_IMAGE_MIN_DIMENSION = 96;
 const IMPORTED_IMAGE_MAX_DIMENSION = 480;
@@ -829,30 +811,13 @@ function addSiblingSpacingSegments(
   }
 }
 
-function resizeHandleVisualSize(handle: ResizeHandle): { width: number; height: number } {
+function resizeHandleVisualSize(_handle: ResizeHandle): { width: number; height: number } {
   const size = editorKonvaTokens.selection.handleSize;
-  if (handle === "top" || handle === "bottom") {
-    return { width: size * 3, height: size };
-  }
-  if (handle === "left" || handle === "right") {
-    return { width: size, height: size * 3 };
-  }
-
   return { width: size, height: size };
 }
 
-function resizeHandleHitSize(handle: ResizeHandle): { width: number; height: number } {
-  const cornerHitSize =
-    handle === "bottom-right"
-      ? editorKonvaTokens.selection.resizeHitSize
-      : editorKonvaTokens.selection.handleSize + 8;
-  if (handle === "top" || handle === "bottom") {
-    return { width: editorKonvaTokens.selection.handleSize * 3, height: cornerHitSize };
-  }
-  if (handle === "left" || handle === "right") {
-    return { width: cornerHitSize, height: editorKonvaTokens.selection.handleSize * 3 };
-  }
-
+function resizeHandleHitSize(_handle: ResizeHandle): { width: number; height: number } {
+  const cornerHitSize = editorKonvaTokens.selection.handleSize + 8;
   return { width: cornerHitSize, height: cornerHitSize };
 }
 
@@ -2226,20 +2191,20 @@ export function App() {
 
     if (activeDrag.selectedNodeIds.length === 1 && !snapped.guides.length) {
       setSnapGuides([]);
-      return { ...snapped, nativePosition: true };
+      return { delta: rawDelta, guides: snapped.guides, nativePosition: true };
     }
 
     event.target.position({
-      x: activeDrag.startPosition.x + snapped.delta.x,
-      y: activeDrag.startPosition.y + snapped.delta.y
+      x: activeDrag.startPosition.x + rawDelta.x,
+      y: activeDrag.startPosition.y + rawDelta.y
     });
     setDragPreview({
       primaryNodeId: activeDrag.nodeId,
       nodeIds: activeDrag.selectedNodeIds,
-      delta: snapped.delta
+      delta: rawDelta
     });
     setSnapGuides(snapped.guides);
-    return snapped;
+    return { delta: rawDelta, guides: snapped.guides };
   };
 
   const finishNodeDrag = (nodeId: string, event: KonvaEventObject<DragEvent>) => {
