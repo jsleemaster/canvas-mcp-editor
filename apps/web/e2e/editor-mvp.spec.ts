@@ -622,9 +622,9 @@ test("Figma-like multi-selection drags together and shows snap guides", async ({
   await page.keyboard.press("Escape");
   await expect(page.getByText("레이어 또는 캔버스 요소를 선택하세요.")).toBeVisible();
   await rectangleLayer.click();
-  await expect(page.getByTestId("inspector-x")).toHaveValue("248");
+  await expect(page.getByTestId("inspector-x")).toHaveValue("245");
   await headlineLayer.click();
-  await expect(page.getByTestId("inspector-x")).toHaveValue("100");
+  await expect(page.getByTestId("inspector-x")).toHaveValue("97");
 });
 
 test("multi-selection drag preview preserves sub-pixel movement while zoomed", async ({ page }) => {
@@ -821,56 +821,42 @@ test("selected layers expose four corner resize handles and an immediate size ba
   await expect(page.getByTestId("selection-size-badge")).toHaveText("280 x 68");
 });
 
-test("selected layers expose edge resize handles that resize one axis", async ({ page }) => {
+test("selected layers expose only corner resize handles and side drags do not resize", async ({ page }) => {
   await createProjectFromEmptyState(page);
 
-  await page.getByRole("button", { name: "헤드라인" }).click();
+  const headlineLayer = page.getByRole("button", { name: "헤드라인" });
+  await headlineLayer.click();
 
-  await expect(page.getByTestId("resize-handle-top")).toBeVisible();
-  await expect(page.getByTestId("resize-handle-right")).toBeVisible();
-  await expect(page.getByTestId("resize-handle-bottom")).toBeVisible();
-  await expect(page.getByTestId("resize-handle-left")).toBeVisible();
+  await expect(page.getByTestId("resize-handle-top")).toHaveCount(0);
+  await expect(page.getByTestId("resize-handle-right")).toHaveCount(0);
+  await expect(page.getByTestId("resize-handle-bottom")).toHaveCount(0);
+  await expect(page.getByTestId("resize-handle-left")).toHaveCount(0);
 
-  const rightHandleBox = await page.getByTestId("resize-handle-right").boundingBox();
-  if (!rightHandleBox) {
-    throw new Error("right resize handle was not visible");
+  const topRightHandleBox = await page.getByTestId("resize-handle-top-right").boundingBox();
+  const bottomRightHandleBox = await page.getByTestId("resize-handle-bottom-right").boundingBox();
+  if (!topRightHandleBox || !bottomRightHandleBox) {
+    throw new Error("corner resize handles were not visible");
   }
 
-  const rightHandleCenter = {
-    x: rightHandleBox.x + rightHandleBox.width / 2,
-    y: rightHandleBox.y + rightHandleBox.height / 2
+  const rightEdgeMidpoint = {
+    x: topRightHandleBox.x + topRightHandleBox.width / 2,
+    y:
+      (topRightHandleBox.y +
+        topRightHandleBox.height / 2 +
+        bottomRightHandleBox.y +
+        bottomRightHandleBox.height / 2) /
+      2
   };
 
-  await page.mouse.move(rightHandleCenter.x, rightHandleCenter.y);
+  await page.mouse.move(rightEdgeMidpoint.x, rightEdgeMidpoint.y);
   await page.mouse.down();
-  await page.mouse.move(rightHandleCenter.x + 30, rightHandleCenter.y);
+  await page.mouse.move(rightEdgeMidpoint.x + 30, rightEdgeMidpoint.y);
   await page.mouse.up();
 
-  await expect(page.getByTestId("inspector-x")).toHaveValue("32");
-  await expect(page.getByTestId("inspector-y")).toHaveValue("40");
-  await expect(page.getByTestId("inspector-width")).toHaveValue("290");
+  await headlineLayer.click();
+  await expect(page.getByTestId("inspector-width")).toHaveValue("260");
   await expect(page.getByTestId("inspector-height")).toHaveValue("48");
-
-  const topHandleBox = await page.getByTestId("resize-handle-top").boundingBox();
-  if (!topHandleBox) {
-    throw new Error("top resize handle was not visible");
-  }
-
-  const topHandleCenter = {
-    x: topHandleBox.x + topHandleBox.width / 2,
-    y: topHandleBox.y + topHandleBox.height / 2
-  };
-
-  await page.mouse.move(topHandleCenter.x, topHandleCenter.y);
-  await page.mouse.down();
-  await page.mouse.move(topHandleCenter.x, topHandleCenter.y - 12);
-  await page.mouse.up();
-
-  await expect(page.getByTestId("inspector-x")).toHaveValue("32");
-  await expect(page.getByTestId("inspector-y")).toHaveValue("28");
-  await expect(page.getByTestId("inspector-width")).toHaveValue("290");
-  await expect(page.getByTestId("inspector-height")).toHaveValue("60");
-  await expect(page.getByTestId("selection-size-badge")).toHaveText("290 x 60");
+  await expect(page.getByTestId("selection-size-badge")).toHaveText("260 x 48");
 });
 
 test("selected frames show thin padding and child spacing guides", async ({ page }) => {

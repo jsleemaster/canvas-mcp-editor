@@ -19,7 +19,7 @@ This roadmap translates `docs/product/figma-feature-inventory.md` into implement
 The current main branch already has:
 
 - Rust/TypeScript document primitives for pages, frames, rectangles, text, images, components, instances, and geometry.
-- Browser editor shell with creation, selection, dragging, four corner resizing, selection size badges, inspector geometry, grouped Inspector alignment/distribution controls, color/text editing, undo/redo shortcuts, zoom, hover measurement overlays, selected-frame padding/child-spacing guides, and a multi-selection group outline with combined dimensions.
+- Browser editor shell with creation, selection, dragging, corner-only resizing, selection size badges, inspector geometry, grouped Inspector alignment/distribution controls, color/text editing, undo/redo shortcuts, zoom, hover measurement overlays, selected-frame padding/child-spacing guides, and a multi-selection group outline with combined dimensions.
 - Local image asset storage with browser clipboard paste and file drag/drop insertion for image nodes.
 - Shift-click and marquee multi-selection, selected-layer alignment/distribution, grouped selected-layer dragging, transient snap guides for page-level peer bounds/centers, and combined multi-selection group feedback.
 - Component definitions, instances, and detach.
@@ -58,7 +58,7 @@ Non-goals for the first slice:
 
 Figma capabilities to bring over:
 
-- Edge resize handles, with the four corner handles already landed.
+- Corner-only resize handles. Edge resize handles are excluded until explicitly reintroduced because they conflict with the current direct-manipulation preference.
 - Multi-selection group affordance before multi-selected bounding-box resize behavior.
 - Rotate and flip.
 - Align left/center/right/top/middle/bottom through the right inspector.
@@ -165,6 +165,6 @@ Implementation shape:
 3. Keep Shift-click multi-selection and drag 영역 선택 green.
 4. Keep alignment/distribute commands and grouped Inspector affordances green for selected layers.
 5. Keep the multi-selection group outline and combined size badge green while deferring multi-selected bounding-box resize behavior to a separate slice.
-6. Extend the landed grouped drag, measurement, frame-spacing, corner-resize, and edge-resize slices with rotation, rulers, manual guides, and snap settings.
+6. Extend the landed grouped drag, measurement, frame-spacing, and corner-resize slices with rotation, rulers, manual guides, and snap settings.
 7. Build full Figma file import separately on top of the local asset pipeline, starting with frames, rectangles, text, and exported image assets before variants or advanced effects.
 8. Merge only after `pnpm test`, `pnpm typecheck`, web build, relevant Playwright suites, and direct live UI interaction verification pass.
