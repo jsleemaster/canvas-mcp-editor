@@ -74,3 +74,9 @@ This is not the full Figma parity endpoint. It is the foundation needed before d
 - Grouping currently supports selected sibling layers under one parent; it preserves visual positions by converting child transforms into group-relative coordinates and restores them on ungroup.
 - Group layers render as transparent containers with selection chrome and layer-list status, not as visible filled boxes.
 - Verification: editor-state rename/group/ungroup unit tests, Rust group JSON round-trip test, full `pnpm typecheck`, full `pnpm test`, web build, design-rule check, full `editor-mvp` Playwright run, and headed Playwright group/rename/ungroup interaction pass.
+
+2026-06-23 context menu frame-selection slice:
+
+- Added undoable `선택 영역 프레임 만들기` for selected sibling layers, matching the common Figma right-click "Frame selection" workflow.
+- The new frame preserves the selected layers' visual positions by moving children into frame-relative coordinates and selecting the created frame.
+- Verification started with a RED editor-state test for missing `frameSelectedNodes`, then passed focused editor-state tests, web typecheck, and focused Playwright right-click menu coverage.

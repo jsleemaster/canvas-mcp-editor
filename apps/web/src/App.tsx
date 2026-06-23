@@ -63,6 +63,7 @@ import {
   duplicateSelectedNode,
   executeEditorCommand,
   findNodeById,
+  frameSelectedNodes,
   groupSelectedNodes,
   getNodeDragGeometriesForNodeIds,
   getNodeAbsolutePosition,
@@ -1893,6 +1894,7 @@ export function App() {
   const contextMenuNodeIsHidden = contextMenuNode ? !isNodeVisible(contextMenuNode) : false;
   const canMutateContextMenuNode = Boolean(contextMenuNode && !contextMenuNodeIsLocked);
   const canGroupContextSelection = selectedNodeIds.length >= 2 && canMutateContextMenuNode;
+  const canFrameContextSelection = selectedNodeIds.length >= 2 && canMutateContextMenuNode;
   const canUngroupContextSelection = Boolean(
     contextMenuNode && contextMenuNode.kind === "group" && !contextMenuNodeIsLocked
   );
@@ -2323,6 +2325,13 @@ export function App() {
     runContextMenuStateAction((state) => {
       const sequence = flattenRendererNodes(state.document).length + 1;
       return groupSelectedNodes(state, `group-${sequence}`, `그룹 ${sequence}`);
+    });
+  };
+
+  const frameContextSelection = () => {
+    runContextMenuStateAction((state) => {
+      const sequence = flattenRendererNodes(state.document).length + 1;
+      return frameSelectedNodes(state, `frame-${sequence}`, `프레임 ${sequence}`);
     });
   };
 
@@ -4426,6 +4435,14 @@ export function App() {
             onClick={groupContextSelection}
           >
             그룹으로 묶기
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={!canFrameContextSelection}
+            onClick={frameContextSelection}
+          >
+            선택 영역 프레임 만들기
           </button>
           <button
             type="button"

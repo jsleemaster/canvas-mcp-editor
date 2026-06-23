@@ -664,6 +664,40 @@ test("right-click menu groups, renames, and ungroups selected objects", async ({
   await expect(secondRectangle).toBeVisible();
 });
 
+test("right-click menu frames the selected objects", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+  const stageFrame = page.getByTestId("stage-frame");
+  const stageBox = await stageFrame.boundingBox();
+  if (!stageBox) {
+    throw new Error("stage frame was not visible");
+  }
+  const blankMenuPoint = {
+    x: stageBox.x + Math.max(24, stageBox.width - 36),
+    y: stageBox.y + Math.max(24, stageBox.height - 36)
+  };
+
+  await page.getByRole("button", { name: "사각형 만들기" }).click();
+  await page.getByRole("button", { name: "사각형 만들기" }).click();
+
+  await page.getByRole("button", { name: "사각형 3" }).click();
+  await page.keyboard.down("Shift");
+  await page.getByRole("button", { name: "사각형 4" }).click();
+  await page.keyboard.up("Shift");
+
+  await page.mouse.click(blankMenuPoint.x, blankMenuPoint.y, { button: "right" });
+  const menu = page.getByTestId("object-context-menu");
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "선택 영역 프레임 만들기" })).toBeEnabled();
+  await menu.getByRole("menuitem", { name: "선택 영역 프레임 만들기" }).click();
+
+  await expect(page.getByRole("button", { name: /프레임 5/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "사각형 3" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "사각형 4" })).toBeVisible();
+
+  const selectedFrame = page.getByRole("button", { name: /프레임 5/ });
+  await expect(selectedFrame).toHaveClass(/is-selected/);
+});
+
 test("Figma-like canvas input routing nudges layers, pans canvas, and zooms with modifiers", async ({ page }) => {
   await createProjectFromEmptyState(page);
   const stageBox = await page.locator("canvas").first().boundingBox();

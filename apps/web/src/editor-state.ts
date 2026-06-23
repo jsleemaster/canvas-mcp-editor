@@ -127,6 +127,13 @@ export type EditorCommand =
       name: string;
     }
   | {
+      type: "frame_nodes";
+      parentId: string;
+      nodeIds: string[];
+      frameId: string;
+      name: string;
+    }
+  | {
       type: "ungroup_node";
       parentId: string;
       groupId: string;
@@ -136,6 +143,17 @@ export type EditorCommand =
       type: "restore_group_node";
       parentId: string;
       group: RendererNode;
+    }
+  | {
+      type: "unframe_node";
+      parentId: string;
+      frameId: string;
+      previousFrame?: RendererNode;
+    }
+  | {
+      type: "restore_frame_node";
+      parentId: string;
+      frame: RendererNode;
     }
   | {
       type: "set_node_locked";
@@ -423,6 +441,30 @@ export function groupSelectedNodes(
     nodeIds: siblings.nodes.map((node) => node.id),
     groupId,
     name: name.trim() || "그룹"
+  });
+}
+
+export function frameSelectedNodes(
+  state: EditorState,
+  frameId: string,
+  name: string
+): EditorState {
+  const nodeIds = selectionNodeIds(state.selection);
+  if (nodeIds.length < 2 || findNodeById(state.document, frameId)) {
+    return state;
+  }
+
+  const siblings = findSiblingSelection(state.document, nodeIds);
+  if (!siblings || siblings.nodes.some(isNodeLocked)) {
+    return state;
+  }
+
+  return executeEditorCommand(state, {
+    type: "frame_nodes",
+    parentId: siblings.parentId,
+    nodeIds: siblings.nodes.map((node) => node.id),
+    frameId,
+    name: name.trim() || "프레임"
   });
 }
 
@@ -1133,6 +1175,62 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         selectedNodeId: group.id
       };
     }
+    case "frame_nodes": {
+      const parent = findParentChildren(next, command.parentId);
+      if (!parent || isParentNodeLocked(next, command.parentId) || findNodeById(next, command.frameId)) {
+        return { document, inverse: null };
+      }
+
+      const selectedNodes = command.nodeIds
+        .map((nodeId) => parent.children.find((node) => node.id === nodeId))
+        .filter((node): node is RendererNode => Boolean(node));
+      if (selectedNodes.length < 2 || selectedNodes.length !== new Set(command.nodeIds).size) {
+        return { document, inverse: null };
+      }
+      if (selectedNodes.some(isNodeLocked)) {
+        return { document, inverse: null };
+      }
+
+      const selectedIds = new Set(selectedNodes.map((node) => node.id));
+      const firstIndex = parent.children.findIndex((node) => selectedIds.has(node.id));
+      const bounds = relativeBoundsForNodes(selectedNodes);
+      const frame: RendererNode = {
+        id: command.frameId,
+        kind: "frame",
+        name: command.name.trim() || "프레임",
+        transform: { x: bounds.x, y: bounds.y, rotation: 0 },
+        size: { width: bounds.width, height: bounds.height },
+        style: { fill: "#ffffff", stroke: "#d1d5db", stroke_width: 1, opacity: 1 },
+        content: { type: "empty" },
+        children: selectedNodes.map((node) => {
+          const child = structuredClone(node);
+          child.transform = {
+            ...child.transform,
+            x: child.transform.x - bounds.x,
+            y: child.transform.y - bounds.y
+          };
+          return child;
+        })
+      };
+
+      parent.children.splice(0, parent.children.length, ...[
+        ...parent.children.slice(0, firstIndex).filter((node) => !selectedIds.has(node.id)),
+        frame,
+        ...parent.children.slice(firstIndex).filter((node) => !selectedIds.has(node.id))
+      ]);
+      relayoutDocument(next);
+
+      return {
+        document: next,
+        inverse: {
+          type: "unframe_node",
+          parentId: command.parentId,
+          frameId: frame.id,
+          previousFrame: structuredClone(frame)
+        },
+        selectedNodeId: frame.id
+      };
+    }
     case "ungroup_node": {
       const parent = findParentChildren(next, command.parentId);
       if (!parent) {
@@ -1197,6 +1295,72 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
           previousGroup: structuredClone(command.group)
         },
         selectedNodeId: command.group.id
+      };
+    }
+    case "unframe_node": {
+      const parent = findParentChildren(next, command.parentId);
+      if (!parent) {
+        return { document, inverse: null };
+      }
+
+      const frameIndex = parent.children.findIndex((node) => node.id === command.frameId);
+      const frame = parent.children[frameIndex];
+      if (frameIndex === -1 || !frame || frame.kind !== "frame" || isNodeLocked(frame)) {
+        return { document, inverse: null };
+      }
+
+      const previousFrame = command.previousFrame ?? structuredClone(frame);
+      const children = frame.children.map((child) => {
+        const nextChild = structuredClone(child);
+        nextChild.transform = {
+          ...nextChild.transform,
+          x: nextChild.transform.x + frame.transform.x,
+          y: nextChild.transform.y + frame.transform.y
+        };
+        return nextChild;
+      });
+      parent.children.splice(frameIndex, 1, ...children);
+      relayoutDocument(next);
+
+      return {
+        document: next,
+        inverse: {
+          type: "restore_frame_node",
+          parentId: command.parentId,
+          frame: previousFrame
+        },
+        selectedNodeId: children.at(-1)?.id ?? null
+      };
+    }
+    case "restore_frame_node": {
+      const parent = findParentChildren(next, command.parentId);
+      if (!parent || isParentNodeLocked(next, command.parentId)) {
+        return { document, inverse: null };
+      }
+
+      const childIds = command.frame.children.map((child) => child.id);
+      const childIdSet = new Set(childIds);
+      const firstIndex = parent.children.findIndex((node) => childIdSet.has(node.id));
+      if (firstIndex === -1 || childIds.some((childId) => !parent.children.some((node) => node.id === childId))) {
+        return { document, inverse: null };
+      }
+
+      parent.children.splice(0, parent.children.length, ...[
+        ...parent.children.slice(0, firstIndex).filter((node) => !childIdSet.has(node.id)),
+        structuredClone(command.frame),
+        ...parent.children.slice(firstIndex).filter((node) => !childIdSet.has(node.id))
+      ]);
+      relayoutDocument(next);
+
+      return {
+        document: next,
+        inverse: {
+          type: "unframe_node",
+          parentId: command.parentId,
+          frameId: command.frame.id,
+          previousFrame: structuredClone(command.frame)
+        },
+        selectedNodeId: command.frame.id
       };
     }
     case "set_node_locked": {
