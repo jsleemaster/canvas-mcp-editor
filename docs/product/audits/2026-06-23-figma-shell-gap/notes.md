@@ -80,3 +80,9 @@ This is not the full Figma parity endpoint. It is the foundation needed before d
 - Added undoable `선택 영역 프레임 만들기` for selected sibling layers, matching the common Figma right-click "Frame selection" workflow.
 - The new frame preserves the selected layers' visual positions by moving children into frame-relative coordinates and selecting the created frame.
 - Verification started with a RED editor-state test for missing `frameSelectedNodes`, then passed focused editor-state tests, web typecheck, and focused Playwright right-click menu coverage.
+
+2026-06-23 image context-menu original-size slice:
+
+- Added uploaded image natural-size metadata to image node content across renderer types, server storage types, Rust model bindings, and Rust JSON round-trip coverage.
+- Added undoable `원본 크기로 맞춤` for image nodes in the object context menu, so imported images can be restored from the fitted canvas size to their uploaded dimensions.
+- Verification started with RED editor-state/typecheck failures for missing natural-size input and `resizeSelectedImageToNaturalSize`, then passed focused editor-state tests, Rust JSON round-trip coverage, and focused Playwright right-click image coverage.

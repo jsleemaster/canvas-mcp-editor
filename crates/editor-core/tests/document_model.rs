@@ -203,3 +203,58 @@ fn group_nodes_round_trip_through_json() {
     let json = serde_json::to_string(&parsed).unwrap();
     assert!(json.contains("\"kind\":\"group\""));
 }
+
+#[test]
+fn image_original_size_metadata_round_trips_through_json() {
+    let raw = r##"
+    {
+      "id": "image-file",
+      "name": "Image File",
+      "version": 1,
+      "components": [],
+      "pages": [
+        {
+          "id": "page-1",
+          "name": "페이지 1",
+          "children": [
+            {
+              "id": "image-1",
+              "kind": "image",
+              "name": "이미지",
+              "transform": { "x": 24, "y": 36, "rotation": 0 },
+              "size": { "width": 360, "height": 240 },
+              "style": { "fill": "#f3f4f6", "stroke": null, "stroke_width": 0, "opacity": 1 },
+              "content": {
+                "type": "image",
+                "asset_id": "asset-large",
+                "natural_width": 720,
+                "natural_height": 480
+              },
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+    "##;
+
+    let parsed: DesignFile = serde_json::from_str(raw).unwrap();
+    let image = &parsed.pages[0].children[0];
+
+    match &image.content {
+        editor_core::NodeContent::Image {
+            asset_id,
+            natural_width,
+            natural_height,
+        } => {
+            assert_eq!(asset_id, "asset-large");
+            assert_eq!(*natural_width, Some(720.0));
+            assert_eq!(*natural_height, Some(480.0));
+        }
+        _ => panic!("expected image content"),
+    }
+
+    let json = serde_json::to_string(&parsed).unwrap();
+    assert!(json.contains("\"natural_width\":720.0"));
+    assert!(json.contains("\"natural_height\":480.0"));
+}

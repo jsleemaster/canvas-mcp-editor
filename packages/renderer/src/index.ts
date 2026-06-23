@@ -35,7 +35,7 @@ export interface RendererNode {
   content:
     | { type: "empty" }
     | { type: "text"; value: string; font_size: number; font_family: string }
-    | { type: "image"; asset_id: string };
+    | { type: "image"; asset_id: string; natural_width?: number; natural_height?: number };
   children: RendererNode[];
 }
 
