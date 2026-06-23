@@ -100,7 +100,7 @@ export function exportDesignToCode(
   document: DesignFile,
   options: CodeExportOptions = {}
 ): CodeExportResult {
-  const roots = document.pages.flatMap((page) => page.children);
+  const roots = document.pages.flatMap((page) => page.children).filter(isNodeExportVisible);
   const elements = roots.map((root) => exportElement(root));
   const moduleBasePath = options.moduleBasePath ?? ".";
   const components = (document.components ?? []).map((component) => exportComponent(component));
@@ -201,7 +201,7 @@ function structureFor(node: DesignNode): CodeStructureNode {
       opacity: node.style.opacity
     },
     content: contentFor(node),
-    children: node.children.map((child) => structureFor(child))
+    children: node.children.filter(isNodeExportVisible).map((child) => structureFor(child))
   };
 
   if (node.component_instance) {
@@ -223,6 +223,10 @@ function structureFor(node: DesignNode): CodeStructureNode {
   }
 
   return base;
+}
+
+function isNodeExportVisible(node: DesignNode): boolean {
+  return node.visible !== false;
 }
 
 function contentFor(node: DesignNode): CodeStructureNode["content"] {
@@ -304,7 +308,7 @@ function collectTokenCandidates(nodes: DesignNode[]): TokenCandidateSummary {
 }
 
 function collectNodes(root: DesignNode): DesignNode[] {
-  return [root, ...root.children.flatMap((child) => collectNodes(child))];
+  return [root, ...root.children.filter(isNodeExportVisible).flatMap((child) => collectNodes(child))];
 }
 
 function collectNodeIds(root: DesignNode): string[] {
@@ -327,7 +331,7 @@ function renderNode(node: DesignNode, depth: number): string {
     )}</div>`;
   }
 
-  const children = node.children.map((child) => renderNode(child, depth + 1)).join("\n");
+  const children = node.children.filter(isNodeExportVisible).map((child) => renderNode(child, depth + 1)).join("\n");
   if (!children) {
     return `${indent}<div class="${className}" data-node-id="${escapeAttribute(node.id)}"></div>`;
   }
@@ -366,7 +370,7 @@ function nodeCss(node: DesignNode): string[] {
 
   lines.push("}");
 
-  return [...lines, ...node.children.flatMap((child) => nodeCss(child))];
+  return [...lines, ...node.children.filter(isNodeExportVisible).flatMap((child) => nodeCss(child))];
 }
 
 function buildIndexModule(elements: ElementCodeArtifact[], moduleBasePath: string): string {

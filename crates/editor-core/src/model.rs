@@ -33,11 +33,19 @@ pub struct Node {
     pub layout: Option<NodeLayout>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub constraints: Option<NodeConstraints>,
+    #[serde(default)]
+    pub locked: bool,
+    #[serde(default = "default_visible")]
+    pub visible: bool,
     pub children: Vec<Node>,
     pub transform: Transform,
     pub size: Size,
     pub style: Style,
     pub content: NodeContent,
+}
+
+fn default_visible() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
@@ -196,6 +204,8 @@ impl DesignFile {
                     component_instance: None,
                     layout: None,
                     constraints: None,
+                    locked: false,
+                    visible: true,
                     children: vec![Node {
                         id: "text-1".to_string(),
                         kind: NodeKind::Text,
@@ -203,6 +213,8 @@ impl DesignFile {
                         component_instance: None,
                         layout: None,
                         constraints: None,
+                        locked: false,
+                        visible: true,
                         children: vec![],
                         transform: Transform {
                             x: 32.0,

@@ -115,6 +115,16 @@ export type EditorCommand =
       toIndex: number;
     }
   | {
+      type: "set_node_locked";
+      nodeId: string;
+      locked: boolean;
+    }
+  | {
+      type: "set_node_visible";
+      nodeId: string;
+      visible: boolean;
+    }
+  | {
       type: "create_component";
       nodeId: string;
       componentId: string;
@@ -204,6 +214,14 @@ export function getNodeAbsolutePosition(
 
 export function getNodeBounds(document: RendererDocument, nodeId: string): SelectionBounds | null {
   return findNodeGeometry(document, nodeId)?.bounds ?? null;
+}
+
+export function isNodeLocked(node: RendererNode | null | undefined): boolean {
+  return node?.locked === true;
+}
+
+export function isNodeVisible(node: RendererNode | null | undefined): boolean {
+  return node?.visible !== false;
 }
 
 export function getTopmostNodeIdAtPoint(
@@ -319,6 +337,32 @@ export function toggleSelection(state: EditorState, nodeId: string): EditorState
   }
 
   return setMultiSelection(state, [...currentNodeIds, nodeId], nodeId);
+}
+
+export function setSelectedNodeLocked(state: EditorState, locked: boolean): EditorState {
+  const selectedNodeId = state.selection.nodeId;
+  if (!selectedNodeId) {
+    return state;
+  }
+
+  return executeEditorCommand(state, {
+    type: "set_node_locked",
+    nodeId: selectedNodeId,
+    locked
+  });
+}
+
+export function setSelectedNodeVisible(state: EditorState, visible: boolean): EditorState {
+  const selectedNodeId = state.selection.nodeId;
+  if (!selectedNodeId) {
+    return state;
+  }
+
+  return executeEditorCommand(state, {
+    type: "set_node_visible",
+    nodeId: selectedNodeId,
+    visible
+  });
 }
 
 export function selectNodesInBounds(
@@ -561,7 +605,7 @@ export function distributeSelectedNodes(state: EditorState, mode: DistributionMo
 
 export function deleteSelectedNode(state: EditorState): EditorState {
   const selected = findSelectedNodeWithParent(state);
-  if (!selected) {
+  if (!selected || isNodeLocked(selected.node)) {
     return state;
   }
 
@@ -574,7 +618,7 @@ export function deleteSelectedNode(state: EditorState): EditorState {
 
 export function duplicateSelectedNode(state: EditorState): EditorState {
   const selected = findSelectedNodeWithParent(state);
-  if (!selected) {
+  if (!selected || isNodeLocked(selected.node)) {
     return state;
   }
 
@@ -656,7 +700,7 @@ export function pasteCopiedNodeAt(
 
 export function reorderSelectedNode(state: EditorState, direction: ReorderDirection): EditorState {
   const selected = findSelectedNodeWithParent(state);
-  if (!selected) {
+  if (!selected || isNodeLocked(selected.node)) {
     return state;
   }
 
@@ -750,7 +794,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
   switch (command.type) {
     case "update_node_geometry": {
       const node = findNodeById(next, command.nodeId);
-      if (!node) {
+      if (!node || isNodeLocked(node)) {
         return { document, inverse: null };
       }
       const previousSize = { ...node.size };
@@ -786,7 +830,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
 
       for (const geometryPatch of command.patches) {
         const node = findNodeById(next, geometryPatch.nodeId);
-        if (!node) {
+        if (!node || isNodeLocked(node)) {
           continue;
         }
 
@@ -826,7 +870,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
     }
     case "set_fill": {
       const node = findNodeById(next, command.nodeId);
-      if (!node) {
+      if (!node || isNodeLocked(node)) {
         return { document, inverse: null };
       }
 
@@ -842,7 +886,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
     }
     case "update_text": {
       const node = findNodeById(next, command.nodeId);
-      if (!node || node.content.type !== "text") {
+      if (!node || isNodeLocked(node) || node.content.type !== "text") {
         return { document, inverse: null };
       }
 
@@ -858,7 +902,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
     }
     case "create_node": {
       const parent = findParentChildren(next, command.parentId);
-      if (!parent) {
+      if (!parent || isParentNodeLocked(next, command.parentId)) {
         return { document, inverse: null };
       }
 
@@ -883,6 +927,10 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         return { document, inverse: null };
       }
 
+      if (isNodeLocked(parent.children[index])) {
+        return { document, inverse: null };
+      }
+
       const [node] = parent.children.splice(index, 1);
 
       return {
@@ -899,6 +947,10 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
 
       const fromIndex = parent.children.findIndex((node) => node.id === command.nodeId);
       if (fromIndex === -1 || parent.children.length < 2) {
+        return { document, inverse: null };
+      }
+
+      if (isNodeLocked(parent.children[fromIndex])) {
         return { document, inverse: null };
       }
 
@@ -925,9 +977,55 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         selectedNodeId: command.nodeId
       };
     }
-    case "create_component": {
+    case "set_node_locked": {
       const node = findNodeById(next, command.nodeId);
       if (!node) {
+        return { document, inverse: null };
+      }
+
+      const previousLocked = isNodeLocked(node);
+      if (previousLocked === command.locked) {
+        return { document, inverse: null };
+      }
+
+      node.locked = command.locked;
+
+      return {
+        document: next,
+        inverse: {
+          type: "set_node_locked",
+          nodeId: command.nodeId,
+          locked: previousLocked
+        },
+        selectedNodeId: command.nodeId
+      };
+    }
+    case "set_node_visible": {
+      const node = findNodeById(next, command.nodeId);
+      if (!node) {
+        return { document, inverse: null };
+      }
+
+      const previousVisible = isNodeVisible(node);
+      if (previousVisible === command.visible) {
+        return { document, inverse: null };
+      }
+
+      node.visible = command.visible;
+
+      return {
+        document: next,
+        inverse: {
+          type: "set_node_visible",
+          nodeId: command.nodeId,
+          visible: previousVisible
+        },
+        selectedNodeId: command.nodeId
+      };
+    }
+    case "create_component": {
+      const node = findNodeById(next, command.nodeId);
+      if (!node || isNodeLocked(node)) {
         return { document, inverse: null };
       }
 
@@ -955,6 +1053,10 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       };
     }
     case "delete_component": {
+      const node = findNodeById(next, command.nodeId);
+      if (!node || isNodeLocked(node)) {
+        return { document, inverse: null };
+      }
       replaceNodeById(next, command.nodeId, structuredClone(command.previousNode));
       next.components = (next.components ?? []).filter((component) => component.id !== command.componentId);
       relayoutDocument(next);
@@ -975,7 +1077,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       const definition = (next.components ?? []).find(
         (component) => component.id === command.definitionId
       );
-      if (!parent || !definition) {
+      if (!parent || !definition || isParentNodeLocked(next, command.parentId)) {
         return { document, inverse: null };
       }
 
@@ -1001,7 +1103,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
     }
     case "detach_instance": {
       const node = findNodeById(next, command.nodeId);
-      if (!node || !node.component_instance) {
+      if (!node || isNodeLocked(node) || !node.component_instance) {
         return { document, inverse: null };
       }
 
@@ -1018,7 +1120,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
     }
     case "set_node_layout": {
       const node = findNodeById(next, command.nodeId);
-      if (!node) {
+      if (!node || isNodeLocked(node)) {
         return { document, inverse: null };
       }
 
@@ -1051,7 +1153,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
     }
     case "set_node_constraints": {
       const node = findNodeById(next, command.nodeId);
-      if (!node) {
+      if (!node || isNodeLocked(node)) {
         return { document, inverse: null };
       }
 
@@ -1273,7 +1375,7 @@ function topmostNodeIdAtPointInTree(
   parent: { x: number; y: number },
   excludedNodeIds: Set<string>
 ): string | null {
-  if (excludedNodeIds.has(node.id)) {
+  if (excludedNodeIds.has(node.id) || isNodeLocked(node) || !isNodeVisible(node)) {
     return null;
   }
 
@@ -1309,7 +1411,7 @@ function selectedNodeGeometries(document: RendererDocument, nodeIds: string[]): 
   const geometries: NodeGeometry[] = [];
   for (const nodeId of nodeIds) {
     const geometry = findNodeGeometry(document, nodeId);
-    if (geometry) {
+    if (geometry && isNodeVisible(geometry.node)) {
       geometries.push(geometry);
     }
   }
@@ -1452,7 +1554,7 @@ function collectSnapTargetGeometries(
 
   for (const page of document.pages) {
     for (const node of page.children) {
-      if (excludedNodeIds.has(node.id)) {
+      if (excludedNodeIds.has(node.id) || !isNodeVisible(node)) {
         continue;
       }
       geometries.push({
@@ -1629,6 +1731,10 @@ function collectNodeIdsInBounds(
   bounds: SelectionBounds,
   parent: { x: number; y: number }
 ): string[] {
+  if (isNodeLocked(node) || !isNodeVisible(node)) {
+    return [];
+  }
+
   const absolute = {
     x: parent.x + node.transform.x,
     y: parent.y + node.transform.y
@@ -1686,6 +1792,14 @@ function findParentChildren(
 
   const node = findNodeById(document, parentId);
   return node ? { children: node.children } : null;
+}
+
+function isParentNodeLocked(document: RendererDocument, parentId: string): boolean {
+  if (document.pages.some((page) => page.id === parentId)) {
+    return false;
+  }
+
+  return isNodeLocked(findNodeById(document, parentId));
 }
 
 function findSelectedNodeWithParent(

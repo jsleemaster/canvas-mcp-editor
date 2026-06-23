@@ -26,6 +26,8 @@ import {
   redo,
   reorderSelectedNode,
   selectNodesInBounds,
+  setSelectedNodeLocked,
+  setSelectedNodeVisible,
   setMultiSelection,
   setSelection,
   toggleSelection,
@@ -562,6 +564,34 @@ describe("editor state commands", () => {
     const backward = reorderSelectedNode(front, "backward");
     expect(backward.document.pages[0]?.children.map((node) => node.id)).toEqual(["frame-1", "rectangle-1"]);
     expect(backward.selection.nodeId).toBe("frame-1");
+  });
+
+  test("locks selected nodes and prevents direct mutation commands until unlocked", () => {
+    const initial = setSelection(createEditorState(sampleDocument()), "text-1");
+
+    const locked = setSelectedNodeLocked(initial, true);
+    expect(findNodeById(locked.document, "text-1")?.locked).toBe(true);
+    expect(moveSelectedNodesBy(locked, { x: 24, y: 0 })).toBe(locked);
+    expect(deleteSelectedNode(locked)).toBe(locked);
+    expect(findNodeById(locked.document, "text-1")).not.toBeNull();
+    expect(getTopmostNodeIdAtPoint(locked.document, { x: 160, y: 130 })).toBe("frame-1");
+
+    const unlocked = setSelectedNodeLocked(locked, false);
+    expect(findNodeById(unlocked.document, "text-1")?.locked).toBe(false);
+    expect(moveSelectedNodesBy(unlocked, { x: 24, y: 0 })).not.toBe(unlocked);
+  });
+
+  test("hides selected nodes from canvas hit testing while preserving layer state", () => {
+    const initial = setSelection(createEditorState(sampleDocument()), "text-1");
+
+    const hidden = setSelectedNodeVisible(initial, false);
+    expect(findNodeById(hidden.document, "text-1")?.visible).toBe(false);
+    expect(getTopmostNodeIdAtPoint(hidden.document, { x: 160, y: 130 })).toBe("frame-1");
+    expect(hidden.selection.nodeId).toBe("text-1");
+
+    const shown = setSelectedNodeVisible(hidden, true);
+    expect(findNodeById(shown.document, "text-1")?.visible).toBe(true);
+    expect(getTopmostNodeIdAtPoint(shown.document, { x: 160, y: 130 })).toBe("text-1");
   });
 
   test("calculates absolute node position through parent transforms", () => {

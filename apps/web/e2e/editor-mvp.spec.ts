@@ -230,7 +230,6 @@ test("inserts image files from drop and clipboard paste", async ({ page }) => {
   if (!stageBox) {
     throw new Error("stage frame was not visible");
   }
-
   const dropTransfer = await createImageDataTransfer(page, "drop-image.png");
   await stageFrame.dispatchEvent("dragover", {
     dataTransfer: dropTransfer,
@@ -560,6 +559,60 @@ test("right-click objects and images expose common context menu commands", async
   await expect(menu.getByRole("menuitem", { name: "여기에 붙여넣기" })).toBeEnabled();
   await menu.getByRole("menuitem", { name: "여기에 붙여넣기" }).click();
   await expect(page.getByRole("button", { name: /이미지 4 복사본/ })).toBeVisible();
+});
+
+test("right-click menu locks and hides objects while layer state remains recoverable", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+  const stageFrame = page.getByTestId("stage-frame");
+  const stageBox = await stageFrame.boundingBox();
+  if (!stageBox) {
+    throw new Error("stage frame was not visible");
+  }
+  const blankMenuPoint = {
+    x: stageBox.x + Math.max(24, stageBox.width - 36),
+    y: stageBox.y + Math.max(24, stageBox.height - 36)
+  };
+
+  await page.getByRole("button", { name: "사각형 만들기" }).click();
+  const rectangleLayer = page.getByRole("button", { name: "사각형 3" });
+  await expect(rectangleLayer).toBeVisible();
+  await expect(page.getByTestId("inspector-x")).toHaveValue("180");
+
+  await page.mouse.click(stageBox.x + 240, stageBox.y + 190, { button: "right" });
+  const menu = page.getByTestId("object-context-menu");
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "잠그기" })).toBeEnabled();
+  await expect(menu.getByRole("menuitem", { name: "숨기기" })).toBeEnabled();
+  await menu.getByRole("menuitem", { name: "잠그기" }).click();
+
+  const lockedRectangleLayer = page.getByRole("button", { name: /사각형 3.*잠김/ });
+  await expect(lockedRectangleLayer).toBeVisible();
+  await expect(page.getByTestId("inspector-x")).toHaveValue("180");
+  await page.mouse.move(stageBox.x + 240, stageBox.y + 190);
+  await page.mouse.down();
+  await page.mouse.move(stageBox.x + 300, stageBox.y + 240);
+  await page.mouse.up();
+  await expect(page.getByTestId("inspector-x")).toHaveValue("180");
+
+  await page.mouse.click(blankMenuPoint.x, blankMenuPoint.y, { button: "right" });
+  await expect(menu).toBeVisible();
+  await menu.getByRole("menuitem", { name: "잠금 해제" }).click();
+  await expect(page.getByRole("button", { name: /^사각형 3$/ })).toBeVisible();
+
+  await page.mouse.click(stageBox.x + 240, stageBox.y + 190, { button: "right" });
+  await expect(menu).toBeVisible();
+  await menu.getByRole("menuitem", { name: "숨기기" }).click();
+  await expect(page.getByRole("button", { name: /사각형 3.*숨김/ })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await page.mouse.click(stageBox.x + 240, stageBox.y + 190);
+  await expect(page.getByRole("button", { name: /사각형 3.*숨김/ })).not.toHaveClass(/is-selected/);
+
+  await page.getByRole("button", { name: /사각형 3.*숨김/ }).click();
+  await page.mouse.click(blankMenuPoint.x, blankMenuPoint.y, { button: "right" });
+  await expect(menu).toBeVisible();
+  await menu.getByRole("menuitem", { name: "표시" }).click();
+  await expect(page.getByRole("button", { name: /^사각형 3$/ })).toBeVisible();
 });
 
 test("Figma-like canvas input routing nudges layers, pans canvas, and zooms with modifiers", async ({ page }) => {

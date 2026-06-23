@@ -8,4 +8,4 @@ import type { Size } from "./Size";
 import type { Style } from "./Style";
 import type { Transform } from "./Transform";
 
-export type Node = { id: string, kind: NodeKind, name: string, component_instance?: ComponentInstance | null, layout?: NodeLayout | null, constraints?: NodeConstraints | null, children: Array<Node>, transform: Transform, size: Size, style: Style, content: NodeContent, };
+export type Node = { id: string, kind: NodeKind, name: string, component_instance?: ComponentInstance | null, layout?: NodeLayout | null, constraints?: NodeConstraints | null, locked: boolean, visible: boolean, children: Array<Node>, transform: Transform, size: Size, style: Style, content: NodeContent, };

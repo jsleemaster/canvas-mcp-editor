@@ -111,3 +111,45 @@ fn layout_metadata_round_trips_through_json() {
     assert!(json.contains("\"layout\""));
     assert!(json.contains("\"constraints\""));
 }
+
+#[test]
+fn node_interaction_metadata_round_trips_through_json() {
+    let raw = r##"
+    {
+      "id": "interaction-file",
+      "name": "Interaction File",
+      "version": 1,
+      "components": [],
+      "pages": [
+        {
+          "id": "page-1",
+          "name": "페이지 1",
+          "children": [
+            {
+              "id": "locked-frame",
+              "kind": "frame",
+              "name": "Locked Frame",
+              "locked": true,
+              "visible": false,
+              "transform": { "x": 0, "y": 0, "rotation": 0 },
+              "size": { "width": 320, "height": 240 },
+              "style": { "fill": "#ffffff", "stroke": null, "stroke_width": 0, "opacity": 1 },
+              "content": { "type": "empty" },
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+    "##;
+
+    let parsed: DesignFile = serde_json::from_str(raw).unwrap();
+    let frame = &parsed.pages[0].children[0];
+
+    assert!(frame.locked);
+    assert!(!frame.visible);
+
+    let json = serde_json::to_string(&parsed).unwrap();
+    assert!(json.contains("\"locked\":true"));
+    assert!(json.contains("\"visible\":false"));
+}
