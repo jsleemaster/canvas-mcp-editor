@@ -38,11 +38,15 @@ async function createNamedProject(page: Page, name: string) {
   return projectId;
 }
 
-async function createImageDataTransfer(page: Page, name: string) {
-  return page.evaluateHandle(async (fileName) => {
+async function createImageDataTransfer(
+  page: Page,
+  name: string,
+  size: { width: number; height: number } = { width: 16, height: 12 }
+) {
+  return page.evaluateHandle(async ({ fileName, imageSize }) => {
     const canvas = document.createElement("canvas");
-    canvas.width = 16;
-    canvas.height = 12;
+    canvas.width = imageSize.width;
+    canvas.height = imageSize.height;
     const context = canvas.getContext("2d");
     if (!context) {
       throw new Error("canvas context missing");
@@ -64,7 +68,7 @@ async function createImageDataTransfer(page: Page, name: string) {
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(file);
     return dataTransfer;
-  }, name);
+  }, { fileName: name, imageSize: size });
 }
 
 function flattenNodeKinds(nodes: Array<{ kind: string; children: unknown[] }>): string[] {
@@ -559,6 +563,39 @@ test("right-click objects and images expose common context menu commands", async
   await expect(menu.getByRole("menuitem", { name: "여기에 붙여넣기" })).toBeEnabled();
   await menu.getByRole("menuitem", { name: "여기에 붙여넣기" }).click();
   await expect(page.getByRole("button", { name: /이미지 4 복사본/ })).toBeVisible();
+});
+
+test("right-click image menu restores the uploaded original size", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+  const stageFrame = page.getByTestId("stage-frame");
+  const stageBox = await stageFrame.boundingBox();
+  if (!stageBox) {
+    throw new Error("stage frame was not visible");
+  }
+
+  const imageTransfer = await createImageDataTransfer(page, "large-context-image.png", {
+    width: 720,
+    height: 480
+  });
+  await stageFrame.dispatchEvent("drop", {
+    dataTransfer: imageTransfer,
+    clientX: stageBox.x + 420,
+    clientY: stageBox.y + 320
+  });
+
+  await expect(page.getByRole("button", { name: "이미지 3" })).toBeVisible();
+  await expect(page.getByTestId("inspector-width")).toHaveValue("480");
+  await expect(page.getByTestId("inspector-height")).toHaveValue("320");
+
+  await page.mouse.click(stageBox.x + 420, stageBox.y + 320, { button: "right" });
+  const menu = page.getByTestId("object-context-menu");
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "원본 크기로 맞춤" })).toBeEnabled();
+  await menu.getByRole("menuitem", { name: "원본 크기로 맞춤" }).click();
+
+  await expect(page.getByTestId("inspector-width")).toHaveValue("720");
+  await expect(page.getByTestId("inspector-height")).toHaveValue("480");
+  await expect(page.getByTestId("selection-size-badge")).toHaveText("720 x 480");
 });
 
 test("right-click menu locks and hides objects while layer state remains recoverable", async ({ page }) => {

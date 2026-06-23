@@ -888,12 +888,22 @@ export function createImageNode(
   input: {
     assetId: string;
     name?: string;
+    naturalWidth?: number;
+    naturalHeight?: number;
     x: number;
     y: number;
     width: number;
     height: number;
   }
 ): RendererNode {
+  const content: RendererNode["content"] = { type: "image", asset_id: input.assetId };
+  if (input.naturalWidth) {
+    content.natural_width = clampSize(input.naturalWidth);
+  }
+  if (input.naturalHeight) {
+    content.natural_height = clampSize(input.naturalHeight);
+  }
+
   return {
     id: `image-${sequence}`,
     kind: "image",
@@ -901,9 +911,34 @@ export function createImageNode(
     transform: { x: Math.round(input.x), y: Math.round(input.y), rotation: 0 },
     size: { width: clampSize(input.width), height: clampSize(input.height) },
     style: { fill: "#f3f4f6", stroke: null, stroke_width: 0, opacity: 1 },
-    content: { type: "image", asset_id: input.assetId },
+    content,
     children: []
   };
+}
+
+export function resizeSelectedImageToNaturalSize(state: EditorState): EditorState {
+  const selected = findSelectedNodeWithParent(state);
+  if (!selected || selected.node.kind !== "image" || selected.node.content.type !== "image") {
+    return state;
+  }
+  if (isNodeLocked(selected.node)) {
+    return state;
+  }
+
+  const naturalWidth = selected.node.content.natural_width;
+  const naturalHeight = selected.node.content.natural_height;
+  if (!naturalWidth || !naturalHeight) {
+    return state;
+  }
+
+  return executeEditorCommand(state, {
+    type: "update_node_geometry",
+    nodeId: selected.node.id,
+    patch: {
+      width: naturalWidth,
+      height: naturalHeight
+    }
+  });
 }
 
 function applyCommand(document: RendererDocument, command: EditorCommand): CommandResult {

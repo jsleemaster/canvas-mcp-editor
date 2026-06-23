@@ -185,6 +185,10 @@ pub enum NodeContent {
     },
     Image {
         asset_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        natural_width: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        natural_height: Option<f64>,
     },
 }
 

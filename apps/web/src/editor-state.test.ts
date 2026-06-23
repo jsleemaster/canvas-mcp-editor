@@ -28,6 +28,7 @@ import {
   redo,
   renameSelectedNode,
   reorderSelectedNode,
+  resizeSelectedImageToNaturalSize,
   selectNodesInBounds,
   setSelectedNodeLocked,
   setSelectedNodeVisible,
@@ -86,6 +87,8 @@ test("creates image nodes backed by asset ids", () => {
   const node = createImageNode(3, {
     assetId: "asset-test",
     name: "붙여넣은 이미지",
+    naturalWidth: 640,
+    naturalHeight: 480,
     x: 24,
     y: 36,
     width: 120,
@@ -98,7 +101,7 @@ test("creates image nodes backed by asset ids", () => {
     name: "붙여넣은 이미지",
     transform: { x: 24, y: 36, rotation: 0 },
     size: { width: 120, height: 80 },
-    content: { type: "image", asset_id: "asset-test" },
+    content: { type: "image", asset_id: "asset-test", natural_width: 640, natural_height: 480 },
     children: []
   });
 });
@@ -555,6 +558,29 @@ describe("editor state commands", () => {
     expect(pastedNode?.transform).toMatchObject({ x: 100, y: 160 });
     expect(pasted.selection.nodeId).toBe("text-1-copy-1");
     expect(findNodeById(undo(pasted).document, "text-1-copy-1")).toBeNull();
+  });
+
+  test("resizes selected images back to their original uploaded dimensions", () => {
+    const document = sampleDocument();
+    document.pages[0]?.children.push(
+      createImageNode(2, {
+        assetId: "asset-original",
+        naturalWidth: 640,
+        naturalHeight: 480,
+        x: 240,
+        y: 180,
+        width: 320,
+        height: 240
+      })
+    );
+    const initial = setSelection(createEditorState(document), "image-2");
+
+    const resized = resizeSelectedImageToNaturalSize(initial);
+    expect(findNodeById(resized.document, "image-2")?.size).toEqual({ width: 640, height: 480 });
+    expect(findNodeById(resized.document, "image-2")?.transform).toMatchObject({ x: 240, y: 180 });
+
+    const undone = undo(resized);
+    expect(findNodeById(undone.document, "image-2")?.size).toEqual({ width: 320, height: 240 });
   });
 
   test("reorders selected sibling layers with undo", () => {

@@ -80,6 +80,7 @@ import {
   redo,
   renameSelectedNode,
   reorderSelectedNode,
+  resizeSelectedImageToNaturalSize,
   selectNodesInBounds,
   setSelection,
   setMultiSelection,
@@ -1893,6 +1894,13 @@ export function App() {
   const contextMenuNodeIsLocked = isNodeLocked(contextMenuNode);
   const contextMenuNodeIsHidden = contextMenuNode ? !isNodeVisible(contextMenuNode) : false;
   const canMutateContextMenuNode = Boolean(contextMenuNode && !contextMenuNodeIsLocked);
+  const canResizeContextImageToNaturalSize = Boolean(
+    contextMenuNode?.kind === "image" &&
+      contextMenuNode.content.type === "image" &&
+      contextMenuNode.content.natural_width &&
+      contextMenuNode.content.natural_height &&
+      canMutateContextMenuNode
+  );
   const canGroupContextSelection = selectedNodeIds.length >= 2 && canMutateContextMenuNode;
   const canFrameContextSelection = selectedNodeIds.length >= 2 && canMutateContextMenuNode;
   const canUngroupContextSelection = Boolean(
@@ -2333,6 +2341,10 @@ export function App() {
       const sequence = flattenRendererNodes(state.document).length + 1;
       return frameSelectedNodes(state, `frame-${sequence}`, `프레임 ${sequence}`);
     });
+  };
+
+  const resizeContextImageToNaturalSize = () => {
+    runContextMenuStateAction((state) => resizeSelectedImageToNaturalSize(state));
   };
 
   const ungroupContextSelection = () => {
@@ -2988,6 +3000,8 @@ export function App() {
         const imageSize = fitImportedImageSize(naturalSize);
         const node = createImageNode(baseSequence + index + 1, {
           assetId: asset.assetId,
+          naturalWidth: naturalSize.width,
+          naturalHeight: naturalSize.height,
           x: point.x - parentOrigin.x - imageSize.width / 2 + index * 24,
           y: point.y - parentOrigin.y - imageSize.height / 2 + index * 24,
           width: imageSize.width,
@@ -4452,6 +4466,16 @@ export function App() {
           >
             그룹 해제
           </button>
+          {contextMenuNode?.kind === "image" ? (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={!canResizeContextImageToNaturalSize}
+              onClick={resizeContextImageToNaturalSize}
+            >
+              원본 크기로 맞춤
+            </button>
+          ) : null}
           <button
             type="button"
             role="menuitem"
