@@ -380,6 +380,21 @@ button:disabled {
   white-space: nowrap;
 }
 
+.inline-text-editor {
+  position: absolute;
+  z-index: 7;
+  box-sizing: border-box;
+  border: var(--editor-border-hairline) solid var(--editor-color-selection);
+  border-radius: var(--editor-radius-xs);
+  background: var(--editor-color-panel);
+  box-shadow: 0 0 0 var(--editor-border-hairline) var(--editor-color-selection-soft);
+  padding: 0;
+  line-height: 1.2;
+  letter-spacing: var(--editor-letter-spacing);
+  resize: none;
+  outline: none;
+}
+
 .frame-spacing-overlay {
   position: absolute;
   inset: 0;

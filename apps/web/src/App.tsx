@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type WheelEvent as ReactWheelEvent
 } from "react";
 import type { KonvaEventObject } from "konva/lib/Node";
@@ -181,6 +182,18 @@ interface SelectionChromeOverlay {
     width: number;
     height: number;
   }>;
+}
+
+interface InlineTextEditorOverlay {
+  nodeId: string;
+  value: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  fontSize: number;
+  fontFamily: string;
+  color: string;
 }
 
 interface FrameSpacingSegment {
@@ -920,6 +933,7 @@ function renderNode({
   onSelect,
   onGeometryChange,
   onResizeStart,
+  onTextEditStart,
   onDragStart,
   onDragMove,
   onDragEnd
@@ -934,6 +948,7 @@ function renderNode({
   onSelect: (nodeId: string, additive: boolean, preserveMultiSelection?: boolean) => void;
   onGeometryChange: (nodeId: string, patch: GeometryPatch) => void;
   onResizeStart: (nodeId: string, handle: ResizeHandle) => void;
+  onTextEditStart: (nodeId: string) => void;
   onDragStart: (
     nodeId: string,
     event: KonvaEventObject<MouseEvent | TouchEvent | DragEvent>
@@ -994,6 +1009,17 @@ function renderNode({
     const additive = "shiftKey" in event.evt ? event.evt.shiftKey : false;
     onSelect(node.id, additive, !additive && isSelected);
   };
+  const startTextEditFromDoubleClick = (
+    event: KonvaEventObject<MouseEvent> | KonvaEventObject<TouchEvent>
+  ) => {
+    if (isCanvasPanning || shouldDeferToAncestor || node.kind !== "text" || node.content.type !== "text") {
+      return;
+    }
+
+    event.cancelBubble = true;
+    onSelect(node.id, false, true);
+    onTextEditStart(node.id);
+  };
 
   const body =
     node.kind === "image" && node.content.type === "image" ? (
@@ -1035,6 +1061,8 @@ function renderNode({
       onTouchStart={selectAndPrimeDrag}
       onClick={selectFromClick}
       onTap={selectFromClick}
+      onDblClick={startTextEditFromDoubleClick}
+      onDblTap={startTextEditFromDoubleClick}
       onDragStart={(event) => onDragStart(node.id, event)}
       onDragMove={(event) => onDragMove(node.id, event)}
       onDragEnd={(event) => onDragEnd(node.id, event)}
@@ -1090,6 +1118,7 @@ function renderNode({
           onSelect,
           onGeometryChange,
           onResizeStart,
+          onTextEditStart,
           onDragStart,
           onDragMove,
           onDragEnd
@@ -1552,6 +1581,7 @@ export function App() {
   const [areaSelection, setAreaSelection] = useState<AreaSelectionSession | null>(null);
   const [dragPreview, setDragPreview] = useState<NodeDragPreview | null>(null);
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
+  const [inlineTextEditingNodeId, setInlineTextEditingNodeId] = useState<string | null>(null);
   const editorRef = useRef<EditorState | null>(null);
   const objectClipboardRef = useRef<EditorNodeClipboard | null>(null);
   const resizeSessionRef = useRef<ResizeSession | null>(null);
@@ -1569,6 +1599,7 @@ export function App() {
   const remotePresenceSeenAtRef = useRef(new Map<string, number>());
   const manifestFileInputRef = useRef<HTMLInputElement | null>(null);
   const stageFrameRef = useRef<HTMLDivElement | null>(null);
+  const inlineTextEditorRef = useRef<HTMLTextAreaElement | null>(null);
   const [isSpacePanning, setIsSpacePanning] = useState(false);
   const [stageSize, setStageSize] = useState<{ width: number; height: number }>(editorKonvaTokens.stage);
   const [measurementTargetNodeId, setMeasurementTargetNodeId] = useState<string | null>(null);
@@ -1755,6 +1786,30 @@ export function App() {
 
     return createSelectionChromeOverlay(chromeBounds, editor.viewport, selectedNodeIds.length > 1);
   }, [dragPreview, editor, selectedNodeIds]);
+  const inlineTextEditorOverlay = useMemo<InlineTextEditorOverlay | null>(() => {
+    if (!editor || !inlineTextEditingNodeId) {
+      return null;
+    }
+
+    const node = findNodeById(editor.document, inlineTextEditingNodeId);
+    const bounds = getNodeBounds(editor.document, inlineTextEditingNodeId);
+    if (!node || !bounds || node.kind !== "text" || node.content.type !== "text") {
+      return null;
+    }
+
+    const viewportRect = viewportBounds(bounds, editor.viewport);
+    return {
+      nodeId: node.id,
+      value: node.content.value,
+      left: viewportRect.left,
+      top: viewportRect.top,
+      width: Math.max(1, viewportRect.width),
+      height: Math.max(1, viewportRect.height),
+      fontSize: Math.max(1, node.content.font_size * editor.viewport.scale),
+      fontFamily: node.content.font_family,
+      color: node.style.fill
+    };
+  }, [editor, inlineTextEditingNodeId]);
   const frameSpacingOverlay = useMemo(() => {
     if (!editor || selectedNodeIds.length !== 1 || !selectedNode || selectedNode.kind !== "frame") {
       return null;
@@ -1815,6 +1870,26 @@ export function App() {
     ? components.find((component) => component.source_node.id === selectedNode.id)
     : undefined;
   const localSessionId = collabSession?.getLocalPresence().sessionId ?? null;
+
+  useEffect(() => {
+    if (!inlineTextEditingNodeId) {
+      return;
+    }
+
+    const inlineEditor = inlineTextEditorRef.current;
+    if (!inlineEditor) {
+      return;
+    }
+
+    inlineEditor.focus();
+    inlineEditor.select();
+  }, [inlineTextEditingNodeId]);
+
+  useEffect(() => {
+    if (inlineTextEditingNodeId && !inlineTextEditorOverlay) {
+      setInlineTextEditingNodeId(null);
+    }
+  }, [inlineTextEditingNodeId, inlineTextEditorOverlay]);
 
   const normalizePresenceForOverlay = (
     nextPresence: CollaborationPresence[],
@@ -2083,6 +2158,35 @@ export function App() {
     activeSession.transact("editor-command", () => nextState.document);
     publishEditorPresence(nextState);
     setEditor(nextState);
+  };
+
+  const startInlineTextEdit = (nodeId: string) => {
+    const currentEditor = editorRef.current;
+    const node = currentEditor ? findNodeById(currentEditor.document, nodeId) : null;
+    if (!node || node.kind !== "text" || node.content.type !== "text") {
+      return;
+    }
+
+    setMeasurementTargetNodeId(null);
+    setInlineTextEditingNodeId(nodeId);
+  };
+
+  const stopInlineTextEdit = () => {
+    setInlineTextEditingNodeId(null);
+  };
+
+  const updateInlineText = (nodeId: string, value: string) => {
+    dispatch({ type: "update_text", nodeId, value });
+  };
+
+  const handleInlineTextKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Escape") {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    stopInlineTextEdit();
   };
 
   const selectNode = (nodeId: string, additive = false, preserveMultiSelection = false) => {
@@ -3393,6 +3497,7 @@ export function App() {
                       resizeSessionRef.current = nextResizeSession;
                       setResizeSession(nextResizeSession);
                     },
+                    onTextEditStart: startInlineTextEdit,
                     onDragStart: startNodeDrag,
                     onDragMove: updateNodeDragPreview,
                     onDragEnd: finishNodeDrag
@@ -3400,6 +3505,31 @@ export function App() {
                 )}
               </Layer>
             </Stage>
+            {inlineTextEditorOverlay ? (
+              <textarea
+                ref={inlineTextEditorRef}
+                className="inline-text-editor"
+                data-testid="inline-text-editor"
+                aria-label="텍스트 직접 편집"
+                value={inlineTextEditorOverlay.value}
+                onChange={(event) =>
+                  updateInlineText(inlineTextEditorOverlay.nodeId, event.currentTarget.value)
+                }
+                onBlur={stopInlineTextEdit}
+                onKeyDown={handleInlineTextKeyDown}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+                style={{
+                  left: inlineTextEditorOverlay.left,
+                  top: inlineTextEditorOverlay.top,
+                  width: inlineTextEditorOverlay.width,
+                  height: inlineTextEditorOverlay.height,
+                  fontSize: inlineTextEditorOverlay.fontSize,
+                  fontFamily: inlineTextEditorOverlay.fontFamily,
+                  color: inlineTextEditorOverlay.color
+                }}
+              />
+            ) : null}
             {editor ? (
               <RemotePresenceOverlay
                 localSessionId={localSessionId}
