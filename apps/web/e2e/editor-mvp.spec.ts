@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { Buffer } from "node:buffer";
 import { rm } from "node:fs/promises";
 
 test.beforeEach(async () => {
@@ -41,9 +42,10 @@ async function createNamedProject(page: Page, name: string) {
 async function createImageDataTransfer(
   page: Page,
   name: string,
-  size: { width: number; height: number } = { width: 16, height: 12 }
+  size: { width: number; height: number } = { width: 16, height: 12 },
+  fillColor = "#2563eb"
 ) {
-  return page.evaluateHandle(async ({ fileName, imageSize }) => {
+  return page.evaluateHandle(async ({ fileName, imageSize, color }) => {
     const canvas = document.createElement("canvas");
     canvas.width = imageSize.width;
     canvas.height = imageSize.height;
@@ -51,7 +53,7 @@ async function createImageDataTransfer(
     if (!context) {
       throw new Error("canvas context missing");
     }
-    context.fillStyle = "#2563eb";
+    context.fillStyle = color;
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.fillStyle = "#ffffff";
     context.fillRect(4, 3, 8, 6);
@@ -68,7 +70,45 @@ async function createImageDataTransfer(
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(file);
     return dataTransfer;
-  }, { fileName: name, imageSize: size });
+  }, { fileName: name, imageSize: size, color: fillColor });
+}
+
+async function createImageUploadFile(
+  page: Page,
+  name: string,
+  size: { width: number; height: number },
+  fillColor: string
+) {
+  const payload = await page.evaluate(async ({ fileName, imageSize, color }) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = imageSize.width;
+    canvas.height = imageSize.height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("canvas context missing");
+    }
+    context.fillStyle = color;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "#ffffff";
+    context.fillRect(4, 3, 8, 6);
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((nextBlob) => {
+        if (nextBlob) {
+          resolve(nextBlob);
+        } else {
+          reject(new Error("png blob missing"));
+        }
+      }, "image/png");
+    });
+    const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
+    return { name: fileName, mimeType: "image/png", bytes };
+  }, { fileName: name, imageSize: size, color: fillColor });
+
+  return {
+    name: payload.name,
+    mimeType: payload.mimeType,
+    buffer: Buffer.from(payload.bytes)
+  };
 }
 
 function flattenNodeKinds(nodes: Array<{ kind: string; children: unknown[] }>): string[] {
@@ -596,6 +636,65 @@ test("right-click image menu restores the uploaded original size", async ({ page
   await expect(page.getByTestId("inspector-width")).toHaveValue("720");
   await expect(page.getByTestId("inspector-height")).toHaveValue("480");
   await expect(page.getByTestId("selection-size-badge")).toHaveText("720 x 480");
+});
+
+test("right-click image menu replaces the image asset while keeping geometry", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+  const stageFrame = page.getByTestId("stage-frame");
+  const stageBox = await stageFrame.boundingBox();
+  if (!stageBox) {
+    throw new Error("stage frame was not visible");
+  }
+
+  const imageTransfer = await createImageDataTransfer(
+    page,
+    "replace-original.png",
+    { width: 720, height: 480 },
+    "#2563eb"
+  );
+  await stageFrame.dispatchEvent("drop", {
+    dataTransfer: imageTransfer,
+    clientX: stageBox.x + 420,
+    clientY: stageBox.y + 320
+  });
+
+  await expect(page.getByRole("button", { name: "이미지 3" })).toBeVisible();
+  await expect(page.getByTestId("inspector-width")).toHaveValue("480");
+  await expect(page.getByTestId("inspector-height")).toHaveValue("320");
+
+  await page.mouse.click(stageBox.x + 420, stageBox.y + 320, { button: "right" });
+  const menu = page.getByTestId("object-context-menu");
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "이미지 바꾸기" })).toBeEnabled();
+
+  const fileChooserPromise = page.waitForEvent("filechooser");
+  await menu.getByRole("menuitem", { name: "이미지 바꾸기" }).click();
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles(
+    await createImageUploadFile(page, "replace-next.png", { width: 300, height: 900 }, "#16a34a")
+  );
+
+  await expect(page.getByTestId("project-status")).toContainText("이미지 3 이미지 바뀜");
+  await expect(page.getByTestId("inspector-width")).toHaveValue("480");
+  await expect(page.getByTestId("inspector-height")).toHaveValue("320");
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "이미지 3" })).toBeVisible();
+  await page.getByRole("button", { name: "이미지 3" }).click();
+  await expect(page.getByTestId("inspector-width")).toHaveValue("480");
+  await expect(page.getByTestId("inspector-height")).toHaveValue("320");
+  const reloadedStageBox = await stageFrame.boundingBox();
+  if (!reloadedStageBox) {
+    throw new Error("stage frame was not visible after reload");
+  }
+
+  await page.mouse.click(reloadedStageBox.x + 420, reloadedStageBox.y + 320, { button: "right" });
+  await expect(menu.getByRole("menuitem", { name: "원본 크기로 맞춤" })).toBeEnabled();
+  await menu.getByRole("menuitem", { name: "원본 크기로 맞춤" }).click();
+
+  await expect(page.getByTestId("inspector-width")).toHaveValue("300");
+  await expect(page.getByTestId("inspector-height")).toHaveValue("900");
+  await expect(page.getByTestId("selection-size-badge")).toHaveText("300 x 900");
 });
 
 test("right-click menu locks and hides objects while layer state remains recoverable", async ({ page }) => {

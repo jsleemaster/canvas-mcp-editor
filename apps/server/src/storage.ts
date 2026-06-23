@@ -554,6 +554,35 @@ export class FileStorage {
     return node;
   }
 
+  async replaceImageAsset(
+    fileId: string,
+    nodeId: string,
+    input: { assetId: string; naturalWidth?: number; naturalHeight?: number }
+  ): Promise<DesignNode> {
+    const document = await this.readFile(fileId);
+    const node = findNodeById(document, nodeId);
+    if (!node) {
+      throw new Error(`node not found: ${nodeId}`);
+    }
+
+    if (node.content.type !== "image") {
+      throw new Error(`node is not image: ${nodeId}`);
+    }
+
+    const content: DesignNode["content"] = { type: "image", asset_id: input.assetId };
+    if (input.naturalWidth) {
+      content.natural_width = Math.max(1, input.naturalWidth);
+    }
+    if (input.naturalHeight) {
+      content.natural_height = Math.max(1, input.naturalHeight);
+    }
+
+    node.content = content;
+    relayoutDesignFile(document);
+    await this.writeFile(fileId, document);
+    return node;
+  }
+
   async createNode(fileId: string, parentId: string, node: DesignNode): Promise<DesignNode> {
     const document = await this.readFile(fileId);
     const parent = findParentChildren(document, parentId);

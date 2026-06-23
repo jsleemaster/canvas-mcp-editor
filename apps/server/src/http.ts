@@ -167,6 +167,19 @@ export function createHttpServer(storage = new FileStorage(), options: HttpServe
     }
   );
 
+  server.patch<{
+    Params: { fileId: string; nodeId: string };
+    Body: { assetId: string; naturalWidth?: number; naturalHeight?: number };
+  }>("/files/:fileId/nodes/:nodeId/image", async (request) => {
+    return {
+      node: await storage.replaceImageAsset(
+        request.params.fileId,
+        request.params.nodeId,
+        request.body
+      )
+    };
+  });
+
   server.post<{ Params: { fileId: string }; Body: { parentId: string; node: DesignNode } }>(
     "/files/:fileId/nodes",
     async (request) => {
