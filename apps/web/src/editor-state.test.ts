@@ -11,6 +11,7 @@ import {
   duplicateSelectedNode,
   executeEditorCommand,
   findNodeById,
+  frameSelectedNodes,
   createImageNode,
   createRectangleNode,
   createTextNode,
@@ -633,6 +634,36 @@ describe("editor state commands", () => {
     expect(group?.children.map((node) => node.id)).toEqual(["text-1", "rectangle-1"]);
     expect(group?.transform).toMatchObject({ x: 32, y: 40 });
     expect(findNodeById(grouped.document, "rectangle-1")?.transform).toMatchObject({ x: 128, y: 100 });
+  });
+
+  test("frames selected sibling layers as a real frame and supports undo", () => {
+    const initial = setMultiSelection(
+      createEditorState(sampleDocumentWithTopLevelRectangle()),
+      ["frame-1", "rectangle-1"],
+      "rectangle-1"
+    );
+
+    const framed = frameSelectedNodes(initial, "frame-selection-1", "선택 프레임");
+    const frame = findNodeById(framed.document, "frame-selection-1");
+
+    expect(frame).toMatchObject({
+      id: "frame-selection-1",
+      kind: "frame",
+      name: "선택 프레임",
+      transform: { x: 120, y: 80, rotation: 0 },
+      size: { width: 420, height: 280 },
+      style: { fill: "#ffffff", stroke: "#d1d5db", stroke_width: 1, opacity: 1 }
+    });
+    expect(frame?.children.map((node) => node.id)).toEqual(["frame-1", "rectangle-1"]);
+    expect(frame?.children[0]?.transform).toMatchObject({ x: 0, y: 0 });
+    expect(frame?.children[1]?.transform).toMatchObject({ x: 60, y: 60 });
+    expect(framed.document.pages[0]?.children.map((node) => node.id)).toEqual(["frame-selection-1"]);
+    expect(framed.selection).toEqual({ nodeId: "frame-selection-1", nodeIds: ["frame-selection-1"] });
+
+    const undone = undo(framed);
+    expect(findNodeById(undone.document, "frame-selection-1")).toBeNull();
+    expect(undone.document.pages[0]?.children.map((node) => node.id)).toEqual(["frame-1", "rectangle-1"]);
+    expect(findNodeById(undone.document, "rectangle-1")?.transform).toMatchObject({ x: 180, y: 140 });
   });
 
   test("ungroups a selected group back into sibling layers and supports undo", () => {
