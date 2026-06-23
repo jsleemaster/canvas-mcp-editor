@@ -503,6 +503,29 @@ test("Figma-like canvas input routing nudges layers, pans canvas, and zooms with
   await expect(page.getByText("레이어 또는 캔버스 요소를 선택하세요.")).toBeVisible();
 });
 
+test("text layers enter inline edit mode on double click", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+
+  const stageBox = await page.locator("canvas").first().boundingBox();
+  if (!stageBox) {
+    throw new Error("stage canvas was not visible");
+  }
+
+  await page.mouse.dblclick(stageBox.x + 170, stageBox.y + 135);
+
+  const inlineEditor = page.getByTestId("inline-text-editor");
+  await expect(inlineEditor).toBeVisible();
+  await expect(inlineEditor).toBeFocused();
+  await expect(inlineEditor).toHaveValue("캔버스 MCP 에디터");
+
+  await inlineEditor.fill("더블클릭으로 바로 수정");
+  await expect(page.getByTestId("inspector-text")).toHaveValue("더블클릭으로 바로 수정");
+
+  await page.keyboard.press("Escape");
+  await expect(inlineEditor).toHaveCount(0);
+  await expect(page.getByTestId("inspector-text")).toHaveValue("더블클릭으로 바로 수정");
+});
+
 test("Figma-like edit shortcuts duplicate and delete selected layers", async ({ page }) => {
   await createProjectFromEmptyState(page);
 
