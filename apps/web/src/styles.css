@@ -606,6 +606,19 @@ button:disabled {
   min-height: var(--editor-size-toolbar);
 }
 
+.inspector .inspector-text-field {
+  min-height: var(--editor-space-xl);
+  border: 0;
+  border-bottom: var(--editor-border-hairline) solid var(--editor-color-border-soft);
+  border-radius: 0;
+  background: transparent;
+  padding: var(--editor-space-xs) 0;
+}
+
+.inspector .inspector-text-field::placeholder {
+  color: var(--editor-color-muted);
+}
+
 .team-fields,
 .presence-list {
   display: grid;

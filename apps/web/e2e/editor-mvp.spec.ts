@@ -526,6 +526,20 @@ test("text layers enter inline edit mode on double click", async ({ page }) => {
   await expect(page.getByTestId("inspector-text")).toHaveValue("더블클릭으로 바로 수정");
 });
 
+test("empty text inspector field renders as a single underline with placeholder", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  const textField = page.getByTestId("inspector-text");
+
+  await textField.fill("");
+
+  await expect(textField).toHaveValue("");
+  await expect(textField).toHaveAttribute("placeholder", "텍스트 입력");
+  await expect(textField).toHaveCSS("border-top-width", "0px");
+  await expect(textField).toHaveCSS("border-bottom-width", "1px");
+});
+
 test("Figma-like edit shortcuts duplicate and delete selected layers", async ({ page }) => {
   await createProjectFromEmptyState(page);
 

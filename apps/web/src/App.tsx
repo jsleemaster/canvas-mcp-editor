@@ -1460,7 +1460,9 @@ function Inspector({
         <label className="stacked-field">
           텍스트
           <textarea
+            className="inspector-text-field"
             data-testid="inspector-text"
+            placeholder="텍스트 입력"
             value={selectedNode.content.value}
             onChange={(event) => onTextChange(selectedNode.id, event.currentTarget.value)}
           />
