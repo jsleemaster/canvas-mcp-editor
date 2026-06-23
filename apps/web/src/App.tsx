@@ -364,6 +364,22 @@ async function persistCreatedNode(fileId: string, parentId: string, node: Render
   }
 }
 
+async function persistImageAssetReplacement(
+  fileId: string,
+  nodeId: string,
+  input: { assetId: string; naturalWidth?: number; naturalHeight?: number }
+) {
+  const response = await fetch(apiUrl(`/files/${fileId}/nodes/${nodeId}/image`), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw new Error(`이미지 교체 저장 실패: ${response.status} ${response.statusText}`.trim());
+  }
+}
+
 function CanvasImageBody({
   assetId,
   width,
@@ -1749,6 +1765,8 @@ export function App() {
   const remotePresenceSignatureRef = useRef(new Map<string, string>());
   const remotePresenceSeenAtRef = useRef(new Map<string, number>());
   const manifestFileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageReplacementFileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageReplacementNodeIdRef = useRef<string | null>(null);
   const stageFrameRef = useRef<HTMLDivElement | null>(null);
   const inlineTextEditorRef = useRef<HTMLTextAreaElement | null>(null);
   const [isSpacePanning, setIsSpacePanning] = useState(false);
@@ -1894,6 +1912,11 @@ export function App() {
   const contextMenuNodeIsLocked = isNodeLocked(contextMenuNode);
   const contextMenuNodeIsHidden = contextMenuNode ? !isNodeVisible(contextMenuNode) : false;
   const canMutateContextMenuNode = Boolean(contextMenuNode && !contextMenuNodeIsLocked);
+  const canReplaceContextImage = Boolean(
+    contextMenuNode?.kind === "image" &&
+      contextMenuNode.content.type === "image" &&
+      canMutateContextMenuNode
+  );
   const canResizeContextImageToNaturalSize = Boolean(
     contextMenuNode?.kind === "image" &&
       contextMenuNode.content.type === "image" &&
@@ -2345,6 +2368,59 @@ export function App() {
 
   const resizeContextImageToNaturalSize = () => {
     runContextMenuStateAction((state) => resizeSelectedImageToNaturalSize(state));
+  };
+
+  const startContextImageReplacement = () => {
+    if (
+      contextMenuNode?.kind !== "image" ||
+      contextMenuNode.content.type !== "image" ||
+      !canMutateContextMenuNode
+    ) {
+      setObjectContextMenu(null);
+      return;
+    }
+
+    imageReplacementNodeIdRef.current = contextMenuNode.id;
+    setObjectContextMenu(null);
+    imageReplacementFileInputRef.current?.click();
+  };
+
+  const replaceContextImageFromFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = imageFilesFromList(event.currentTarget.files ?? [])[0];
+    event.currentTarget.value = "";
+    const nodeId = imageReplacementNodeIdRef.current;
+    imageReplacementNodeIdRef.current = null;
+    if (!file || !nodeId || !currentProject) {
+      return;
+    }
+
+    const currentEditor = editorRef.current;
+    const node = currentEditor ? findNodeById(currentEditor.document, nodeId) : null;
+    if (!node || node.kind !== "image" || isNodeLocked(node)) {
+      return;
+    }
+
+    try {
+      const [asset, naturalSize]: [UploadedAsset, { width: number; height: number }] =
+        await Promise.all([uploadImageAsset(file), readImageFileSize(file)]);
+      const replacement = {
+        assetId: asset.assetId,
+        naturalWidth: naturalSize.width,
+        naturalHeight: naturalSize.height
+      };
+      await persistImageAssetReplacement(currentProject.currentDocumentId, nodeId, replacement);
+      dispatch({
+        type: "replace_image_asset",
+        nodeId,
+        assetId: replacement.assetId,
+        naturalWidth: replacement.naturalWidth,
+        naturalHeight: replacement.naturalHeight
+      });
+      setProjectStatus(`${node.name} 이미지 바뀜`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "이미지를 바꾸지 못했습니다";
+      setProjectStatus(message);
+    }
   };
 
   const ungroupContextSelection = () => {
@@ -4467,14 +4543,24 @@ export function App() {
             그룹 해제
           </button>
           {contextMenuNode?.kind === "image" ? (
-            <button
-              type="button"
-              role="menuitem"
-              disabled={!canResizeContextImageToNaturalSize}
-              onClick={resizeContextImageToNaturalSize}
-            >
-              원본 크기로 맞춤
-            </button>
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={!canReplaceContextImage}
+                onClick={startContextImageReplacement}
+              >
+                이미지 바꾸기
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={!canResizeContextImageToNaturalSize}
+                onClick={resizeContextImageToNaturalSize}
+              >
+                원본 크기로 맞춤
+              </button>
+            </>
           ) : null}
           <button
             type="button"
@@ -4621,6 +4707,14 @@ export function App() {
           </button>
         </div>
       ) : null}
+      <input
+        ref={imageReplacementFileInputRef}
+        data-testid="image-replacement-file"
+        className="visually-hidden"
+        type="file"
+        accept="image/*"
+        onChange={replaceContextImageFromFile}
+      />
     </main>
   );
 }

@@ -290,6 +290,56 @@ describe("HTTP server", () => {
     expect(created.json().node.id).toBe("rectangle-99");
   });
 
+  test("updates image node assets and persists replacement metadata", async () => {
+    const server = await createServerWithDocument();
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/nodes",
+      payload: {
+        parentId: "page-1",
+        node: {
+          id: "image-1",
+          kind: "image",
+          name: "이미지 1",
+          transform: { x: 120, y: 140, rotation: 0 },
+          size: { width: 480, height: 320 },
+          style: { fill: "#f3f4f6", stroke: null, stroke_width: 0, opacity: 1 },
+          content: {
+            type: "image",
+            asset_id: "asset-before",
+            natural_width: 720,
+            natural_height: 480
+          },
+          children: []
+        }
+      }
+    });
+    expect(created.statusCode).toBe(200);
+
+    const replaced = await server.inject({
+      method: "PATCH",
+      url: "/files/sample-file/nodes/image-1/image",
+      payload: {
+        assetId: "asset-after",
+        naturalWidth: 300,
+        naturalHeight: 900
+      }
+    });
+    expect(replaced.statusCode).toBe(200);
+    expect(replaced.json().node.content).toEqual({
+      type: "image",
+      asset_id: "asset-after",
+      natural_width: 300,
+      natural_height: 900
+    });
+
+    const file = await server.inject({ method: "GET", url: "/files/sample-file" });
+    const image = file.json().file.pages[0].children.find((node: { id: string }) => node.id === "image-1");
+    expect(image.content.asset_id).toBe("asset-after");
+    expect(image.size).toEqual({ width: 480, height: 320 });
+  });
+
   test("serves component creation, instancing, listing, and detach routes", async () => {
     const server = await createServerWithDocument();
 

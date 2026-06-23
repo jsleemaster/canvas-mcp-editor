@@ -28,6 +28,7 @@ import {
   redo,
   renameSelectedNode,
   reorderSelectedNode,
+  replaceSelectedImageAsset,
   resizeSelectedImageToNaturalSize,
   selectNodesInBounds,
   setSelectedNodeLocked,
@@ -581,6 +582,46 @@ describe("editor state commands", () => {
 
     const undone = undo(resized);
     expect(findNodeById(undone.document, "image-2")?.size).toEqual({ width: 320, height: 240 });
+  });
+
+  test("replaces selected image assets without changing geometry and supports undo", () => {
+    const document = sampleDocument();
+    document.pages[0]?.children.push(
+      createImageNode(2, {
+        assetId: "asset-before",
+        naturalWidth: 640,
+        naturalHeight: 480,
+        x: 240,
+        y: 180,
+        width: 320,
+        height: 240
+      })
+    );
+    const initial = setSelection(createEditorState(document), "image-2");
+
+    const replaced = replaceSelectedImageAsset(initial, {
+      assetId: "asset-after",
+      naturalWidth: 1200,
+      naturalHeight: 800
+    });
+    const image = findNodeById(replaced.document, "image-2");
+    expect(image?.content).toMatchObject({
+      type: "image",
+      asset_id: "asset-after",
+      natural_width: 1200,
+      natural_height: 800
+    });
+    expect(image?.size).toEqual({ width: 320, height: 240 });
+    expect(image?.transform).toMatchObject({ x: 240, y: 180 });
+    expect(replaced.selection.nodeId).toBe("image-2");
+
+    const undone = undo(replaced);
+    expect(findNodeById(undone.document, "image-2")?.content).toMatchObject({
+      type: "image",
+      asset_id: "asset-before",
+      natural_width: 640,
+      natural_height: 480
+    });
   });
 
   test("reorders selected sibling layers with undo", () => {

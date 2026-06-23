@@ -99,6 +99,13 @@ export type EditorCommand =
       value: string;
     }
   | {
+      type: "replace_image_asset";
+      nodeId: string;
+      assetId: string;
+      naturalWidth?: number;
+      naturalHeight?: number;
+    }
+  | {
       type: "create_node";
       parentId: string;
       node: RendererNode;
@@ -941,6 +948,27 @@ export function resizeSelectedImageToNaturalSize(state: EditorState): EditorStat
   });
 }
 
+export function replaceSelectedImageAsset(
+  state: EditorState,
+  input: { assetId: string; naturalWidth?: number; naturalHeight?: number }
+): EditorState {
+  const selected = findSelectedNodeWithParent(state);
+  if (!selected || selected.node.kind !== "image" || selected.node.content.type !== "image") {
+    return state;
+  }
+  if (isNodeLocked(selected.node)) {
+    return state;
+  }
+
+  return executeEditorCommand(state, {
+    type: "replace_image_asset",
+    nodeId: selected.node.id,
+    assetId: input.assetId,
+    naturalWidth: input.naturalWidth,
+    naturalHeight: input.naturalHeight
+  });
+}
+
 function applyCommand(document: RendererDocument, command: EditorCommand): CommandResult {
   const next = structuredClone(document);
 
@@ -1052,6 +1080,43 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       relayoutDocument(next);
 
       return { document: next, inverse };
+    }
+    case "replace_image_asset": {
+      const node = findNodeById(next, command.nodeId);
+      if (!node || isNodeLocked(node) || node.kind !== "image" || node.content.type !== "image") {
+        return { document, inverse: null };
+      }
+
+      const previousContent = node.content;
+      const nextContent: RendererNode["content"] = { type: "image", asset_id: command.assetId };
+      if (command.naturalWidth) {
+        nextContent.natural_width = clampSize(command.naturalWidth);
+      }
+      if (command.naturalHeight) {
+        nextContent.natural_height = clampSize(command.naturalHeight);
+      }
+      if (
+        previousContent.asset_id === nextContent.asset_id &&
+        previousContent.natural_width === nextContent.natural_width &&
+        previousContent.natural_height === nextContent.natural_height
+      ) {
+        return { document, inverse: null };
+      }
+
+      node.content = nextContent;
+      relayoutDocument(next);
+
+      return {
+        document: next,
+        inverse: {
+          type: "replace_image_asset",
+          nodeId: command.nodeId,
+          assetId: previousContent.asset_id,
+          naturalWidth: previousContent.natural_width,
+          naturalHeight: previousContent.natural_height
+        },
+        selectedNodeId: command.nodeId
+      };
     }
     case "create_node": {
       const parent = findParentChildren(next, command.parentId);

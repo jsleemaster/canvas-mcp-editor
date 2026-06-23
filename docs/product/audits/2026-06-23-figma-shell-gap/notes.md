@@ -86,3 +86,9 @@ This is not the full Figma parity endpoint. It is the foundation needed before d
 - Added uploaded image natural-size metadata to image node content across renderer types, server storage types, Rust model bindings, and Rust JSON round-trip coverage.
 - Added undoable `원본 크기로 맞춤` for image nodes in the object context menu, so imported images can be restored from the fitted canvas size to their uploaded dimensions.
 - Verification started with RED editor-state/typecheck failures for missing natural-size input and `resizeSelectedImageToNaturalSize`, then passed focused editor-state tests, Rust JSON round-trip coverage, and focused Playwright right-click image coverage.
+
+2026-06-23 image context-menu replacement slice:
+
+- Added undoable `이미지 바꾸기` for image nodes in the object context menu, preserving the selected layer's geometry while replacing the backing uploaded asset and its natural-size metadata.
+- Browser coverage verifies the actual right-click menu, file chooser replacement, preserved fitted size, reload persistence, and follow-up `원본 크기로 맞춤` using the replacement image dimensions.
+- This closes the highest-friction missing image context-menu action; crop/image-fill controls remain next in the imagery lane.
