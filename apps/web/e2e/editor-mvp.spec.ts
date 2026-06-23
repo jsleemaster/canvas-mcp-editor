@@ -18,6 +18,10 @@ async function openEmptyEditor(page: Page) {
   await expect(page.getByTestId("project-status")).toContainText("저장된 프로젝트 없음");
 }
 
+function floatingToolbarZoom(page: Page, label: string) {
+  return page.getByTestId("floating-toolbar").getByText(label);
+}
+
 test("opens with a Figma-like assets panel and keeps project controls behind the file rail", async ({ page }) => {
   await page.goto("http://127.0.0.1:5173/");
 
@@ -414,7 +418,7 @@ test("canvas editor MVP supports Korean-first select, inspect, edit, undo, creat
   await expect(page.locator(".node-summary span")).toHaveText("프레임");
 
   await page.getByRole("button", { name: "확대" }).click();
-  await expect(page.getByText("125%")).toBeVisible();
+  await expect(floatingToolbarZoom(page, "125%")).toBeVisible();
 
   const agentId = `agent-note-${Date.now()}`;
   const agentName = `에이전트 메모 ${Date.now()}`;
@@ -545,8 +549,16 @@ test("Figma-like editor shell separates rail, rulers, floating toolbar, and insp
   expect(Math.abs(toolbarCenterX - workspaceCenterX)).toBeLessThan(4);
 
   await expect(page.getByTestId("inspector-tabs")).toBeVisible();
+  await expect(page.getByTestId("inspector-action-strip")).toBeVisible();
+  await expect(page.getByTestId("inspector-avatar")).toBeVisible();
+  await expect(page.getByTestId("inspector-zoom-readout")).toHaveText("100%");
+  await expect(page.getByRole("button", { name: "미리보기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "공유하기" })).toBeVisible();
   await expect(page.getByTestId("inspector-section-frame")).toBeVisible();
   await expect(page.getByTestId("inspector-section-presets")).toBeVisible();
+  await expect(page.getByTestId("inspector-section-presets")).toContainText("프레젠테이션");
+  await expect(page.getByTestId("inspector-section-presets")).toContainText("소셜 미디어");
+  await expect(page.getByTestId("inspector-section-presets")).toContainText("아카이브");
 
   const canvasBackground = await page.getByTestId("canvas-area").evaluate((node) =>
     getComputedStyle(node).backgroundColor
@@ -933,19 +945,19 @@ test("Figma-like canvas input routing nudges layers, pans canvas, and zooms with
 
   await page.mouse.move(stageBox.x + 360, stageBox.y + 260);
   await page.mouse.wheel(0, -300);
-  await expect(page.getByText("100%")).toBeVisible();
+  await expect(floatingToolbarZoom(page, "100%")).toBeVisible();
 
   await page.keyboard.down("Control");
   await page.mouse.wheel(0, -300);
   await page.keyboard.up("Control");
-  await expect(page.getByText("125%")).toBeVisible();
+  await expect(floatingToolbarZoom(page, "125%")).toBeVisible();
 
   await page.keyboard.press("Control+=");
-  await expect(page.getByText("150%")).toBeVisible();
+  await expect(floatingToolbarZoom(page, "150%")).toBeVisible();
   await page.keyboard.press("Control+-");
-  await expect(page.getByText("125%")).toBeVisible();
+  await expect(floatingToolbarZoom(page, "125%")).toBeVisible();
   await page.keyboard.press("Control+0");
-  await expect(page.getByText("100%")).toBeVisible();
+  await expect(floatingToolbarZoom(page, "100%")).toBeVisible();
 
   await page.getByRole("button", { name: "헤드라인" }).click();
   await page.keyboard.press("ArrowRight");
@@ -1157,7 +1169,7 @@ test("multi-selection drag preview preserves sub-pixel movement while zoomed", a
   for (let index = 0; index < 12; index += 1) {
     await page.getByRole("button", { name: "확대" }).click();
   }
-  await expect(page.getByText("400%")).toBeVisible();
+  await expect(floatingToolbarZoom(page, "400%")).toBeVisible();
 
   await rectangleLayer.click();
   await page.keyboard.down("Shift");

@@ -105,3 +105,10 @@ This is not the full Figma parity endpoint. It is the foundation needed before d
 - Changed the default left rail mode to `에셋`, kept project management behind the `파일` rail button, and made the active panel heading follow the selected rail mode.
 - Rebuilt the asset panel around a Figma-like library search field, empty library state, team-library CTA, and compact UI kit list so the first screen reads as a design editor instead of an admin form.
 - Added Playwright coverage for default asset panel visibility, hidden project controls, file-rail switching, and returning to the asset panel.
+
+2026-06-23 Figma-like right inspector slice:
+
+- Compared the referenced Figma screenshot against the live Layo shell and found the next visible mismatch on the right panel: Figma has a compact action strip with preview/share/zoom controls and a long frame preset category list, while Layo showed a generic `검사기` title and only three presets.
+- Added an Inspector action strip with account affordance, preview, code view, real share action wiring, and current zoom readout while keeping the design/prototype tabs underneath.
+- Expanded the empty-state frame presets into Figma-like categories including presentation, watch, paper, social media, FigJam community, and archive rows.
+- Added Playwright coverage for the new action strip, zoom readout, preview/share buttons, and expanded preset categories.

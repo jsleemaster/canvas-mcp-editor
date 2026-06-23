@@ -160,6 +160,17 @@ const ASSET_LIBRARY_KITS = [
     swatches: ["warning", "selection", "surface"]
   }
 ];
+const FRAME_PRESET_CATEGORIES = [
+  { name: "스마트폰", size: "390 x 844" },
+  { name: "태블릿", size: "768 x 1024" },
+  { name: "데스크톱", size: "1440 x 1024" },
+  { name: "프레젠테이션", size: "16:9" },
+  { name: "스마트워치", size: "198 x 242" },
+  { name: "종이", size: "A4" },
+  { name: "소셜 미디어", size: "1080 x 1080" },
+  { name: "FigJam 커뮤니티", size: "템플릿" },
+  { name: "아카이브", size: "이전 규격" }
+];
 type TeamPanelMode = "local" | "relay" | "manifest";
 type LeftPanelMode = "files" | "assets" | "layers" | "team";
 
@@ -1466,10 +1477,42 @@ function InspectorAlignmentControls({
   );
 }
 
-function InspectorHeader() {
+function InspectorHeader({
+  zoomLabel,
+  canShare,
+  onShare
+}: {
+  zoomLabel: string;
+  canShare: boolean;
+  onShare: () => void;
+}) {
   return (
     <>
-      <h2>검사기</h2>
+      <div className="inspector-action-strip" data-testid="inspector-action-strip" aria-label="검사기 빠른 작업">
+        <button
+          type="button"
+          className="inspector-avatar"
+          data-testid="inspector-avatar"
+          aria-label="계정 메뉴"
+        >
+          L
+        </button>
+        <div className="inspector-action-buttons">
+          <button type="button" aria-label="미리보기" title="미리보기">
+            ▷
+          </button>
+          <button type="button" aria-label="코드 보기" title="코드 보기">
+            &lt;/&gt;
+          </button>
+          <button type="button" className="inspector-share-button" onClick={onShare} disabled={!canShare}>
+            공유하기
+          </button>
+        </div>
+        <span className="inspector-zoom-readout" data-testid="inspector-zoom-readout">
+          {zoomLabel}
+        </span>
+      </div>
+      <h2 className="visually-hidden">검사기</h2>
       <div className="inspector-tabs" data-testid="inspector-tabs" role="tablist" aria-label="검사기 모드">
         <button type="button" role="tab" aria-selected="true">
           디자인
@@ -1492,18 +1535,17 @@ function InspectorEmptySections() {
       <section className="inspector-section" data-testid="inspector-section-presets" aria-label="프리셋">
         <h3>프리셋</h3>
         <ul className="inspector-preset-list">
-          <li>
-            <span>스마트폰</span>
-            <span>390 x 844</span>
-          </li>
-          <li>
-            <span>태블릿</span>
-            <span>768 x 1024</span>
-          </li>
-          <li>
-            <span>데스크톱</span>
-            <span>1440 x 1024</span>
-          </li>
+          {FRAME_PRESET_CATEGORIES.map((preset) => (
+            <li key={preset.name}>
+              <button type="button" className="inspector-preset-row" aria-expanded="false">
+                <span className="inspector-preset-name">
+                  <span aria-hidden="true">▸</span>
+                  {preset.name}
+                </span>
+                <span className="inspector-preset-size">{preset.size}</span>
+              </button>
+            </li>
+          ))}
         </ul>
       </section>
     </>
@@ -1521,7 +1563,10 @@ function Inspector({
   onLayoutChange,
   onConstraintsChange,
   onAlign,
-  onDistribute
+  onDistribute,
+  zoomLabel,
+  canShare,
+  onShare
 }: {
   selectedNode: RendererNode | null;
   selectedNodeCount: number;
@@ -1534,11 +1579,14 @@ function Inspector({
   onConstraintsChange: (nodeId: string, constraints: NodeConstraints) => void;
   onAlign: (mode: AlignmentMode) => void;
   onDistribute: (mode: DistributionMode) => void;
+  zoomLabel: string;
+  canShare: boolean;
+  onShare: () => void;
 }) {
   if (selectedNodeCount > 1) {
     return (
       <aside className="inspector">
-        <InspectorHeader />
+        <InspectorHeader zoomLabel={zoomLabel} canShare={canShare} onShare={onShare} />
         <div className="node-summary">
           <strong>{selectedNodeCount}개 레이어 선택됨</strong>
           <span>다중 선택</span>
@@ -1556,7 +1604,7 @@ function Inspector({
   if (!selectedNode) {
     return (
       <aside className="inspector">
-        <InspectorHeader />
+        <InspectorHeader zoomLabel={zoomLabel} canShare={canShare} onShare={onShare} />
         <p className="empty-state">레이어 또는 캔버스 요소를 선택하세요.</p>
         <InspectorEmptySections />
       </aside>
@@ -1596,7 +1644,7 @@ function Inspector({
 
   return (
     <aside className="inspector">
-      <InspectorHeader />
+      <InspectorHeader zoomLabel={zoomLabel} canShare={canShare} onShare={onShare} />
       <div className="node-summary">
         <strong>{selectedNode.name}</strong>
         <span>{nodeKindLabel(selectedNode.kind)}</span>
@@ -4557,6 +4605,9 @@ export function App() {
         selectedNodeCount={selectedNodeIds.length}
         canAlign={canAlignInspectorSelection}
         canDistribute={canDistributeSelection}
+        zoomLabel={`${Math.round((editor?.viewport.scale ?? 1) * 100)}%`}
+        canShare={Boolean(currentProject && collabSession)}
+        onShare={linkProjectToCurrentTeam}
         onGeometryChange={updateGeometry}
         onFillChange={(nodeId, fill) => dispatch({ type: "set_fill", nodeId, fill })}
         onTextChange={(nodeId, value) => dispatch({ type: "update_text", nodeId, value })}
