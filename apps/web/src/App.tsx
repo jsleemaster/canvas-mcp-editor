@@ -68,6 +68,8 @@ import {
   getNodeBounds,
   getSelectionBoundsForNodeIds,
   getTopmostNodeIdAtPoint,
+  isNodeLocked,
+  isNodeVisible,
   moveSelectedNodesBy,
   nudgeSelectedNode,
   panViewport,
@@ -78,6 +80,8 @@ import {
   selectNodesInBounds,
   setSelection,
   setMultiSelection,
+  setSelectedNodeLocked,
+  setSelectedNodeVisible,
   setViewport,
   toggleSelection,
   type AlignmentMode,
@@ -268,6 +272,24 @@ function nodeKindLabel(kind: RendererNode["kind"]): string {
     case "component_instance":
       return "컴포넌트 인스턴스";
   }
+}
+
+function nodeLayerLabel(node: RendererNode): string {
+  const details: string[] = [];
+  if (node.kind === "component") {
+    details.push("컴포넌트");
+  }
+  if (node.kind === "component_instance") {
+    details.push("인스턴스");
+  }
+  if (isNodeLocked(node)) {
+    details.push("잠김");
+  }
+  if (!isNodeVisible(node)) {
+    details.push("숨김");
+  }
+
+  return [node.name, ...details].join(" · ");
 }
 
 function assetUrlForId(assetId: string) {
@@ -643,7 +665,8 @@ function createMeasurementOverlay(
 function createSelectionChromeOverlay(
   bounds: SelectionBounds,
   viewport: EditorState["viewport"],
-  isMultiSelection = false
+  isMultiSelection = false,
+  canResize = !isMultiSelection
 ): SelectionChromeOverlay {
   const viewportRect = viewportBounds(bounds, viewport);
   const viewportSelectionBounds = {
@@ -662,7 +685,7 @@ function createSelectionChromeOverlay(
       text: `${Math.round(bounds.width)} x ${Math.round(bounds.height)}`
     },
     isMultiSelection,
-    handles: isMultiSelection
+    handles: !canResize || isMultiSelection
       ? []
       : RESIZE_HANDLES.map((handle) => {
           const size = resizeHandleVisualSize(handle);
@@ -680,12 +703,14 @@ function createSelectionChromeOverlay(
 }
 
 function childBoundsForFrame(frameBounds: SelectionBounds, frame: RendererNode): SelectionBounds[] {
-  return frame.children.map((child) => ({
-    x: frameBounds.x + child.transform.x,
-    y: frameBounds.y + child.transform.y,
-    width: child.size.width,
-    height: child.size.height
-  }));
+  return frame.children
+    .filter((child) => isNodeVisible(child))
+    .map((child) => ({
+      x: frameBounds.x + child.transform.x,
+      y: frameBounds.y + child.transform.y,
+      width: child.size.width,
+      height: child.size.height
+    }));
 }
 
 function boundsUnion(boundsList: SelectionBounds[]): SelectionBounds {
@@ -990,10 +1015,16 @@ function renderNode({
   onDragMove: (nodeId: string, event: KonvaEventObject<DragEvent>) => void;
   onDragEnd: (nodeId: string, event: KonvaEventObject<DragEvent>) => void;
 }) {
+  if (!isNodeVisible(node)) {
+    return null;
+  }
+
   const isSelected = selectedNodeIds.includes(node.id);
   const isPrimarySelected = node.id === selectedNodeId;
+  const nodeIsLocked = isNodeLocked(node);
   const shouldDeferToAncestor = hasSelectedAncestor || hasComponentInstanceAncestor;
-  const canResize = isPrimarySelected && selectedNodeIds.length === 1 && !isCanvasPanning;
+  const canResize =
+    isPrimarySelected && selectedNodeIds.length === 1 && !isCanvasPanning && !nodeIsLocked;
   const previewDelta =
     dragPreview &&
     dragPreview.primaryNodeId !== node.id &&
@@ -1020,6 +1051,10 @@ function renderNode({
     if (isCanvasPanning) {
       return;
     }
+    if (nodeIsLocked) {
+      event.cancelBubble = true;
+      return;
+    }
     if (shouldDeferToAncestor) {
       return;
     }
@@ -1044,6 +1079,10 @@ function renderNode({
     if (isCanvasPanning) {
       return;
     }
+    if (nodeIsLocked) {
+      event.cancelBubble = true;
+      return;
+    }
     if (shouldDeferToAncestor) {
       return;
     }
@@ -1055,7 +1094,13 @@ function renderNode({
   const startTextEditFromDoubleClick = (
     event: KonvaEventObject<MouseEvent> | KonvaEventObject<TouchEvent>
   ) => {
-    if (isCanvasPanning || shouldDeferToAncestor || node.kind !== "text" || node.content.type !== "text") {
+    if (
+      isCanvasPanning ||
+      nodeIsLocked ||
+      shouldDeferToAncestor ||
+      node.kind !== "text" ||
+      node.content.type !== "text"
+    ) {
       return;
     }
 
@@ -1099,7 +1144,7 @@ function renderNode({
       x={node.transform.x + (previewDelta?.x ?? 0)}
       y={node.transform.y + (previewDelta?.y ?? 0)}
       rotation={node.transform.rotation}
-      draggable={!shouldDeferToAncestor && isSelected && !isCanvasPanning}
+      draggable={!nodeIsLocked && !shouldDeferToAncestor && isSelected && !isCanvasPanning}
       onMouseDown={selectAndPrimeDrag}
       onTouchStart={selectAndPrimeDrag}
       onClick={selectFromClick}
@@ -1836,6 +1881,9 @@ export function App() {
     [editor, objectContextMenu, selectedNode]
   );
   const selectedNodeIds = editor?.selection.nodeIds ?? [];
+  const contextMenuNodeIsLocked = isNodeLocked(contextMenuNode);
+  const contextMenuNodeIsHidden = contextMenuNode ? !isNodeVisible(contextMenuNode) : false;
+  const canMutateContextMenuNode = Boolean(contextMenuNode && !contextMenuNodeIsLocked);
   const canAlignSelection = selectedNodeIds.length >= 2;
   const canDistributeSelection = selectedNodeIds.length >= 3;
   const canAlignInspectorSelection = selectedNodeIds.length === 1 ? true : canAlignSelection;
@@ -1887,8 +1935,18 @@ export function App() {
         ? translateBounds(selectedBounds, dragPreview.delta)
         : selectedBounds;
 
-    return createSelectionChromeOverlay(chromeBounds, editor.viewport, selectedNodeIds.length > 1);
-  }, [dragPreview, editor, selectedNodeIds]);
+    const canResizeSelection =
+      selectedNodeIds.length === 1 && selectedNode
+        ? !isNodeLocked(selectedNode) && isNodeVisible(selectedNode)
+        : false;
+
+    return createSelectionChromeOverlay(
+      chromeBounds,
+      editor.viewport,
+      selectedNodeIds.length > 1,
+      canResizeSelection
+    );
+  }, [dragPreview, editor, selectedNode, selectedNodeIds]);
   const inlineTextEditorOverlay = useMemo<InlineTextEditorOverlay | null>(() => {
     if (!editor || !inlineTextEditingNodeId) {
       return null;
@@ -1896,7 +1954,14 @@ export function App() {
 
     const node = findNodeById(editor.document, inlineTextEditingNodeId);
     const bounds = getNodeBounds(editor.document, inlineTextEditingNodeId);
-    if (!node || !bounds || node.kind !== "text" || node.content.type !== "text") {
+    if (
+      !node ||
+      !bounds ||
+      isNodeLocked(node) ||
+      !isNodeVisible(node) ||
+      node.kind !== "text" ||
+      node.content.type !== "text"
+    ) {
       return null;
     }
 
@@ -2231,6 +2296,22 @@ export function App() {
     runContextMenuStateAction((state) => reorderSelectedNode(state, direction));
   };
 
+  const toggleContextNodeLocked = () => {
+    runContextMenuStateAction((state) => {
+      const nodeId = state.selection.nodeId;
+      const node = nodeId ? findNodeById(state.document, nodeId) : null;
+      return node ? setSelectedNodeLocked(state, !isNodeLocked(node)) : state;
+    });
+  };
+
+  const toggleContextNodeVisible = () => {
+    runContextMenuStateAction((state) => {
+      const nodeId = state.selection.nodeId;
+      const node = nodeId ? findNodeById(state.document, nodeId) : null;
+      return node ? setSelectedNodeVisible(state, !isNodeVisible(node)) : state;
+    });
+  };
+
   const clearSelectionFromInteraction = () => {
     setEditor((current) => {
       if (!current) {
@@ -2469,7 +2550,13 @@ export function App() {
   const startInlineTextEdit = (nodeId: string) => {
     const currentEditor = editorRef.current;
     const node = currentEditor ? findNodeById(currentEditor.document, nodeId) : null;
-    if (!node || node.kind !== "text" || node.content.type !== "text") {
+    if (
+      !node ||
+      isNodeLocked(node) ||
+      !isNodeVisible(node) ||
+      node.kind !== "text" ||
+      node.content.type !== "text"
+    ) {
       return;
     }
 
@@ -2531,6 +2618,10 @@ export function App() {
     event: KonvaEventObject<MouseEvent | TouchEvent | DragEvent>
   ) => {
     if (!editor) {
+      return;
+    }
+    const dragNode = findNodeById(editor.document, nodeId);
+    if (!dragNode || isNodeLocked(dragNode) || !isNodeVisible(dragNode)) {
       return;
     }
     const activeDrag = dragSessionRef.current;
@@ -2897,7 +2988,7 @@ export function App() {
   };
 
   const createComponent = () => {
-    if (!selectedNode || selectedNode.kind === "component_instance") {
+    if (!selectedNode || isNodeLocked(selectedNode) || selectedNode.kind === "component_instance") {
       return;
     }
 
@@ -2930,7 +3021,7 @@ export function App() {
   };
 
   const detachInstance = () => {
-    if (!selectedNode?.component_instance) {
+    if (!selectedNode?.component_instance || isNodeLocked(selectedNode)) {
       return;
     }
 
@@ -3227,7 +3318,13 @@ export function App() {
   };
 
   const startResizeFromPointer = (event: KonvaEventObject<MouseEvent>) => {
-    if (!editor || !selectedNode || editor.selection.nodeIds.length !== 1) {
+    if (
+      !editor ||
+      !selectedNode ||
+      isNodeLocked(selectedNode) ||
+      !isNodeVisible(selectedNode) ||
+      editor.selection.nodeIds.length !== 1
+    ) {
       return false;
     }
 
@@ -3259,6 +3356,8 @@ export function App() {
     if (
       !editor ||
       !selectedNode ||
+      isNodeLocked(selectedNode) ||
+      !isNodeVisible(selectedNode) ||
       editor.selection.nodeIds.length !== 1 ||
       areaSelectionRef.current ||
       panSessionRef.current ||
@@ -3611,9 +3710,7 @@ export function App() {
                       className={editor?.selection.nodeIds.includes(node.id) ? "is-selected" : undefined}
                       onClick={(event) => selectNode(node.id, event.shiftKey)}
                     >
-                      {node.name}
-                      {node.kind === "component" ? " · 컴포넌트" : ""}
-                      {node.kind === "component_instance" ? " · 인스턴스" : ""}
+                      {nodeLayerLabel(node)}
                     </button>
                   ))}
                 </div>
@@ -3827,7 +3924,7 @@ export function App() {
           <button
             type="button"
             aria-label="컴포넌트 만들기"
-            disabled={!selectedNode || selectedNode.kind === "component_instance"}
+            disabled={!selectedNode || isNodeLocked(selectedNode) || selectedNode.kind === "component_instance"}
             onClick={createComponent}
           >
             <span className="toolbar-icon toolbar-icon-component" aria-hidden="true">
@@ -3847,7 +3944,7 @@ export function App() {
           <button
             type="button"
             aria-label="인스턴스 분리"
-            disabled={!selectedNode?.component_instance}
+            disabled={!selectedNode?.component_instance || isNodeLocked(selectedNode)}
             onClick={detachInstance}
           >
             <span className="toolbar-icon toolbar-icon-detach" aria-hidden="true">
@@ -4235,7 +4332,7 @@ export function App() {
           <button
             type="button"
             role="menuitem"
-            disabled={!contextMenuNode}
+            disabled={!canMutateContextMenuNode}
             onClick={cutContextSelection}
           >
             잘라내기
@@ -4267,7 +4364,7 @@ export function App() {
           <button
             type="button"
             role="menuitem"
-            disabled={!contextMenuNode}
+            disabled={!canMutateContextMenuNode}
             onClick={() => runContextMenuStateAction(duplicateSelectedNode)}
           >
             복제
@@ -4275,16 +4372,32 @@ export function App() {
           <button
             type="button"
             role="menuitem"
-            disabled={!contextMenuNode}
+            disabled={!canMutateContextMenuNode}
             onClick={() => runContextMenuStateAction(deleteSelectedNode)}
           >
             삭제
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={!contextMenuNode}
+            onClick={toggleContextNodeLocked}
+          >
+            {contextMenuNodeIsLocked ? "잠금 해제" : "잠그기"}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={!contextMenuNode}
+            onClick={toggleContextNodeVisible}
+          >
+            {contextMenuNodeIsHidden ? "표시" : "숨기기"}
           </button>
           <div className="object-context-menu-separator" role="separator" />
           <button
             type="button"
             role="menuitem"
-            disabled={!contextMenuNode}
+            disabled={!canMutateContextMenuNode}
             onClick={() => reorderContextSelection("front")}
           >
             맨 앞으로 가져오기
@@ -4292,7 +4405,7 @@ export function App() {
           <button
             type="button"
             role="menuitem"
-            disabled={!contextMenuNode}
+            disabled={!canMutateContextMenuNode}
             onClick={() => reorderContextSelection("forward")}
           >
             앞으로 가져오기
@@ -4300,7 +4413,7 @@ export function App() {
           <button
             type="button"
             role="menuitem"
-            disabled={!contextMenuNode}
+            disabled={!canMutateContextMenuNode}
             onClick={() => reorderContextSelection("backward")}
           >
             뒤로 보내기
@@ -4308,7 +4421,7 @@ export function App() {
           <button
             type="button"
             role="menuitem"
-            disabled={!contextMenuNode}
+            disabled={!canMutateContextMenuNode}
             onClick={() => reorderContextSelection("back")}
           >
             맨 뒤로 보내기
@@ -4317,7 +4430,7 @@ export function App() {
           <button
             type="button"
             role="menuitem"
-            disabled={!contextMenuNode || contextMenuNode.kind === "component_instance"}
+            disabled={!canMutateContextMenuNode || contextMenuNode?.kind === "component_instance"}
             onClick={createContextComponent}
           >
             컴포넌트 만들기
@@ -4326,8 +4439,8 @@ export function App() {
             type="button"
             role="menuitem"
             disabled={
-              !contextMenuNode ||
-              !components.some((component) => component.source_node.id === contextMenuNode.id)
+              !canMutateContextMenuNode ||
+              !components.some((component) => component.source_node.id === contextMenuNode?.id)
             }
             onClick={createContextInstance}
           >
@@ -4336,7 +4449,7 @@ export function App() {
           <button
             type="button"
             role="menuitem"
-            disabled={!contextMenuNode?.component_instance}
+            disabled={!canMutateContextMenuNode || !contextMenuNode?.component_instance}
             onClick={detachContextInstance}
           >
             인스턴스 분리
@@ -4345,7 +4458,7 @@ export function App() {
           <button
             type="button"
             role="menuitem"
-            disabled={!contextMenuNode}
+            disabled={!canMutateContextMenuNode}
             onClick={() => alignContextSelection("left")}
           >
             왼쪽 맞춤
@@ -4353,7 +4466,7 @@ export function App() {
           <button
             type="button"
             role="menuitem"
-            disabled={!contextMenuNode}
+            disabled={!canMutateContextMenuNode}
             onClick={() => alignContextSelection("center")}
           >
             가운데 맞춤
@@ -4361,7 +4474,7 @@ export function App() {
           <button
             type="button"
             role="menuitem"
-            disabled={!contextMenuNode}
+            disabled={!canMutateContextMenuNode}
             onClick={() => alignContextSelection("right")}
           >
             오른쪽 맞춤
@@ -4369,7 +4482,7 @@ export function App() {
           <button
             type="button"
             role="menuitem"
-            disabled={!contextMenuNode}
+            disabled={!canMutateContextMenuNode}
             onClick={() => alignContextSelection("top")}
           >
             위쪽 맞춤
@@ -4377,7 +4490,7 @@ export function App() {
           <button
             type="button"
             role="menuitem"
-            disabled={!contextMenuNode}
+            disabled={!canMutateContextMenuNode}
             onClick={() => alignContextSelection("middle")}
           >
             세로 가운데 맞춤
@@ -4385,7 +4498,7 @@ export function App() {
           <button
             type="button"
             role="menuitem"
-            disabled={!contextMenuNode}
+            disabled={!canMutateContextMenuNode}
             onClick={() => alignContextSelection("bottom")}
           >
             아래쪽 맞춤
@@ -4394,7 +4507,7 @@ export function App() {
           <button
             type="button"
             role="menuitem"
-            disabled={selectedNodeIds.length < 3}
+            disabled={selectedNodeIds.length < 3 || !canMutateContextMenuNode}
             onClick={() => distributeContextSelection("horizontal")}
           >
             가로 간격 균등
@@ -4402,7 +4515,7 @@ export function App() {
           <button
             type="button"
             role="menuitem"
-            disabled={selectedNodeIds.length < 3}
+            disabled={selectedNodeIds.length < 3 || !canMutateContextMenuNode}
             onClick={() => distributeContextSelection("vertical")}
           >
             세로 간격 균등

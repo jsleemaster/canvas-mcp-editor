@@ -182,6 +182,8 @@ function writeNode(nodes: Y.Map<YNodeMap>, node: RendererNode, seenNodeIds = new
   setOptionalValue(nodeMap, "component_instance", node.component_instance);
   setOptionalValue(nodeMap, "layout", node.layout);
   setOptionalValue(nodeMap, "constraints", node.constraints);
+  nodeMap.set("locked", node.locked === true);
+  nodeMap.set("visible", node.visible !== false);
   writeObjectMap(nodeMap, "transform", node.transform);
   writeObjectMap(nodeMap, "size", node.size);
   writeObjectMap(nodeMap, "style", node.style);
@@ -199,6 +201,8 @@ function patchNode(nodes: Y.Map<YNodeMap>, before: RendererNode, next: RendererN
   setOptionalIfChanged(nodeMap, "component_instance", before.component_instance, next.component_instance);
   setOptionalIfChanged(nodeMap, "layout", before.layout, next.layout);
   setOptionalIfChanged(nodeMap, "constraints", before.constraints, next.constraints);
+  setIfChanged(nodeMap, "locked", before.locked === true, next.locked === true);
+  setIfChanged(nodeMap, "visible", before.visible !== false, next.visible !== false);
   patchObjectMap(nodeMap, "transform", before.transform, next.transform);
   patchObjectMap(nodeMap, "size", before.size, next.size);
   patchObjectMap(nodeMap, "style", before.style, next.style);
@@ -249,6 +253,12 @@ function readNode(nodes: Y.Map<YNodeMap>, nodeId: string): RendererNode {
     content: readObjectValue<RendererNode["content"]>(nodeMap.get("content")),
     children: childIds.map((childId) => readNode(nodes, childId))
   };
+  if (nodeMap.get("locked") === true) {
+    node.locked = true;
+  }
+  if (nodeMap.get("visible") === false) {
+    node.visible = false;
+  }
   if (nodeMap.has("component_instance")) {
     node.component_instance = structuredClone(
       nodeMap.get("component_instance") as RendererNode["component_instance"]

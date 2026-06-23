@@ -183,6 +183,46 @@ describe("collaborative design document", () => {
     second.destroy();
   });
 
+  test("syncs node lock and visibility metadata without clobbering concurrent edits", () => {
+    const first = createCollaborativeDesignDocument({ document: sampleDocument() });
+    const second = createCollaborativeDesignDocument({ document: sampleDocument() });
+
+    Y.applyUpdate(second.ydoc, Y.encodeStateAsUpdate(first.ydoc));
+    Y.applyUpdate(first.ydoc, Y.encodeStateAsUpdate(second.ydoc));
+
+    first.transact("lock-node", (current) => {
+      const next = structuredClone(current);
+      const textNode = next.pages[0]?.children[0];
+      if (!textNode) {
+        throw new Error("missing text node");
+      }
+      textNode.locked = true;
+      return next;
+    });
+
+    second.transact("hide-node", (current) => {
+      const next = structuredClone(current);
+      const textNode = next.pages[0]?.children[0];
+      if (!textNode) {
+        throw new Error("missing text node");
+      }
+      textNode.visible = false;
+      return next;
+    });
+
+    Y.applyUpdate(second.ydoc, Y.encodeStateAsUpdate(first.ydoc));
+    Y.applyUpdate(first.ydoc, Y.encodeStateAsUpdate(second.ydoc));
+
+    const mergedFromFirst = first.getDocument().pages[0]?.children[0];
+    const mergedFromSecond = second.getDocument().pages[0]?.children[0];
+
+    expect(mergedFromFirst).toMatchObject({ locked: true, visible: false });
+    expect(mergedFromSecond).toEqual(mergedFromFirst);
+
+    first.destroy();
+    second.destroy();
+  });
+
   test("keeps seeded page identity stable when a synced collaborator adds a node", () => {
     const first = createCollaborativeDesignDocument({ document: sampleDocument() });
     const second = createCollaborativeDesignDocument({ document: sampleDocument() });

@@ -57,3 +57,12 @@ This is not the full Figma parity endpoint. It is the foundation needed before d
 - Added `여기에 붙여넣기` using the context-menu document point, so pasted objects can land at the right-click location instead of only using the default offset paste.
 - Added layer stack order actions for `맨 앞으로 가져오기`, `앞으로 가져오기`, `뒤로 보내기`, and `맨 뒤로 보내기` through an undoable document command.
 - Covered the behavior with editor-state unit tests and the right-click object/image Playwright flow.
+
+2026-06-23 context menu lock/visibility slice:
+
+- Added node interaction metadata: `locked` and `visible` now round-trip through the renderer type, server storage type, Rust model, generated TypeScript bindings, and Yjs collaboration document.
+- Added undoable `잠그기` / `잠금 해제` and `숨기기` / `표시` menu actions.
+- Locked nodes remain visible but are excluded from canvas hit-testing, drag, resize, text edit, deletion, duplication, layer ordering, component conversion, layout, constraints, fill, and text mutation paths.
+- Hidden nodes are not rendered or canvas-selectable, remain visible in the layer list with `숨김`, and can be restored by selecting the layer and opening the context menu on blank canvas.
+- Hidden children are excluded from spacing overlays and code export recursion so invisible design layers do not create visible export or measurement artifacts.
+- Verification: editor-state unit tests, Yjs concurrent metadata merge test, Rust JSON round-trip test, full `pnpm test`, `pnpm typecheck`, web build, design-rule check, full `editor-mvp` Playwright run, and headed Playwright lock/visibility interaction pass.

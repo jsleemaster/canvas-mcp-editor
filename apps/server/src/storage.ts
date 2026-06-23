@@ -56,6 +56,8 @@ export interface DesignNode {
   component_instance?: ComponentInstance | null;
   layout?: NodeLayout | null;
   constraints?: NodeConstraints | null;
+  locked?: boolean;
+  visible?: boolean;
   transform: { x: number; y: number; rotation: number };
   size: { width: number; height: number };
   style: {
