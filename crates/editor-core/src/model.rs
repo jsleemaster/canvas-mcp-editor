@@ -95,10 +95,14 @@ pub struct ComponentOverride {
 pub struct NodeLayout {
     pub mode: LayoutMode,
     pub direction: LayoutDirection,
+    #[serde(default = "default_layout_wrap")]
+    pub wrap: LayoutWrap,
     #[serde(default = "default_layout_align_items")]
     pub align_items: LayoutAlignItems,
     #[serde(default = "default_layout_justify_content")]
     pub justify_content: LayoutJustifyContent,
+    #[serde(default = "default_layout_align_content")]
+    pub align_content: LayoutAlignContent,
     pub gap: f64,
     pub padding: LayoutPadding,
 }
@@ -147,6 +151,14 @@ pub enum LayoutDirection {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
 #[serde(rename_all = "snake_case")]
 #[ts(export)]
+pub enum LayoutWrap {
+    Nowrap,
+    Wrap,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
 pub enum LayoutAlignItems {
     Start,
     Center,
@@ -166,12 +178,32 @@ pub enum LayoutJustifyContent {
     SpaceEvenly,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum LayoutAlignContent {
+    Start,
+    Center,
+    End,
+    SpaceBetween,
+    SpaceAround,
+    SpaceEvenly,
+}
+
+fn default_layout_wrap() -> LayoutWrap {
+    LayoutWrap::Nowrap
+}
+
 fn default_layout_align_items() -> LayoutAlignItems {
     LayoutAlignItems::Start
 }
 
 fn default_layout_justify_content() -> LayoutJustifyContent {
     LayoutJustifyContent::Start
+}
+
+fn default_layout_align_content() -> LayoutAlignContent {
+    LayoutAlignContent::Start
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]

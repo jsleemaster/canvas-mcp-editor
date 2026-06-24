@@ -121,6 +121,8 @@ describe("code export", () => {
       direction: "vertical",
       align_items: "center",
       justify_content: "space_between",
+      wrap: "wrap",
+      align_content: "space_around",
       gap: 8,
       padding: { top: 12, right: 16, bottom: 12, left: 16 }
     };
@@ -141,6 +143,8 @@ describe("code export", () => {
       direction: "vertical",
       align_items: "center",
       justify_content: "space_between",
+      wrap: "wrap",
+      align_content: "space_around",
       gap: 8,
       padding: { top: 12, right: 16, bottom: 12, left: 16 }
     });

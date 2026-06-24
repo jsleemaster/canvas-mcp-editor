@@ -65,8 +65,10 @@ fn layout_metadata_round_trips_through_json() {
               "layout": {
                 "mode": "auto",
                 "direction": "vertical",
+                "wrap": "wrap",
                 "align_items": "center",
                 "justify_content": "space_between",
+                "align_content": "space_around",
                 "gap": 12,
                 "padding": { "top": 20, "right": 24, "bottom": 20, "left": 24 }
               },
@@ -105,12 +107,20 @@ fn layout_metadata_round_trips_through_json() {
         editor_core::LayoutDirection::Vertical
     );
     assert_eq!(
+        frame.layout.as_ref().unwrap().wrap,
+        editor_core::LayoutWrap::Wrap
+    );
+    assert_eq!(
         frame.layout.as_ref().unwrap().align_items,
         editor_core::LayoutAlignItems::Center
     );
     assert_eq!(
         frame.layout.as_ref().unwrap().justify_content,
         editor_core::LayoutJustifyContent::SpaceBetween
+    );
+    assert_eq!(
+        frame.layout.as_ref().unwrap().align_content,
+        editor_core::LayoutAlignContent::SpaceAround
     );
     assert_eq!(frame.layout.as_ref().unwrap().gap, 12.0);
     assert_eq!(

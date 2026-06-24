@@ -8,8 +8,10 @@ export interface LayoutSpacing {
 export interface NodeLayout {
   mode: "none" | "auto";
   direction: "horizontal" | "vertical";
+  wrap?: "nowrap" | "wrap";
   align_items: "start" | "center" | "end" | "stretch";
   justify_content: "start" | "center" | "end" | "space_between" | "space_around" | "space_evenly";
+  align_content?: "start" | "center" | "end" | "space_between" | "space_around" | "space_evenly";
   gap: number;
   padding: LayoutSpacing;
 }
