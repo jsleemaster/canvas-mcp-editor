@@ -4,7 +4,7 @@ Read this first when working in this repository.
 
 ## What This App Is
 
-Layo is a local-first, AI-operable design editor. It is not a full Figma clone. The current goal is a small design editor with a stable document model that humans can edit in a browser and AI agents can inspect, mutate, validate, and export through deterministic MCP and HTTP tools.
+Layo is a local-first, AI-operable design platform targeting Penpot-comparable team-product maturity. The product should mature toward a professional team design platform while preserving a stable document model that humans can edit in a browser and AI agents can inspect, mutate, validate, and export through deterministic MCP and HTTP tools.
 
 The app supports these core workflows:
 
@@ -59,6 +59,14 @@ The app supports these core workflows:
   `git branch --show-current`, `git worktree list`, and remote branch checks before
   reporting completion. Do not delete dirty worktrees or branches with unmerged
   or user-owned changes; report them as retained cleanup exceptions instead.
+- Use `docs/product/penpot-maturity-benchmark.md` as the current product
+  maturity target. Before major editor, collaboration, design-system,
+  import/export, dev-handoff, plugin, or deployment work, compare against the
+  current Penpot open-source product and record whether Layo will adopt, adapt,
+  or deliberately diverge.
+- Use `docs/process/penpot-maturity-loop.md` whenever a Penpot comparison
+  exposes a gap or a verification failure. The next goal should be created from
+  the exact failed case and repeated until the gap has product-level evidence.
 
 ## Common Commands
 
@@ -138,22 +146,31 @@ For code generation tasks, use `export_code` or `GET /files/:fileId/export/code`
 
 ## Current Product Position
 
-This project is currently an MVP foundation, not a finished professional design suite. Before adding large features, check whether the request belongs to one of these lanes:
+This project targets Penpot-comparable team-product maturity while keeping Layo's local-first and deterministic agent-control architecture. Before adding large features, check whether the request belongs to one of these lanes:
 
 - Editor UX and canvas manipulation.
 - Component system behavior.
 - Agent-control MCP/HTTP surfaces.
 - Structured code export.
 - Team-owned collaboration.
+- Comments, history, review, recovery, and team workflow maturity.
+- Design systems: variables, styles, variants, libraries, and code mappings.
+- Import/export, backups, and migration paths.
+- Plugin/API extensibility.
 - E2EE and relay authorization.
 - Deployment for static web plus self-hosted relay.
 - Rust core or Rust relay maturation.
 
-If a request does not fit one of these lanes, document the product tradeoff before expanding scope.
+If a request does not fit one of these lanes, document the product tradeoff against the Penpot maturity benchmark before expanding scope.
 
 For Figma-parity work, read `docs/product/figma-feature-inventory.md` and
 `docs/product/figma-migration-roadmap.md` before implementation. Treat those
 files as the current feature audit and migration boundary.
+
+For team-product maturity work, read `docs/product/penpot-maturity-benchmark.md`
+and `docs/process/penpot-maturity-loop.md` before implementation. Treat Penpot
+as the primary open-source benchmark unless a documented Layo architecture
+decision intentionally diverges.
 
 ## Plan Status
 

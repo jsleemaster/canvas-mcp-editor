@@ -2,7 +2,7 @@
 
 Last checked: 2026-06-22
 
-This roadmap translates `docs/product/figma-feature-inventory.md` into implementation lanes for Layo. It does not change the product position: this project remains a local-first, AI-operable design editor, not a feature-for-feature Figma clone.
+This roadmap translates `docs/product/figma-feature-inventory.md` into implementation lanes for Layo. It now sits under the broader Penpot-comparable team-product maturity target in `docs/product/penpot-maturity-benchmark.md`: Layo should mature into a professional team design platform while preserving local-first storage and deterministic MCP/HTTP control.
 
 ## Migration Rules
 
@@ -13,6 +13,7 @@ This roadmap translates `docs/product/figma-feature-inventory.md` into implement
 - Every adopted feature must be exposed through the document model and deterministic agent surfaces, not only through UI clicks.
 - Browser verification must use Playwright CLI.
 - For basic canvas behavior, use `docs/product/figma-core-interaction-rules.md` as the current rule matrix before creating a new implementation slice.
+- For team-product scope, compare the slice against `docs/product/penpot-maturity-benchmark.md` and feed failed comparisons into `docs/process/penpot-maturity-loop.md`.
 
 ## Current Baseline
 
@@ -156,7 +157,7 @@ Implementation shape:
 | Figma Buzz | Deferred | Requires templates, libraries, and controlled editing first. |
 | Figma Make clone | Excluded as a clone | The native path is agent-controlled canvas editing plus code export. |
 | Hosted Sites publishing | Excluded for now | Conflicts with local-first/team-owned infrastructure unless explicitly requested. |
-| Enterprise SaaS admin | Excluded for MVP | Roles and relay auth already cover the current team-owned collaboration model. |
+| Enterprise SaaS admin | Excluded for the current self-host/team-owned path | Roles, relay auth, and future self-host operations cover the current team-owned collaboration model without introducing maintainer-operated multi-tenant SaaS. |
 
 ## Immediate Implementation Order
 

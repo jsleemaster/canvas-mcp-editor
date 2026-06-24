@@ -1,18 +1,19 @@
 # Layo
 
-Layo is an open-source, local-first design editor experiment built around a Rust document engine, a TypeScript editor shell, and a Model Context Protocol interface for AI tools.
+Layo is an open-source, local-first, AI-operable design platform built around a Rust document engine, a TypeScript editor shell, and a Model Context Protocol interface for AI tools.
 
-The project goal is not to clone Figma feature-for-feature. The first milestone is a small personal design editor with a stable document model that AI agents can inspect and edit through deterministic MCP and HTTP tools.
+The product goal is Penpot-comparable team-product maturity: a self-hostable design platform for human editors, teams, design systems, developer handoff, and AI agents. Layo uses Penpot as the primary open-source maturity benchmark while preserving its own deterministic MCP and HTTP control plane for inspect, dry-run, apply, validate, summarize, and export workflows.
 
-For AI-agent handoff, read `AGENTS.md` first. For a concise product overview, read `docs/PROJECT_BRIEF.md`. For historical plan completion state, read `docs/superpowers/PLAN_STATUS.md`.
+For AI-agent handoff, read `AGENTS.md` first. For a concise product overview, read `docs/PROJECT_BRIEF.md`. For the Penpot maturity target, read `docs/product/penpot-maturity-benchmark.md` and `docs/process/penpot-maturity-loop.md`. For historical plan completion state, read `docs/superpowers/PLAN_STATUS.md`.
 
-## Planned MVP
+## Product Maturity Target
 
 - Rust-owned document model, commands, geometry, selection, and undo/redo.
 - React/TypeScript editor UI for panels, tools, keyboard shortcuts, and app state.
 - Replaceable renderer adapter, starting with a TypeScript/Konva implementation.
 - Local server for document JSON and asset storage.
 - MCP and HTTP tools for file metadata, node trees, design context, components, deterministic edits, validation, change summaries, and code export.
+- Team-product workflows for projects, collaboration, comments, history, design systems, import/export, developer handoff, and production-grade self-hosting.
 
 ## Architecture Direction
 
@@ -42,7 +43,9 @@ packages/shared
   Shared schemas and generated bindings
 ```
 
-See `docs/superpowers/specs/2026-06-16-rust-design-editor-mvp-design.md` for the current design.
+See `docs/product/penpot-maturity-benchmark.md` for the product maturity target
+and `docs/superpowers/specs/2026-06-16-rust-design-editor-mvp-design.md` for
+the historical foundation design.
 
 ## License
 
