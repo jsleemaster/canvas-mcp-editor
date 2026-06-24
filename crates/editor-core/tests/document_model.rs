@@ -80,6 +80,7 @@ fn layout_metadata_round_trips_through_json() {
                   "kind": "rectangle",
                   "name": "Pinned Child",
                   "constraints": { "horizontal": "right", "vertical": "bottom" },
+                  "layout_item": { "margin": { "top": 10, "right": 8, "bottom": 14, "left": 6 } },
                   "transform": { "x": 220, "y": 180, "rotation": 0 },
                   "size": { "width": 64, "height": 32 },
                   "style": { "fill": "#e0f2fe", "stroke": null, "stroke_width": 0, "opacity": 1 },
@@ -116,10 +117,15 @@ fn layout_metadata_round_trips_through_json() {
         child.constraints.as_ref().unwrap().horizontal,
         editor_core::HorizontalConstraint::Right
     );
+    assert_eq!(child.layout_item.as_ref().unwrap().margin.top, 10.0);
+    assert_eq!(child.layout_item.as_ref().unwrap().margin.right, 8.0);
+    assert_eq!(child.layout_item.as_ref().unwrap().margin.bottom, 14.0);
+    assert_eq!(child.layout_item.as_ref().unwrap().margin.left, 6.0);
 
     let json = serde_json::to_string(&parsed).unwrap();
     assert!(json.contains("\"layout\""));
     assert!(json.contains("\"constraints\""));
+    assert!(json.contains("\"layout_item\""));
 }
 
 #[test]

@@ -527,6 +527,48 @@ describe("FileStorage", () => {
     });
     expect(autoLayout.audit.commandTypes).toEqual(["set_layout", "create_rectangle"]);
 
+    const itemMarginLayout = await storage.applyAgentCommands("sample-file", {
+      dryRun: true,
+      commands: [
+        {
+          type: "set_layout",
+          nodeId: "frame-1",
+          layout: {
+            mode: "auto",
+            direction: "vertical",
+            align_items: "start",
+            justify_content: "start",
+            gap: 12,
+            padding: { top: 20, right: 20, bottom: 20, left: 20 }
+          }
+        },
+        {
+          type: "set_layout_item",
+          nodeId: "text-1",
+          layoutItem: { margin: { top: 10, right: 8, bottom: 14, left: 6 } }
+        },
+        {
+          type: "create_rectangle",
+          parentId: "frame-1",
+          id: "margin-rectangle",
+          name: "마진 사각형",
+          width: 120,
+          height: 40
+        }
+      ] as any
+    });
+
+    const marginFrame = itemMarginLayout.preview.pages[0].children[0];
+    expect(marginFrame.children.find((node) => node.id === "text-1")?.transform).toMatchObject({
+      x: 26,
+      y: 30
+    });
+    expect(marginFrame.children.find((node) => node.id === "margin-rectangle")?.transform).toMatchObject({
+      x: 20,
+      y: 104
+    });
+    expect(itemMarginLayout.audit.commandTypes).toEqual(["set_layout", "set_layout_item", "create_rectangle"]);
+
     const constrained = await storage.applyAgentCommands("sample-file", {
       dryRun: true,
       commands: [

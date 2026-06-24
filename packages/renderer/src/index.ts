@@ -1,15 +1,21 @@
+export interface LayoutSpacing {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
 export interface NodeLayout {
   mode: "none" | "auto";
   direction: "horizontal" | "vertical";
   align_items: "start" | "center" | "end" | "stretch";
   justify_content: "start" | "center" | "end" | "space_between" | "space_around" | "space_evenly";
   gap: number;
-  padding: {
-    top: number;
-    right: number;
-    bottom: number;
-    left: number;
-  };
+  padding: LayoutSpacing;
+}
+
+export interface NodeLayoutItem {
+  margin: LayoutSpacing;
 }
 
 export interface NodeConstraints {
@@ -25,6 +31,7 @@ export interface RendererNode {
   name: string;
   component_instance?: ComponentInstance | null;
   layout?: NodeLayout | null;
+  layout_item?: NodeLayoutItem | null;
   constraints?: NodeConstraints | null;
   locked?: boolean;
   visible?: boolean;

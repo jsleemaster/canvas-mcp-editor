@@ -128,6 +128,9 @@ describe("code export", () => {
       horizontal: "left_right",
       vertical: "top"
     };
+    fixture.pages[0].children[0].children[0].layout_item = {
+      margin: { top: 10, right: 8, bottom: 14, left: 6 }
+    };
 
     const result = exportDesignToCode(fixture);
     const button = result.elements.find((element) => element.id === "tds-button-primary");
@@ -143,6 +146,9 @@ describe("code export", () => {
     expect(button?.structure.children[0].constraints).toEqual({
       horizontal: "left_right",
       vertical: "top"
+    });
+    expect(button?.structure.children[0].layout_item).toEqual({
+      margin: { top: 10, right: 8, bottom: 14, left: 6 }
     });
   });
 

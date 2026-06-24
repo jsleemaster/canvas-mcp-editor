@@ -33,6 +33,15 @@ const nodeLayoutSchema = z.object({
   })
 });
 
+const nodeLayoutItemSchema = z.object({
+  margin: z.object({
+    top: z.number().default(0),
+    right: z.number().default(0),
+    bottom: z.number().default(0),
+    left: z.number().default(0)
+  })
+});
+
 const nodeConstraintsSchema = z.object({
   horizontal: z.enum(["left", "right", "left_right", "center", "scale"]),
   vertical: z.enum(["top", "bottom", "top_bottom", "center", "scale"])
@@ -92,6 +101,11 @@ const agentCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("set_layout"),
     nodeId: z.string(),
     layout: nodeLayoutSchema
+  }),
+  z.object({
+    type: z.literal("set_layout_item"),
+    nodeId: z.string(),
+    layoutItem: nodeLayoutItemSchema
   }),
   z.object({
     type: z.literal("set_constraints"),

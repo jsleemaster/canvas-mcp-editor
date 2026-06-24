@@ -4,8 +4,9 @@ import type { NodeConstraints } from "./NodeConstraints";
 import type { NodeContent } from "./NodeContent";
 import type { NodeKind } from "./NodeKind";
 import type { NodeLayout } from "./NodeLayout";
+import type { NodeLayoutItem } from "./NodeLayoutItem";
 import type { Size } from "./Size";
 import type { Style } from "./Style";
 import type { Transform } from "./Transform";
 
-export type Node = { id: string, kind: NodeKind, name: string, component_instance?: ComponentInstance | null, layout?: NodeLayout | null, constraints?: NodeConstraints | null, locked: boolean, visible: boolean, children: Array<Node>, transform: Transform, size: Size, style: Style, content: NodeContent, };
+export type Node = { id: string, kind: NodeKind, name: string, component_instance?: ComponentInstance | null, layout?: NodeLayout | null, layout_item?: NodeLayoutItem | null, constraints?: NodeConstraints | null, locked: boolean, visible: boolean, children: Array<Node>, transform: Transform, size: Size, style: Style, content: NodeContent, };

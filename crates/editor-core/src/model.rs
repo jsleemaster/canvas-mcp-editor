@@ -32,6 +32,8 @@ pub struct Node {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layout: Option<NodeLayout>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout_item: Option<NodeLayoutItem>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub constraints: Option<NodeConstraints>,
     #[serde(default)]
     pub locked: bool,
@@ -108,6 +110,12 @@ pub struct LayoutPadding {
     pub right: f64,
     pub bottom: f64,
     pub left: f64,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct NodeLayoutItem {
+    pub margin: LayoutPadding,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
@@ -244,6 +252,7 @@ impl DesignFile {
                     name: "랜딩 프레임".to_string(),
                     component_instance: None,
                     layout: None,
+                    layout_item: None,
                     constraints: None,
                     locked: false,
                     visible: true,
@@ -253,6 +262,7 @@ impl DesignFile {
                         name: "헤드라인".to_string(),
                         component_instance: None,
                         layout: None,
+                        layout_item: None,
                         constraints: None,
                         locked: false,
                         visible: true,
