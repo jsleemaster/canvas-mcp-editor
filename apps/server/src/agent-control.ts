@@ -2,6 +2,7 @@ import {
   applyConstraintsAfterParentResize,
   normalizeNodeConstraints,
   normalizeNodeLayout,
+  normalizeNodeLayoutItem,
   relayoutDesignFile
 } from "./layout.js";
 import type {
@@ -9,7 +10,8 @@ import type {
   DesignFile,
   DesignNode,
   NodeConstraints,
-  NodeLayout
+  NodeLayout,
+  NodeLayoutItem
 } from "./storage";
 
 export interface AgentNodeSummary {
@@ -20,6 +22,7 @@ export interface AgentNodeSummary {
   text?: string;
   componentDefinitionId?: string;
   layout?: NodeLayout;
+  layout_item?: NodeLayoutItem;
   constraints?: NodeConstraints;
   bounds: { x: number; y: number; width: number; height: number };
 }
@@ -101,6 +104,7 @@ export type AgentCommand =
     }
   | { type: "create_component"; nodeId: string; componentId: string; name: string }
   | { type: "set_layout"; nodeId: string; layout: NodeLayout }
+  | { type: "set_layout_item"; nodeId: string; layoutItem: NodeLayoutItem }
   | { type: "set_constraints"; nodeId: string; constraints: NodeConstraints }
   | {
       type: "create_component_instance";
@@ -352,6 +356,7 @@ function collectSummary(node: DesignNode, path: string[], nodes: AgentNodeSummar
     text: node.content.type === "text" ? node.content.value : undefined,
     componentDefinitionId: node.component_instance?.definition_id,
     layout: node.layout ?? undefined,
+    layout_item: node.layout_item ?? undefined,
     constraints: node.constraints ?? undefined,
     bounds: {
       x: node.transform.x,
@@ -542,6 +547,11 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
     case "set_layout": {
       const node = requireNode(document, command.nodeId);
       node.layout = normalizeNodeLayout(command.layout);
+      return node.id;
+    }
+    case "set_layout_item": {
+      const node = requireNode(document, command.nodeId);
+      node.layout_item = normalizeNodeLayoutItem(command.layoutItem);
       return node.id;
     }
     case "set_constraints": {

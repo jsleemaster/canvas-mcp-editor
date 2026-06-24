@@ -16,6 +16,7 @@ import {
   type ImageFitMode,
   type NodeConstraints,
   type NodeLayout,
+  type NodeLayoutItem,
   type RendererDocument,
   type RendererNode
 } from "@layo/renderer";
@@ -222,6 +223,9 @@ const DEFAULT_NODE_LAYOUT: NodeLayout = {
   justify_content: "start",
   gap: 8,
   padding: { top: 16, right: 16, bottom: 16, left: 16 }
+};
+const DEFAULT_NODE_LAYOUT_ITEM: NodeLayoutItem = {
+  margin: { top: 0, right: 0, bottom: 0, left: 0 }
 };
 const DEFAULT_NODE_CONSTRAINTS: NodeConstraints = {
   horizontal: "left",
@@ -1678,6 +1682,7 @@ function Inspector({
   onFillChange,
   onTextChange,
   onLayoutChange,
+  onLayoutItemChange,
   onConstraintsChange,
   onAlign,
   onDistribute,
@@ -1693,6 +1698,7 @@ function Inspector({
   onFillChange: (nodeId: string, fill: string) => void;
   onTextChange: (nodeId: string, value: string) => void;
   onLayoutChange: (nodeId: string, layout: NodeLayout) => void;
+  onLayoutItemChange: (nodeId: string, layoutItem: NodeLayoutItem) => void;
   onConstraintsChange: (nodeId: string, constraints: NodeConstraints) => void;
   onAlign: (mode: AlignmentMode) => void;
   onDistribute: (mode: DistributionMode) => void;
@@ -1744,6 +1750,16 @@ function Inspector({
         }
       }
     : DEFAULT_NODE_LAYOUT;
+  const layoutItem: NodeLayoutItem = selectedNode.layout_item
+    ? {
+        ...DEFAULT_NODE_LAYOUT_ITEM,
+        ...selectedNode.layout_item,
+        margin: {
+          ...DEFAULT_NODE_LAYOUT_ITEM.margin,
+          ...selectedNode.layout_item.margin
+        }
+      }
+    : DEFAULT_NODE_LAYOUT_ITEM;
   const constraints = selectedNode.constraints ?? DEFAULT_NODE_CONSTRAINTS;
   const updateLayout = (patch: Partial<NodeLayout>) => {
     onLayoutChange(selectedNode.id, {
@@ -1759,6 +1775,19 @@ function Inspector({
         updateLayout({
           padding: {
             ...layout.padding,
+            [side]: nextValue
+          }
+        });
+      }
+    };
+  const updateLayoutItemMargin =
+    (side: keyof NodeLayoutItem["margin"]) => (event: React.ChangeEvent<HTMLInputElement>) => {
+      const nextValue = Number(event.currentTarget.value);
+      if (Number.isFinite(nextValue)) {
+        onLayoutItemChange(selectedNode.id, {
+          ...layoutItem,
+          margin: {
+            ...layoutItem.margin,
             [side]: nextValue
           }
         });
@@ -1951,6 +1980,47 @@ function Inspector({
               type="number"
               value={numericInputValue(layout.padding.left)}
               onChange={updatePadding("left")}
+            />
+          </label>
+        </div>
+      </section>
+      <section className="inspector-section" aria-label="레이아웃 아이템">
+        <h3>레이아웃 아이템</h3>
+        <div className="field-grid">
+          <label>
+            마진 위
+            <input
+              data-testid="inspector-layout-item-margin-top"
+              type="number"
+              value={numericInputValue(layoutItem.margin.top)}
+              onChange={updateLayoutItemMargin("top")}
+            />
+          </label>
+          <label>
+            마진 오른쪽
+            <input
+              data-testid="inspector-layout-item-margin-right"
+              type="number"
+              value={numericInputValue(layoutItem.margin.right)}
+              onChange={updateLayoutItemMargin("right")}
+            />
+          </label>
+          <label>
+            마진 아래
+            <input
+              data-testid="inspector-layout-item-margin-bottom"
+              type="number"
+              value={numericInputValue(layoutItem.margin.bottom)}
+              onChange={updateLayoutItemMargin("bottom")}
+            />
+          </label>
+          <label>
+            마진 왼쪽
+            <input
+              data-testid="inspector-layout-item-margin-left"
+              type="number"
+              value={numericInputValue(layoutItem.margin.left)}
+              onChange={updateLayoutItemMargin("left")}
             />
           </label>
         </div>
@@ -3420,6 +3490,10 @@ export function App() {
       nodeId,
       layout: layout.mode === "none" ? null : layout
     });
+  };
+
+  const updateLayoutItem = (nodeId: string, layoutItem: NodeLayoutItem) => {
+    dispatch({ type: "set_node_layout_item", nodeId, layoutItem });
   };
 
   const updateConstraints = (nodeId: string, constraints: NodeConstraints) => {
@@ -5021,6 +5095,7 @@ export function App() {
         onFillChange={(nodeId, fill) => dispatch({ type: "set_fill", nodeId, fill })}
         onTextChange={(nodeId, value) => dispatch({ type: "update_text", nodeId, value })}
         onLayoutChange={updateLayout}
+        onLayoutItemChange={updateLayoutItem}
         onConstraintsChange={updateConstraints}
         onAlign={(mode) =>
           updateViewportFromInteraction((current) =>

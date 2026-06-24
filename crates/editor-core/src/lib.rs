@@ -9,6 +9,6 @@ pub use geometry::{Bounds, Point, Size, Transform};
 pub use model::{
     ComponentDefinition, ComponentInstance, ComponentOverride, ComponentProperty, ComponentVariant,
     DesignFile, HorizontalConstraint, LayoutAlignItems, LayoutDirection, LayoutJustifyContent,
-    LayoutMode, LayoutPadding, Node, NodeConstraints, NodeContent, NodeKind, NodeLayout, Page,
-    Style, VerticalConstraint,
+    LayoutMode, LayoutPadding, Node, NodeConstraints, NodeContent, NodeKind, NodeLayout,
+    NodeLayoutItem, Page, Style, VerticalConstraint,
 };

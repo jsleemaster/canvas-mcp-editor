@@ -2,6 +2,7 @@ import type {
   ImageFitMode,
   NodeConstraints,
   NodeLayout,
+  NodeLayoutItem,
   RendererDocument,
   RendererNode
 } from "@layo/renderer";
@@ -222,6 +223,11 @@ export type EditorCommand =
       }>;
     }
   | {
+      type: "set_node_layout_item";
+      nodeId: string;
+      layoutItem: NodeLayoutItem | null;
+    }
+  | {
       type: "set_node_constraints";
       nodeId: string;
       constraints: NodeConstraints | null;
@@ -238,6 +244,7 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 const DEFAULT_SNAP_THRESHOLD = 6;
 const DEFAULT_CONSTRAINTS: NodeConstraints = { horizontal: "left", vertical: "top" };
+const DEFAULT_LAYOUT_ITEM: NodeLayoutItem = { margin: { top: 0, right: 0, bottom: 0, left: 0 } };
 const PASTE_OFFSET = 24;
 
 export function createEditorState(document: RendererDocument): EditorState {
@@ -1828,6 +1835,30 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         selectedNodeId: command.nodeId
       };
     }
+    case "set_node_layout_item": {
+      const node = findNodeById(next, command.nodeId);
+      if (!node || isNodeLocked(node)) {
+        return { document, inverse: null };
+      }
+
+      const previousLayoutItem = node.layout_item ? structuredClone(node.layout_item) : null;
+      if (command.layoutItem) {
+        node.layout_item = normalizeNodeLayoutItem(command.layoutItem);
+      } else {
+        delete node.layout_item;
+      }
+      relayoutDocument(next);
+
+      return {
+        document: next,
+        inverse: {
+          type: "set_node_layout_item",
+          nodeId: command.nodeId,
+          layoutItem: previousLayoutItem
+        },
+        selectedNodeId: command.nodeId
+      };
+    }
     case "set_node_constraints": {
       const node = findNodeById(next, command.nodeId);
       if (!node || isNodeLocked(node)) {
@@ -1880,36 +1911,43 @@ function relayoutNode(node: RendererNode): void {
       0,
       (isVertical ? node.size.width : node.size.height) - crossStartPadding - crossEndPadding
     );
+    const childMetrics = node.children.map((child) => childLayoutMetrics(child, isVertical));
     const totalChildMain =
-      node.children.reduce((total, child) => total + (isVertical ? child.size.height : child.size.width), 0) +
-      layout.gap * Math.max(0, childCount - 1);
+      childMetrics.reduce(
+        (total, metrics) => total + metrics.mainBefore + metrics.mainSize + metrics.mainAfter,
+        0
+      ) + layout.gap * Math.max(0, childCount - 1);
     const remainingMain = Math.max(0, availableMain - totalChildMain);
     let cursor = mainStartPadding + justifyStartOffset(layout.justify_content, remainingMain, childCount);
     const distributedGap = layout.gap + justifyGapOffset(layout.justify_content, remainingMain, childCount);
 
-    for (const child of node.children) {
+    node.children.forEach((child, index) => {
+      const metrics = childMetrics[index];
       const crossAxisPosition = crossAxisOffset(
         layout.align_items,
         crossStartPadding,
         crossEndPadding,
         availableCross,
-        isVertical ? child.size.width : child.size.height,
-        isVertical ? node.size.width : node.size.height
+        metrics.crossSize,
+        isVertical ? node.size.width : node.size.height,
+        metrics.crossBefore,
+        metrics.crossAfter
       );
       if (layout.align_items === "stretch") {
+        const stretchedCrossSize = clampSize(availableCross - metrics.crossBefore - metrics.crossAfter);
         if (isVertical) {
-          child.size.width = clampSize(availableCross);
+          child.size.width = stretchedCrossSize;
         } else {
-          child.size.height = clampSize(availableCross);
+          child.size.height = stretchedCrossSize;
         }
       }
       child.transform = {
         ...child.transform,
-        x: isVertical ? crossAxisPosition : cursor,
-        y: isVertical ? cursor : crossAxisPosition
+        x: isVertical ? crossAxisPosition : cursor + metrics.mainBefore,
+        y: isVertical ? cursor + metrics.mainBefore : crossAxisPosition
       };
-      cursor += (isVertical ? child.size.height : child.size.width) + distributedGap;
-    }
+      cursor += metrics.mainBefore + (isVertical ? child.size.height : child.size.width) + metrics.mainAfter + distributedGap;
+    });
   }
 
   for (const child of node.children) {
@@ -1937,6 +1975,17 @@ function normalizeNodeLayout(layout: NodeLayout): NodeLayout {
       right: Math.max(0, finiteNumber(layout.padding?.right, 0)),
       bottom: Math.max(0, finiteNumber(layout.padding?.bottom, 0)),
       left: Math.max(0, finiteNumber(layout.padding?.left, 0))
+    }
+  };
+}
+
+function normalizeNodeLayoutItem(layoutItem: NodeLayoutItem): NodeLayoutItem {
+  return {
+    margin: {
+      top: Math.max(0, finiteNumber(layoutItem.margin?.top, 0)),
+      right: Math.max(0, finiteNumber(layoutItem.margin?.right, 0)),
+      bottom: Math.max(0, finiteNumber(layoutItem.margin?.bottom, 0)),
+      left: Math.max(0, finiteNumber(layoutItem.margin?.left, 0))
     }
   };
 }
@@ -2100,15 +2149,29 @@ function crossAxisOffset(
   crossEndPadding: number,
   availableCross: number,
   childCrossSize: number,
-  parentCrossSize: number
+  parentCrossSize: number,
+  crossBefore: number,
+  crossAfter: number
 ): number {
   if (alignItems === "center") {
-    return crossStartPadding + Math.max(0, availableCross - childCrossSize) / 2;
+    return crossStartPadding + Math.max(0, availableCross - crossBefore - childCrossSize - crossAfter) / 2 + crossBefore;
   }
   if (alignItems === "end") {
-    return parentCrossSize - crossEndPadding - childCrossSize;
+    return parentCrossSize - crossEndPadding - crossAfter - childCrossSize;
   }
-  return crossStartPadding;
+  return crossStartPadding + crossBefore;
+}
+
+function childLayoutMetrics(child: RendererNode, isVertical: boolean) {
+  const margin = normalizeNodeLayoutItem(child.layout_item ?? DEFAULT_LAYOUT_ITEM).margin;
+  return {
+    mainBefore: isVertical ? margin.top : margin.left,
+    mainAfter: isVertical ? margin.bottom : margin.right,
+    mainSize: isVertical ? child.size.height : child.size.width,
+    crossBefore: isVertical ? margin.left : margin.top,
+    crossAfter: isVertical ? margin.right : margin.bottom,
+    crossSize: isVertical ? child.size.width : child.size.height
+  };
 }
 
 function findInNode(node: RendererNode, nodeId: string): RendererNode | null {

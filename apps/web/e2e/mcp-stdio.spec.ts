@@ -25,6 +25,7 @@ test("stdio MCP edits move a node, create a component instance, and render in th
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("http://127.0.0.1:5173/");
+  await page.getByRole("button", { name: "레이어" }).click();
 
   await page.getByRole("button", { name: /MCP stdio 이동 원본/ }).click();
   await expect(page.locator(".node-summary span")).toHaveText("컴포넌트");

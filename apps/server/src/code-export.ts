@@ -3,7 +3,8 @@ import type {
   DesignFile,
   DesignNode,
   NodeConstraints,
-  NodeLayout
+  NodeLayout,
+  NodeLayoutItem
 } from "./storage";
 
 export interface CodeExportOptions {
@@ -57,6 +58,7 @@ export interface CodeStructureNode {
     overrides: Array<{ nodeId: string; field: string; value: string }>;
   };
   layout?: NodeLayout;
+  layout_item?: NodeLayoutItem;
   constraints?: NodeConstraints;
   children: CodeStructureNode[];
 }
@@ -217,6 +219,9 @@ function structureFor(node: DesignNode): CodeStructureNode {
   }
   if (node.layout) {
     base.layout = node.layout;
+  }
+  if (node.layout_item) {
+    base.layout_item = node.layout_item;
   }
   if (node.constraints) {
     base.constraints = node.constraints;
