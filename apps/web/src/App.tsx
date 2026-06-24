@@ -219,8 +219,10 @@ const LOCAL_USER_COLOR = "var(--editor-color-selection)";
 const DEFAULT_NODE_LAYOUT: NodeLayout = {
   mode: "none",
   direction: "vertical",
+  wrap: "nowrap",
   align_items: "start",
   justify_content: "start",
+  align_content: "start",
   gap: 8,
   padding: { top: 16, right: 16, bottom: 16, left: 16 }
 };
@@ -1902,6 +1904,36 @@ function Inspector({
           >
             <option value="vertical">세로</option>
             <option value="horizontal">가로</option>
+          </select>
+        </label>
+        <label className="stacked-field">
+          줄바꿈
+          <select
+            data-testid="inspector-layout-wrap"
+            value={layout.wrap ?? "nowrap"}
+            onChange={(event) =>
+              updateLayout({ wrap: event.currentTarget.value as NodeLayout["wrap"] })
+            }
+          >
+            <option value="nowrap">한 줄</option>
+            <option value="wrap">줄바꿈</option>
+          </select>
+        </label>
+        <label className="stacked-field">
+          줄 정렬
+          <select
+            data-testid="inspector-layout-align-content"
+            value={layout.align_content ?? "start"}
+            onChange={(event) =>
+              updateLayout({ align_content: event.currentTarget.value as NodeLayout["align_content"] })
+            }
+          >
+            <option value="start">시작</option>
+            <option value="center">가운데</option>
+            <option value="end">끝</option>
+            <option value="space_between">사이</option>
+            <option value="space_around">둘레</option>
+            <option value="space_evenly">균등</option>
           </select>
         </label>
         <label className="stacked-field">

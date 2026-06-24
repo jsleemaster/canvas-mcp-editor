@@ -626,6 +626,80 @@ describe("FileStorage", () => {
       "create_rectangle"
     ]);
 
+    const wrapLayout = await storage.applyAgentCommands("sample-file", {
+      dryRun: true,
+      commands: [
+        {
+          type: "update_geometry",
+          nodeId: "frame-1",
+          width: 180,
+          height: 220
+        },
+        {
+          type: "update_geometry",
+          nodeId: "text-1",
+          width: 90,
+          height: 40
+        },
+        {
+          type: "set_layout",
+          nodeId: "frame-1",
+          layout: {
+            mode: "auto",
+            direction: "horizontal",
+            wrap: "wrap",
+            align_content: "start",
+            align_items: "start",
+            justify_content: "start",
+            gap: 12,
+            padding: { top: 20, right: 20, bottom: 20, left: 20 }
+          }
+        },
+        {
+          type: "create_rectangle",
+          parentId: "frame-1",
+          id: "wrap-rectangle-1",
+          name: "줄바꿈 사각형 1",
+          width: 90,
+          height: 40
+        },
+        {
+          type: "create_rectangle",
+          parentId: "frame-1",
+          id: "wrap-rectangle-2",
+          name: "줄바꿈 사각형 2",
+          width: 90,
+          height: 40
+        }
+      ] as any
+    });
+
+    const wrapFrame = wrapLayout.preview.pages[0].children[0];
+    expect(wrapFrame.layout).toMatchObject({
+      wrap: "wrap",
+      align_content: "start"
+    });
+    expect(wrapFrame.children.find((node) => node.id === "text-1")?.transform).toMatchObject({
+      x: 20,
+      y: 20
+    });
+    expect(wrapFrame.children.find((node) => node.id === "wrap-rectangle-1")?.transform).toMatchObject({
+      x: 20,
+      y: 72
+    });
+    expect(wrapFrame.children.find((node) => node.id === "wrap-rectangle-2")?.transform).toMatchObject({
+      x: 20,
+      y: 124
+    });
+    expect(wrapLayout.audit.commandTypes).toEqual([
+      "update_geometry",
+      "update_geometry",
+      "set_layout",
+      "create_rectangle",
+      "create_rectangle"
+    ]);
+
+
     const constrained = await storage.applyAgentCommands("sample-file", {
       dryRun: true,
       commands: [
