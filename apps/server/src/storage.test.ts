@@ -1064,6 +1064,77 @@ describe("FileStorage", () => {
       "create_rectangle"
     ]);
 
+    const spannedGridLayout = await storage.applyAgentCommands("sample-file", {
+      dryRun: true,
+      commands: [
+        { type: "update_geometry", nodeId: "frame-1", width: 390, height: 220 },
+        { type: "update_geometry", nodeId: "text-1", width: 80, height: 40 },
+        {
+          type: "set_layout",
+          nodeId: "frame-1",
+          layout: {
+            mode: "grid",
+            direction: "horizontal",
+            grid_columns: 3,
+            grid_rows: 2,
+            align_items: "start",
+            justify_content: "start",
+            gap: 0,
+            row_gap: 10,
+            column_gap: 12,
+            padding: { top: 20, right: 15, bottom: 20, left: 15 }
+          }
+        },
+        {
+          type: "set_layout_item",
+          nodeId: "text-1",
+          layoutItem: {
+            grid_column: 1,
+            grid_row: 1,
+            grid_column_span: 2,
+            grid_row_span: 2,
+            width_sizing: "fill",
+            height_sizing: "fill",
+            margin: { top: 5, right: 6, bottom: 7, left: 8 }
+          }
+        },
+        {
+          type: "create_rectangle",
+          parentId: "frame-1",
+          id: "spanned-grid-rectangle-1",
+          name: "범위 그리드 사각형 1",
+          width: 80,
+          height: 40
+        },
+        {
+          type: "create_rectangle",
+          parentId: "frame-1",
+          id: "spanned-grid-rectangle-2",
+          name: "범위 그리드 사각형 2",
+          width: 80,
+          height: 40
+        }
+      ] as any
+    });
+
+    const spannedGridFrame = spannedGridLayout.preview.pages[0].children[0];
+    expect(spannedGridFrame.children.find((node) => node.id === "text-1")?.layout_item).toMatchObject({
+      grid_column: 1,
+      grid_row: 1,
+      grid_column_span: 2,
+      grid_row_span: 2
+    });
+    expect(spannedGridFrame.children.find((node) => node.id === "text-1")?.transform).toMatchObject({ x: 23, y: 25 });
+    expect(spannedGridFrame.children.find((node) => node.id === "text-1")?.size).toEqual({ width: 222, height: 168 });
+    expect(spannedGridFrame.children.find((node) => node.id === "spanned-grid-rectangle-1")?.transform).toMatchObject({
+      x: 263,
+      y: 20
+    });
+    expect(spannedGridFrame.children.find((node) => node.id === "spanned-grid-rectangle-2")?.transform).toMatchObject({
+      x: 263,
+      y: 115
+    });
+
     const constrained = await storage.applyAgentCommands("sample-file", {
       dryRun: true,
       commands: [

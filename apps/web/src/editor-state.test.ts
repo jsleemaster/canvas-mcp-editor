@@ -476,6 +476,73 @@ describe("editor state commands", () => {
     expect(findNodeById(relaid.document, "manual-grid-rectangle-3")?.transform).toMatchObject({ x: 263, y: 20 });
   });
 
+  test("grid layout spans a manual child across multiple cells", () => {
+    const document = sampleDocument();
+    const frame = findNodeById(document, "frame-1") as any;
+    frame.size = { width: 390, height: 220 };
+    frame.layout = {
+      mode: "grid",
+      direction: "horizontal",
+      grid_columns: 3,
+      grid_rows: 2,
+      align_items: "start",
+      justify_content: "start",
+      gap: 0,
+      row_gap: 10,
+      column_gap: 12,
+      padding: { top: 20, right: 15, bottom: 20, left: 15 }
+    };
+    const text = findNodeById(document, "text-1") as any;
+    text.size = { width: 80, height: 40 };
+    text.layout_item = {
+      grid_column: 1,
+      grid_row: 1,
+      grid_column_span: 2,
+      grid_row_span: 2,
+      width_sizing: "fill",
+      height_sizing: "fill",
+      margin: { top: 5, right: 6, bottom: 7, left: 8 }
+    };
+    for (const [id, fill] of [
+      ["spanned-grid-rectangle-1", "#e0f2fe"],
+      ["spanned-grid-rectangle-2", "#fde68a"]
+    ]) {
+      frame.children.push({
+        id,
+        kind: "rectangle",
+        name: id,
+        transform: { x: 0, y: 0, rotation: 0 },
+        size: { width: 80, height: 40 },
+        style: { fill, stroke: null, stroke_width: 0, opacity: 1 },
+        content: { type: "empty" },
+        children: []
+      });
+    }
+
+    const relaid = executeEditorCommand(createEditorState(document), {
+      type: "update_node_geometry",
+      nodeId: "spanned-grid-rectangle-2",
+      patch: { width: 80 }
+    });
+
+    expect(findNodeById(relaid.document, "text-1")?.layout_item).toMatchObject({
+      grid_column: 1,
+      grid_row: 1,
+      grid_column_span: 2,
+      grid_row_span: 2
+    });
+    expect(findNodeById(relaid.document, "text-1")?.transform).toMatchObject({ x: 23, y: 25 });
+    expect(findNodeById(relaid.document, "text-1")?.size).toEqual({ width: 222, height: 168 });
+    expect(findNodeById(relaid.document, "spanned-grid-rectangle-1")?.transform).toMatchObject({
+      x: 263,
+      y: 20
+    });
+    expect(findNodeById(relaid.document, "spanned-grid-rectangle-2")?.transform).toMatchObject({
+      x: 263,
+      y: 115
+    });
+  });
+
   test("auto layout includes child margins in flow and cross-axis position", () => {
     const document = sampleDocument();
     const frame = findNodeById(document, "frame-1") as any;

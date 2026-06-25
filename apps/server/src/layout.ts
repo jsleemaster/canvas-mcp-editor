@@ -33,6 +33,8 @@ export function relayoutNode(node: DesignNode): void {
 
 type GridCell = { row: number; column: number };
 
+type GridPlacement = GridCell & { rowSpan: number; columnSpan: number };
+
 type GridAutoCell = GridCell & { nextCursor: number };
 
 function relayoutGridChildren(node: DesignNode, layout: NodeLayout, flowChildren: DesignNode[]): void {
@@ -55,15 +57,17 @@ function relayoutGridChildren(node: DesignNode, layout: NodeLayout, flowChildren
   );
   const cellWidth = availableWidth / columns;
   const cellHeight = availableHeight / rows;
-  const manualCells = new Map<string, GridCell>();
+  const manualPlacements = new Map<string, GridPlacement>();
   const occupiedCells = new Set<string>();
 
   for (const child of flowChildren) {
     const layoutItem = normalizeNodeLayoutItem(child.layout_item ?? DEFAULT_LAYOUT_ITEM);
-    const manualCell = manualGridCell(layoutItem, columns, rows);
-    if (manualCell) {
-      manualCells.set(child.id, manualCell);
-      occupiedCells.add(gridCellKey(manualCell));
+    const manualPlacement = manualGridPlacement(layoutItem, columns, rows);
+    if (manualPlacement) {
+      manualPlacements.set(child.id, manualPlacement);
+      for (const occupiedCell of gridPlacementCells(manualPlacement)) {
+        occupiedCells.add(gridCellKey(occupiedCell));
+      }
     }
   }
 
@@ -71,20 +75,22 @@ function relayoutGridChildren(node: DesignNode, layout: NodeLayout, flowChildren
 
   flowChildren.forEach((child) => {
     const layoutItem = normalizeNodeLayoutItem(child.layout_item ?? DEFAULT_LAYOUT_ITEM);
-    const manualCell = manualCells.get(child.id);
-    let cell: GridCell;
-    if (manualCell) {
-      cell = manualCell;
+    const manualPlacement = manualPlacements.get(child.id);
+    let placement: GridPlacement;
+    if (manualPlacement) {
+      placement = manualPlacement;
     } else {
       const autoCell = nextAutoGridCell(autoCursor, columns, rows, occupiedCells, layout.direction);
       autoCursor = autoCell.nextCursor;
-      cell = autoCell;
+      placement = { row: autoCell.row, column: autoCell.column, rowSpan: 1, columnSpan: 1 };
       occupiedCells.add(gridCellKey(autoCell));
     }
-    const { row, column } = cell;
+    const { row, column } = placement;
     const margin = layoutItem.margin;
-    const innerWidth = Math.max(0, cellWidth - margin.left - margin.right);
-    const innerHeight = Math.max(0, cellHeight - margin.top - margin.bottom);
+    const placementWidth = cellWidth * placement.columnSpan + columnGap * Math.max(0, placement.columnSpan - 1);
+    const placementHeight = cellHeight * placement.rowSpan + rowGap * Math.max(0, placement.rowSpan - 1);
+    const innerWidth = Math.max(0, placementWidth - margin.left - margin.right);
+    const innerHeight = Math.max(0, placementHeight - margin.top - margin.bottom);
 
     if (layoutItem.width_sizing === "fill") {
       child.size.width = clampSize(innerWidth);
@@ -506,12 +512,16 @@ export function normalizeNodeLayoutItem(layoutItem: NodeLayoutItem): NodeLayoutI
   const heightSizing = isLayoutItemSizing(layoutItem.height_sizing) ? layoutItem.height_sizing : "fixed";
   const gridColumn = normalizeGridPlacement(layoutItem.grid_column);
   const gridRow = normalizeGridPlacement(layoutItem.grid_row);
+  const gridColumnSpan = normalizeGridSpan(layoutItem.grid_column_span);
+  const gridRowSpan = normalizeGridSpan(layoutItem.grid_row_span);
   return {
     ...(position === "absolute" ? { position } : {}),
     ...(widthSizing === "fill" ? { width_sizing: widthSizing } : {}),
     ...(heightSizing === "fill" ? { height_sizing: heightSizing } : {}),
     ...(gridColumn !== undefined ? { grid_column: gridColumn } : {}),
     ...(gridRow !== undefined ? { grid_row: gridRow } : {}),
+    ...(gridColumnSpan !== undefined ? { grid_column_span: gridColumnSpan } : {}),
+    ...(gridRowSpan !== undefined ? { grid_row_span: gridRowSpan } : {}),
     margin: {
       top: Math.max(0, finiteNumber(layoutItem.margin?.top, 0)),
       right: Math.max(0, finiteNumber(layoutItem.margin?.right, 0)),
@@ -611,14 +621,43 @@ function normalizeGridPlacement(value: number | undefined): number | undefined {
   return Number.isFinite(normalized) ? Math.max(1, Math.round(normalized)) : undefined;
 }
 
-function manualGridCell(layoutItem: NodeLayoutItem, columns: number, rows: number): GridCell | null {
-  if (layoutItem.grid_column === undefined && layoutItem.grid_row === undefined) {
+function normalizeGridSpan(value: number | undefined): number | undefined {
+  const normalized = finiteNumber(value, Number.NaN);
+  return Number.isFinite(normalized) ? Math.max(1, Math.round(normalized)) : undefined;
+}
+
+function manualGridPlacement(layoutItem: NodeLayoutItem, columns: number, rows: number): GridPlacement | null {
+  const columnSpan = normalizeGridSpan(layoutItem.grid_column_span);
+  const rowSpan = normalizeGridSpan(layoutItem.grid_row_span);
+  if (
+    layoutItem.grid_column === undefined &&
+    layoutItem.grid_row === undefined &&
+    columnSpan === undefined &&
+    rowSpan === undefined
+  ) {
     return null;
   }
+  const column = gridPlacementIndex(layoutItem.grid_column, columns, 1);
+  const row = gridPlacementIndex(layoutItem.grid_row, rows, 1);
   return {
-    column: gridPlacementIndex(layoutItem.grid_column, columns, 1),
-    row: gridPlacementIndex(layoutItem.grid_row, rows, 1)
+    column,
+    row,
+    columnSpan: gridPlacementSpan(columnSpan, columns - column),
+    rowSpan: gridPlacementSpan(rowSpan, rows - row)
   };
+}
+
+function gridPlacementSpan(value: number | undefined, remainingTracks: number): number {
+  return Math.min(value ?? 1, Math.max(1, remainingTracks));
+}
+
+function gridPlacementCells(placement: GridPlacement): GridCell[] {
+  return Array.from({ length: placement.rowSpan }, (_, rowOffset) =>
+    Array.from({ length: placement.columnSpan }, (__, columnOffset) => ({
+      row: placement.row + rowOffset,
+      column: placement.column + columnOffset
+    }))
+  ).flat();
 }
 
 function gridPlacementIndex(value: number | undefined, max: number, fallback: number): number {
