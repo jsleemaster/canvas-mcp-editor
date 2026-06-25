@@ -1,6 +1,6 @@
 # Superpowers Plan Status
 
-Last audited: 2026-06-24
+Last audited: 2026-06-25
 
 This file is the routing source of truth for `docs/superpowers/plans/*`.
 The individual plan files are historical execution plans. Some older files still
@@ -50,6 +50,7 @@ Use this order when entering the repo:
 | `2026-06-24-penpot-layout-item-position.md` | Completed | Added Penpot-like static/absolute child layout-item positioning across shared node types, web/server layout solvers, MCP schema, Rust serialization and generated bindings, Korean Inspector controls, code-export coverage, and Playwright CLI coverage. Verified with focused RED/GREEN tests, `pnpm run check:penpot-maturity`, focused web/server/Rust tests, `cargo test -p editor-core`, `pnpm typecheck`, `pnpm --filter @layo/web build`, `pnpm test`, `cargo test --workspace`, `git diff --check`, focused Playwright CLI, Playwright API-log proof, and `pnpm test:e2e`. |
 | `2026-06-24-penpot-layout-item-margin.md` | Completed | Added Penpot-like per-child `layout_item.margin` to the shared node model, web/server auto-layout solvers, MCP/HTTP agent command surfaces, code export, Rust serialization and generated bindings, Korean Inspector controls, and Playwright CLI coverage. Verified with focused web/server/Rust tests, `pnpm run check:penpot-maturity`, `pnpm typecheck`, `pnpm --filter @layo/web build`, `pnpm test`, `cargo test --workspace`, focused Playwright CLI, Playwright API-log proof, and `pnpm test:e2e`. |
 | `2026-06-24-penpot-row-column-gap.md` | Completed | Added Penpot-like Flex row/column gap split across shared node types, web/server layout solvers, MCP schema, Rust serialization and generated bindings, code export, Korean Inspector controls, and Playwright CLI coverage. Verified with focused RED/GREEN web/server/Rust tests, `cargo test -p editor-core`, focused Playwright CLI, and Playwright API-log proof. Full-suite verification is recorded in the implementation plan and PR. |
+| `2026-06-25-penpot-flex-fit-sizing.md` | Completed | Added Penpot-like Flex `fit` width/height sizing for auto-layout containers across shared node types, web/server layout solvers, MCP schema, Rust serialization and generated bindings, code export, Korean Inspector controls, and Playwright CLI coverage. Ponytail was adopted as a process guard through the existing minimal-change ladder, not as a runtime dependency. Verified with focused RED/GREEN web/server/Rust tests, `pnpm typecheck`, `pnpm run check:penpot-maturity`, `pnpm --filter @layo/web build`, `cargo test -p editor-core`, `pnpm test`, `git diff --check`, focused Playwright CLI, and `pnpm test:e2e`. |
 
 ## Current Active Plan
 

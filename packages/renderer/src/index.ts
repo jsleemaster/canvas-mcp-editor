@@ -12,6 +12,8 @@ export interface NodeLayout {
   align_items: "start" | "center" | "end" | "stretch";
   justify_content: "start" | "center" | "end" | "space_between" | "space_around" | "space_evenly";
   align_content?: "start" | "center" | "end" | "space_between" | "space_around" | "space_evenly";
+  width_sizing?: "fixed" | "fit";
+  height_sizing?: "fixed" | "fit";
   gap: number;
   row_gap?: number;
   column_gap?: number;

@@ -778,6 +778,68 @@ describe("FileStorage", () => {
     ]);
 
 
+    const fitLayout = await storage.applyAgentCommands("sample-file", {
+      dryRun: true,
+      commands: [
+        {
+          type: "update_geometry",
+          nodeId: "frame-1",
+          width: 420,
+          height: 280
+        },
+        {
+          type: "update_geometry",
+          nodeId: "text-1",
+          width: 120,
+          height: 40
+        },
+        {
+          type: "set_layout",
+          nodeId: "frame-1",
+          layout: {
+            mode: "auto",
+            direction: "vertical",
+            align_items: "start",
+            justify_content: "start",
+            width_sizing: "fit",
+            height_sizing: "fit",
+            gap: 12,
+            padding: { top: 20, right: 24, bottom: 20, left: 24 }
+          }
+        },
+        {
+          type: "create_rectangle",
+          parentId: "frame-1",
+          id: "fit-rectangle-1",
+          name: "맞춤 사각형",
+          width: 80,
+          height: 30
+        }
+      ] as any
+    });
+
+    const fitFrame = fitLayout.preview.pages[0].children[0];
+    expect(fitFrame.layout).toMatchObject({
+      width_sizing: "fit",
+      height_sizing: "fit"
+    });
+    expect(fitFrame.size).toEqual({ width: 168, height: 122 });
+    expect(fitFrame.children.find((node) => node.id === "text-1")?.transform).toMatchObject({
+      x: 24,
+      y: 20
+    });
+    expect(fitFrame.children.find((node) => node.id === "fit-rectangle-1")?.transform).toMatchObject({
+      x: 24,
+      y: 72
+    });
+    expect(fitLayout.audit.commandTypes).toEqual([
+      "update_geometry",
+      "update_geometry",
+      "set_layout",
+      "create_rectangle"
+    ]);
+
+
     const constrained = await storage.applyAgentCommands("sample-file", {
       dryRun: true,
       commands: [

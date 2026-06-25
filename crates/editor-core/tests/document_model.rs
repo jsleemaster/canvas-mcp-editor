@@ -69,6 +69,8 @@ fn layout_metadata_round_trips_through_json() {
                 "align_items": "center",
                 "justify_content": "space_between",
                 "align_content": "space_around",
+                "width_sizing": "fit",
+                "height_sizing": "fit",
                 "gap": 12,
                 "row_gap": 24,
                 "column_gap": 6,
@@ -123,6 +125,14 @@ fn layout_metadata_round_trips_through_json() {
     assert_eq!(
         frame.layout.as_ref().unwrap().align_content,
         editor_core::LayoutAlignContent::SpaceAround
+    );
+    assert_eq!(
+        frame.layout.as_ref().unwrap().width_sizing,
+        editor_core::LayoutSizing::Fit
+    );
+    assert_eq!(
+        frame.layout.as_ref().unwrap().height_sizing,
+        editor_core::LayoutSizing::Fit
     );
     assert_eq!(frame.layout.as_ref().unwrap().gap, 12.0);
     assert_eq!(frame.layout.as_ref().unwrap().row_gap, Some(24.0));
@@ -189,10 +199,14 @@ fn legacy_layout_metadata_defaults_alignment_fields() {
         layout.justify_content,
         editor_core::LayoutJustifyContent::Start
     );
+    assert_eq!(layout.width_sizing, editor_core::LayoutSizing::Fixed);
+    assert_eq!(layout.height_sizing, editor_core::LayoutSizing::Fixed);
     assert_eq!(layout.row_gap, None);
     assert_eq!(layout.column_gap, None);
 
     let json = serde_json::to_string(&parsed).unwrap();
+    assert!(!json.contains("\"width_sizing\""));
+    assert!(!json.contains("\"height_sizing\""));
     assert!(!json.contains("\"row_gap\""));
     assert!(!json.contains("\"column_gap\""));
 }
