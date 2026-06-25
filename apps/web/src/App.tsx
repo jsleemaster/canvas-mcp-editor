@@ -1810,7 +1810,8 @@ function Inspector({
       }
     };
   const updateLayoutItemGridPlacement =
-    (key: "grid_column" | "grid_row") => (event: React.ChangeEvent<HTMLInputElement>) => {
+    (key: "grid_column" | "grid_row" | "grid_column_span" | "grid_row_span") =>
+    (event: React.ChangeEvent<HTMLInputElement>) => {
       const nextValue = Number(event.currentTarget.value);
       if (Number.isFinite(nextValue)) {
         onLayoutItemChange(selectedNode.id, {
@@ -2160,6 +2161,26 @@ function Inspector({
                 min="1"
                 value={numericInputValue(layoutItem.grid_row ?? 1)}
                 onChange={updateLayoutItemGridPlacement("grid_row")}
+              />
+            </label>
+            <label>
+              그리드 열 범위
+              <input
+                data-testid="inspector-layout-item-grid-column-span"
+                type="number"
+                min="1"
+                value={numericInputValue(layoutItem.grid_column_span ?? 1)}
+                onChange={updateLayoutItemGridPlacement("grid_column_span")}
+              />
+            </label>
+            <label>
+              그리드 행 범위
+              <input
+                data-testid="inspector-layout-item-grid-row-span"
+                type="number"
+                min="1"
+                value={numericInputValue(layoutItem.grid_row_span ?? 1)}
+                onChange={updateLayoutItemGridPlacement("grid_row_span")}
               />
             </label>
           </div>

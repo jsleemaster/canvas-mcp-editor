@@ -142,6 +142,8 @@ describe("code export", () => {
       height_sizing: "fill",
       grid_column: 3,
       grid_row: 2,
+      grid_column_span: 2,
+      grid_row_span: 2,
       margin: { top: 10, right: 8, bottom: 14, left: 6 }
     } as any;
 
@@ -174,6 +176,8 @@ describe("code export", () => {
       height_sizing: "fill",
       grid_column: 3,
       grid_row: 2,
+      grid_column_span: 2,
+      grid_row_span: 2,
       margin: { top: 10, right: 8, bottom: 14, left: 6 }
     });
   });

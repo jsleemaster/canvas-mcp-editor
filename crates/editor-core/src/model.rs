@@ -157,6 +157,10 @@ pub struct NodeLayoutItem {
     pub grid_column: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grid_row: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grid_column_span: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grid_row_span: Option<u32>,
     pub margin: LayoutPadding,
 }
 
