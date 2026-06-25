@@ -103,6 +103,10 @@ pub struct NodeLayout {
     pub justify_content: LayoutJustifyContent,
     #[serde(default = "default_layout_align_content")]
     pub align_content: LayoutAlignContent,
+    #[serde(default = "default_layout_sizing", skip_serializing_if = "is_fixed_layout_sizing")]
+    pub width_sizing: LayoutSizing,
+    #[serde(default = "default_layout_sizing", skip_serializing_if = "is_fixed_layout_sizing")]
+    pub height_sizing: LayoutSizing,
     pub gap: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub row_gap: Option<f64>,
@@ -194,6 +198,14 @@ pub enum LayoutAlignContent {
     SpaceEvenly,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum LayoutSizing {
+    Fixed,
+    Fit,
+}
+
 fn default_layout_wrap() -> LayoutWrap {
     LayoutWrap::Nowrap
 }
@@ -208,6 +220,14 @@ fn default_layout_justify_content() -> LayoutJustifyContent {
 
 fn default_layout_align_content() -> LayoutAlignContent {
     LayoutAlignContent::Start
+}
+
+fn default_layout_sizing() -> LayoutSizing {
+    LayoutSizing::Fixed
+}
+
+fn is_fixed_layout_sizing(value: &LayoutSizing) -> bool {
+    matches!(value, LayoutSizing::Fixed)
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]

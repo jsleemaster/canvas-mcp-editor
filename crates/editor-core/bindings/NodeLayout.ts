@@ -5,6 +5,7 @@ import type { LayoutDirection } from "./LayoutDirection";
 import type { LayoutJustifyContent } from "./LayoutJustifyContent";
 import type { LayoutMode } from "./LayoutMode";
 import type { LayoutPadding } from "./LayoutPadding";
+import type { LayoutSizing } from "./LayoutSizing";
 import type { LayoutWrap } from "./LayoutWrap";
 
-export type NodeLayout = { mode: LayoutMode, direction: LayoutDirection, wrap: LayoutWrap, align_items: LayoutAlignItems, justify_content: LayoutJustifyContent, align_content: LayoutAlignContent, gap: number, row_gap?: number | null, column_gap?: number | null, padding: LayoutPadding, };
+export type NodeLayout = { mode: LayoutMode, direction: LayoutDirection, wrap: LayoutWrap, align_items: LayoutAlignItems, justify_content: LayoutJustifyContent, align_content: LayoutAlignContent, width_sizing?: LayoutSizing, height_sizing?: LayoutSizing, gap: number, row_gap?: number | null, column_gap?: number | null, padding: LayoutPadding, };

@@ -262,6 +262,44 @@ describe("editor state commands", () => {
     expect(findNodeById(created.document, "rectangle-1")?.transform).toMatchObject({ x: 24, y: 80 });
   });
 
+  test("auto layout fits container size to direct children", () => {
+    const document = sampleDocument();
+    const frame = findNodeById(document, "frame-1") as any;
+    frame.size = { width: 420, height: 280 };
+    frame.layout = {
+      mode: "auto",
+      direction: "vertical",
+      align_items: "start",
+      justify_content: "start",
+      width_sizing: "fit",
+      height_sizing: "fit",
+      gap: 12,
+      padding: { top: 20, right: 24, bottom: 20, left: 24 }
+    };
+    const text = findNodeById(document, "text-1") as any;
+    text.size = { width: 120, height: 40 };
+    frame.children.push({
+      id: "fit-rectangle-1",
+      kind: "rectangle",
+      name: "맞춤 사각형",
+      transform: { x: 0, y: 0, rotation: 0 },
+      size: { width: 80, height: 30 },
+      style: { fill: "#e0f2fe", stroke: null, stroke_width: 0, opacity: 1 },
+      content: { type: "empty" },
+      children: []
+    });
+
+    const relaid = executeEditorCommand(createEditorState(document), {
+      type: "update_node_geometry",
+      nodeId: "fit-rectangle-1",
+      patch: { width: 80 }
+    });
+
+    expect(findNodeById(relaid.document, "frame-1")?.size).toEqual({ width: 168, height: 122 });
+    expect(findNodeById(relaid.document, "text-1")?.transform).toMatchObject({ x: 24, y: 20 });
+    expect(findNodeById(relaid.document, "fit-rectangle-1")?.transform).toMatchObject({ x: 24, y: 72 });
+  });
+
   test("auto layout centers children on the cross axis and distributes them on the main axis", () => {
     const document = sampleDocument();
     const frame = findNodeById(document, "frame-1") as any;

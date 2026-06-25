@@ -1920,6 +1920,32 @@ function Inspector({
           </select>
         </label>
         <label className="stacked-field">
+          너비 크기
+          <select
+            data-testid="inspector-layout-width-sizing"
+            value={layout.width_sizing ?? "fixed"}
+            onChange={(event) =>
+              updateLayout({ width_sizing: event.currentTarget.value as NodeLayout["width_sizing"] })
+            }
+          >
+            <option value="fixed">고정</option>
+            <option value="fit">내용 맞춤</option>
+          </select>
+        </label>
+        <label className="stacked-field">
+          높이 크기
+          <select
+            data-testid="inspector-layout-height-sizing"
+            value={layout.height_sizing ?? "fixed"}
+            onChange={(event) =>
+              updateLayout({ height_sizing: event.currentTarget.value as NodeLayout["height_sizing"] })
+            }
+          >
+            <option value="fixed">고정</option>
+            <option value="fit">내용 맞춤</option>
+          </select>
+        </label>
+        <label className="stacked-field">
           줄 정렬
           <select
             data-testid="inspector-layout-align-content"
