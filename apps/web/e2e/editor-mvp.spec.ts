@@ -1220,6 +1220,47 @@ test("inspector shows fill token binding from agent-applied color tokens", async
   await expect(page.getByTestId("inspector-fill-token")).toContainText("Brand / Primary");
 });
 
+test("right inspector imports and exports DTCG token JSON", async ({ page }) => {
+  const { documentId } = await createProjectFromEmptyState(page);
+  const importedTokenJson = JSON.stringify(
+    {
+      global: {
+        Imported: {
+          Highlight: {
+            $type: "color",
+            $value: "#f97316"
+          }
+        }
+      }
+    },
+    null,
+    2
+  );
+
+  await expect(page.getByRole("heading", { name: "토큰" })).toBeVisible();
+  await page.getByRole("button", { name: "토큰 내보내기" }).click();
+  await expect(page.getByTestId("dtcg-token-json")).toHaveValue(/\$metadata/);
+
+  await page.getByTestId("dtcg-token-json").fill(importedTokenJson);
+  await page.getByRole("button", { name: "토큰 가져오기" }).click();
+  await expect(page.getByTestId("dtcg-token-status")).toContainText("1개 토큰 가져옴");
+
+  const fileResponse = await page.request.get(`http://127.0.0.1:4317/files/${documentId}`);
+  expect(fileResponse.ok()).toBeTruthy();
+  expect((await fileResponse.json()).file.tokens).toEqual([
+    {
+      id: "color-imported-highlight",
+      name: "Imported / Highlight",
+      type: "color",
+      value: "#f97316"
+    }
+  ]);
+
+  await page.getByRole("button", { name: "토큰 내보내기" }).click();
+  await expect(page.getByTestId("dtcg-token-json")).toHaveValue(/Imported/);
+  await expect(page.getByTestId("dtcg-token-json")).toHaveValue(/#f97316/);
+});
+
 test("Figma-like edit shortcuts duplicate and delete selected layers", async ({ page }) => {
   await createProjectFromEmptyState(page);
 

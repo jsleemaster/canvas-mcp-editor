@@ -518,6 +518,63 @@ export function createMcpServer(storage = new FileStorage()) {
   );
 
   server.registerTool(
+    "export_design_tokens",
+    {
+      description: "Export document-local Layo color design tokens as W3C/DTCG JSON.",
+      annotations: readOnlyToolAnnotations,
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files")
+      }
+    },
+    async ({ fileId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              tokens: await storage.exportTokensDtcg(fileId)
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "import_design_tokens",
+    {
+      description: "Import W3C/DTCG color design tokens into a saved Layo document.",
+      annotations: writeToolAnnotations,
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files"),
+        tokens: z.record(z.string(), z.unknown()).describe("W3C/DTCG token JSON document")
+      }
+    },
+    async ({ fileId, tokens }) => {
+      const result = await storage.importTokensDtcg(fileId, tokens);
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                fileId,
+                file: result.file,
+                tokens: result.tokens
+              },
+              null,
+              2
+            )
+          }
+        ]
+      };
+    }
+  );
+
+  server.registerTool(
     "inspect_canvas",
     {
       description: "Return an agent-friendly canvas summary, component summary, node summaries, and validation status.",

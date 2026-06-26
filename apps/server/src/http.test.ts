@@ -542,4 +542,55 @@ describe("HTTP server", () => {
     expect(body.export.implementationSpec.tokenCandidates.fontFamilies).toContain("Inter");
     expect(body.export.indexModule).toContain('from "./elements/frame-1.mjs"');
   });
+
+  test("imports and exports document color tokens as DTCG JSON", async () => {
+    const server = await createServerWithDocument();
+
+    const imported = await server.inject({
+      method: "PUT",
+      url: "/files/sample-file/tokens/dtcg",
+      payload: {
+        global: {
+          Brand: {
+            Primary: {
+              $type: "color",
+              $value: "#2563eb"
+            }
+          }
+        }
+      }
+    });
+    expect(imported.statusCode).toBe(200);
+    expect(imported.json().tokens).toEqual([
+      {
+        id: "color-brand-primary",
+        name: "Brand / Primary",
+        type: "color",
+        value: "#2563eb"
+      }
+    ]);
+
+    const exported = await server.inject({
+      method: "GET",
+      url: "/files/sample-file/tokens/dtcg"
+    });
+    expect(exported.statusCode).toBe(200);
+    expect(exported.json().tokens).toMatchObject({
+      $metadata: {
+        tokenSetOrder: ["global"],
+        activeThemes: []
+      },
+      global: {
+        Brand: {
+          Primary: {
+            $type: "color",
+            $value: "#2563eb"
+          }
+        }
+      }
+    });
+
+    const file = await server.inject({ method: "GET", url: "/files/sample-file" });
+    expect(file.json().file.tokens).toEqual(imported.json().tokens);
+  });
 });
