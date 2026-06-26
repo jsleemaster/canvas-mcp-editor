@@ -36,6 +36,9 @@ deployment details in `docs/deployment/collaboration.md`.
   the commented canvas object.
 - Selected-node comment threads support persisted replies through storage,
   HTTP, MCP, web API helpers, and the Inspector.
+- Comment threads and replies persist extracted `@mention` tokens, expose
+  local viewer unread/read state through storage, HTTP, MCP, web API helpers,
+  and the Inspector, and can be marked read from the Inspector.
 
 ## Phase 1: Local Team Creation
 
@@ -123,9 +126,10 @@ Exit criteria:
 ## Later Team Features
 
 - Invite links and one-time join flows.
-- Mentions, unread notifications, live comment sync, and dashboard
-  notifications beyond the landed selected-node comment thread, reply, and
-  viewport bubble foundation.
+- Live comment sync, dashboard/activity notifications, real team-member mention
+  targeting, and notification retention beyond the landed selected-node comment
+  thread, reply, viewport bubble, persisted mention, and local unread/read
+  foundation.
 - Named checkpoints and activity history.
 - Branch, review, and merge flows for design changes.
 - Document-level permission policies beyond relay connection roles.

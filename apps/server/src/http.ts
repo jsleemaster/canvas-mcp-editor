@@ -144,12 +144,13 @@ export function createHttpServer(storage = new FileStorage(), options: HttpServe
     }
   );
 
-  server.get<{ Params: { fileId: string }; Querystring: { includeResolved?: string } }>(
+  server.get<{ Params: { fileId: string }; Querystring: { includeResolved?: string; viewerId?: string } }>(
     "/files/:fileId/comments",
     async (request) => {
       return {
         threads: await storage.listCommentThreads(request.params.fileId, {
-          includeResolved: request.query.includeResolved === "true"
+          includeResolved: request.query.includeResolved === "true",
+          viewerId: request.query.viewerId
         })
       };
     }
@@ -170,6 +171,19 @@ export function createHttpServer(storage = new FileStorage(), options: HttpServe
   }>("/files/:fileId/comments/:threadId/replies", async (request) => {
     return {
       thread: await storage.addCommentReply(
+        request.params.fileId,
+        request.params.threadId,
+        request.body
+      )
+    };
+  });
+
+  server.post<{
+    Params: { fileId: string; threadId: string };
+    Body: { viewerId?: string };
+  }>("/files/:fileId/comments/:threadId/read", async (request) => {
+    return {
+      thread: await storage.markCommentThreadRead(
         request.params.fileId,
         request.params.threadId,
         request.body

@@ -233,6 +233,61 @@ describe("FileStorage", () => {
     ]);
   });
 
+  test("comment threads extract mentions and track unread readers per viewer", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+
+    const created = await storage.createCommentThread("sample-file", {
+      nodeId: "text-1",
+      body: "@민지 @dev-team 문구 확인 필요",
+      authorName: "디자인 팀"
+    });
+
+    expect(created).toMatchObject({
+      mentions: ["민지", "dev-team"],
+      readBy: ["디자인 팀"]
+    });
+    await expect(storage.listCommentThreads("sample-file", { viewerId: "사용자" })).resolves.toEqual([
+      expect.objectContaining({
+        threadId: created.threadId,
+        unread: true
+      })
+    ]);
+
+    const read = await storage.markCommentThreadRead("sample-file", created.threadId, {
+      viewerId: "사용자"
+    });
+    expect(read).toMatchObject({
+      readBy: ["디자인 팀", "사용자"],
+      unread: false
+    });
+    await expect(storage.listCommentThreads("sample-file", { viewerId: "사용자" })).resolves.toEqual([
+      expect.objectContaining({
+        threadId: created.threadId,
+        unread: false
+      })
+    ]);
+
+    const replied = await storage.addCommentReply("sample-file", created.threadId, {
+      body: "@민지 수정했어요",
+      authorName: "개발 팀"
+    });
+    expect(replied).toMatchObject({
+      readBy: ["개발 팀"],
+      replies: [
+        expect.objectContaining({
+          mentions: ["민지"]
+        })
+      ]
+    });
+    await expect(storage.listCommentThreads("sample-file", { viewerId: "사용자" })).resolves.toEqual([
+      expect.objectContaining({
+        threadId: created.threadId,
+        unread: true
+      })
+    ]);
+  });
+
   test("comment threads reject a missing body with a validation error", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
     const storage = await storageWithDocument(tempRoot);

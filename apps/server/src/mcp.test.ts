@@ -413,7 +413,7 @@ describe("MCP AI editing workflow", () => {
         arguments: {
           fileId: "comment-file",
           nodeId: "text-1",
-          body: "문구 확인 필요",
+          body: "@민지 문구 확인 필요",
           authorName: "디자인 팀"
         }
       })
@@ -422,9 +422,34 @@ describe("MCP AI editing workflow", () => {
       fileId: "comment-file",
       nodeId: "text-1",
       nodeName: "헤드라인",
-      body: "문구 확인 필요",
+      body: "@민지 문구 확인 필요",
+      mentions: ["민지"],
+      readBy: ["디자인 팀"],
       replies: [],
       resolvedAt: null
+    });
+
+    const unread = parseToolJson(
+      await client.callTool({
+        name: "list_comment_threads",
+        arguments: { fileId: "comment-file", viewerId: "사용자" }
+      })
+    );
+    expect(unread.threads[0]).toMatchObject({
+      threadId: created.thread.threadId,
+      unread: true
+    });
+
+    const read = parseToolJson(
+      await client.callTool({
+        name: "mark_comment_thread_read",
+        arguments: { fileId: "comment-file", threadId: created.thread.threadId, viewerId: "사용자" }
+      })
+    );
+    expect(read.thread).toMatchObject({
+      threadId: created.thread.threadId,
+      unread: false,
+      readBy: ["디자인 팀", "사용자"]
     });
 
     const replied = parseToolJson(
@@ -433,15 +458,16 @@ describe("MCP AI editing workflow", () => {
         arguments: {
           fileId: "comment-file",
           threadId: created.thread.threadId,
-          body: "문구를 더 짧게 줄였어요",
+          body: "@민지 문구를 더 짧게 줄였어요",
           authorName: "개발 팀"
         }
       })
     );
     expect(replied.thread.replies).toEqual([
       expect.objectContaining({
-        body: "문구를 더 짧게 줄였어요",
-        authorName: "개발 팀"
+        body: "@민지 문구를 더 짧게 줄였어요",
+        authorName: "개발 팀",
+        mentions: ["민지"]
       })
     ]);
 
@@ -451,9 +477,9 @@ describe("MCP AI editing workflow", () => {
         arguments: { fileId: "comment-file" }
       })
     );
-    expect(listed.threads.map((thread: { body: string }) => thread.body)).toEqual(["문구 확인 필요"]);
+    expect(listed.threads.map((thread: { body: string }) => thread.body)).toEqual(["@민지 문구 확인 필요"]);
     expect(listed.threads[0].replies.map((reply: { body: string }) => reply.body)).toEqual([
-      "문구를 더 짧게 줄였어요"
+      "@민지 문구를 더 짧게 줄였어요"
     ]);
 
     const resolved = parseToolJson(

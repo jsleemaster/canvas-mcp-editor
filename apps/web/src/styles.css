@@ -1335,11 +1335,42 @@ button:disabled {
   min-width: 0;
 }
 
+.comment-row-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--editor-space-xxs);
+}
+
 .comment-row button,
 .comment-reply-compose button {
   min-height: var(--editor-space-xl);
   padding: var(--editor-space-xxs) var(--editor-space-xs);
   white-space: nowrap;
+}
+
+.comment-mentions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--editor-space-xxs);
+}
+
+.comment-mention,
+.comment-unread-badge {
+  width: fit-content;
+  max-width: 100%;
+  padding: 0 var(--editor-space-xxs);
+  border: var(--editor-border-hairline) solid var(--editor-color-border-strong);
+  color: var(--editor-color-ink);
+  font-size: var(--editor-text-small-size);
+  line-height: var(--editor-text-small-line);
+  overflow-wrap: anywhere;
+}
+
+.comment-unread-badge {
+  border-color: var(--editor-color-accent);
+  color: var(--editor-color-accent);
+  font-weight: var(--editor-text-control-weight);
 }
 
 .comment-reply-list {

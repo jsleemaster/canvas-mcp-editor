@@ -676,17 +676,18 @@ export function createMcpServer(storage = new FileStorage()) {
       annotations: readOnlyToolAnnotations,
       inputSchema: {
         fileId: z.string().describe("Design file id returned by list_files"),
-        includeResolved: z.boolean().optional().describe("Include resolved comment threads")
+        includeResolved: z.boolean().optional().describe("Include resolved comment threads"),
+        viewerId: z.string().optional().describe("Optional viewer id used to compute unread state")
       }
     },
-    async ({ fileId, includeResolved }) => ({
+    async ({ fileId, includeResolved, viewerId }) => ({
       content: [
         {
           type: "text",
           text: JSON.stringify(
             {
               fileId,
-              threads: await storage.listCommentThreads(fileId, { includeResolved })
+              threads: await storage.listCommentThreads(fileId, { includeResolved, viewerId })
             },
             null,
             2
@@ -743,6 +744,34 @@ export function createMcpServer(storage = new FileStorage()) {
             {
               fileId,
               thread: await storage.resolveCommentThread(fileId, threadId)
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "mark_comment_thread_read",
+    {
+      description: "Mark one selected-node comment thread as read for a Layo viewer.",
+      annotations: writeToolAnnotations,
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files"),
+        threadId: z.string().describe("Comment thread id returned by list_comment_threads"),
+        viewerId: z.string().optional().describe("Viewer id to add to the thread read state")
+      }
+    },
+    async ({ fileId, threadId, viewerId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              thread: await storage.markCommentThreadRead(fileId, threadId, { viewerId })
             },
             null,
             2
