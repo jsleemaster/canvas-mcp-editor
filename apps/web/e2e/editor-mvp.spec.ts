@@ -2343,6 +2343,55 @@ test("canvas grid Ctrl-drag reorder preserves object positions", async ({ page }
   await expect(page.getByTestId("inspector-y")).toHaveValue("20");
 });
 
+test("canvas grid header reorder supports spanned grid items", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+  await page.getByTestId("inspector-width").fill("420");
+  await page.getByTestId("inspector-height").fill("160");
+  await page.getByTestId("inspector-layout-mode").selectOption("grid");
+  await page.getByTestId("inspector-layout-direction").selectOption("horizontal");
+  await page.getByTestId("inspector-layout-grid-column-tracks").fill("120px 80px 1fr");
+  await page.getByTestId("inspector-layout-grid-row-tracks").fill("90px");
+  await page.getByTestId("inspector-layout-gap").fill("0");
+  await page.getByTestId("inspector-layout-column-gap").fill("10");
+  await page.getByTestId("inspector-layout-padding-top").fill("20");
+  await page.getByTestId("inspector-layout-padding-right").fill("20");
+  await page.getByTestId("inspector-layout-padding-bottom").fill("20");
+  await page.getByTestId("inspector-layout-padding-left").fill("20");
+
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await page.getByTestId("inspector-width").fill("80");
+  await page.getByTestId("inspector-height").fill("40");
+  await page.getByTestId("inspector-layout-item-grid-column").fill("1");
+  await page.getByTestId("inspector-layout-item-grid-row").fill("1");
+  await page.getByTestId("inspector-layout-item-grid-column-span").fill("2");
+  await page.getByTestId("inspector-layout-item-width-sizing").selectOption("fill");
+  await expect(page.getByTestId("inspector-x")).toHaveValue("20");
+  await expect(page.getByTestId("inspector-y")).toHaveValue("20");
+  await expect(page.getByTestId("inspector-width")).toHaveValue("210");
+
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+  const firstColumnHeader = page.getByTestId("grid-column-header-1");
+  const thirdColumnHeader = page.getByTestId("grid-column-header-3");
+  const firstColumnBox = await firstColumnHeader.boundingBox();
+  const thirdColumnBox = await thirdColumnHeader.boundingBox();
+  if (!firstColumnBox || !thirdColumnBox) {
+    throw new Error("grid column headers did not expose bounding boxes");
+  }
+  await page.mouse.move(firstColumnBox.x + firstColumnBox.width / 2, firstColumnBox.y + firstColumnBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(thirdColumnBox.x + thirdColumnBox.width / 2, thirdColumnBox.y + thirdColumnBox.height / 2);
+  await page.mouse.up();
+
+  await expect(page.getByTestId("inspector-layout-grid-column-tracks")).toHaveValue("80px 1fr 120px");
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await expect(page.getByTestId("inspector-layout-item-grid-column")).toHaveValue("1");
+  await expect(page.getByTestId("inspector-layout-item-grid-column-span")).toHaveValue("3");
+  await expect(page.getByTestId("inspector-x")).toHaveValue("20");
+  await expect(page.getByTestId("inspector-y")).toHaveValue("20");
+  await expect(page.getByTestId("inspector-width")).toHaveValue("380");
+});
+
 test("inspector manual grid cell placement moves a child to the requested cell", async ({ page }) => {
   await createProjectFromEmptyState(page);
   await page.getByRole("button", { name: "랜딩 프레임" }).click();

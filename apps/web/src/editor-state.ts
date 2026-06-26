@@ -1938,9 +1938,6 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       ) {
         return { document, inverse: null };
       }
-      if (!gridPlacementsCanReorder(placementPlan.placements, command.axis) || !gridAreasCanReorder(layout, command.axis)) {
-        return { document, inverse: null };
-      }
       if (
         flowChildren.some((child) => {
           const placement = placementPlan.placements.get(child.id);
@@ -1987,17 +1984,19 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
           if (!placement) {
             continue;
           }
-          const nextColumn =
-            command.axis === "column" ? moveTrackIndex(placement.column, fromIndex, toIndex) : placement.column;
-          const nextRow = command.axis === "row" ? moveTrackIndex(placement.row, fromIndex, toIndex) : placement.row;
+          const movedPlacement = moveGridPlacementAlongAxis(placement, command.axis, fromIndex, toIndex);
           const currentLayoutItem = normalizeNodeLayoutItem(child.layout_item ?? DEFAULT_LAYOUT_ITEM);
+          if (currentLayoutItem.grid_area) {
+            child.layout_item = normalizeNodeLayoutItem(currentLayoutItem);
+            continue;
+          }
           child.layout_item = normalizeNodeLayoutItem({
             ...currentLayoutItem,
             grid_area: undefined,
-            grid_column: nextColumn + 1,
-            grid_row: nextRow + 1,
-            grid_column_span: placement.columnSpan,
-            grid_row_span: placement.rowSpan
+            grid_column: movedPlacement.column + 1,
+            grid_row: movedPlacement.row + 1,
+            grid_column_span: movedPlacement.columnSpan,
+            grid_row_span: movedPlacement.rowSpan
           });
         }
       }
@@ -2345,30 +2344,45 @@ function moveTrackIndex(index: number, fromIndex: number, toIndex: number): numb
   return index;
 }
 
+function moveGridPlacementAlongAxis(
+  placement: GridPlacement,
+  axis: "column" | "row",
+  fromIndex: number,
+  toIndex: number
+): GridPlacement {
+  const start = axis === "column" ? placement.column : placement.row;
+  const span = axis === "column" ? placement.columnSpan : placement.rowSpan;
+  const movedIndexes = Array.from({ length: span }, (_, offset) =>
+    moveTrackIndex(start + offset, fromIndex, toIndex)
+  );
+  const nextStart = Math.min(...movedIndexes);
+  const nextEnd = Math.max(...movedIndexes);
+  if (axis === "column") {
+    return {
+      ...placement,
+      column: nextStart,
+      columnSpan: nextEnd - nextStart + 1
+    };
+  }
+  return {
+    ...placement,
+    row: nextStart,
+    rowSpan: nextEnd - nextStart + 1
+  };
+}
+
 function gridPlacementMoves(
   placement: GridPlacement,
   axis: "column" | "row",
   fromIndex: number,
   toIndex: number
 ): boolean {
-  const currentIndex = axis === "column" ? placement.column : placement.row;
-  return moveTrackIndex(currentIndex, fromIndex, toIndex) !== currentIndex;
-}
-
-function gridPlacementsCanReorder(
-  placements: Map<string, GridPlacement>,
-  axis: "column" | "row"
-): boolean {
-  return [...placements.values()].every((placement) =>
-    axis === "column" ? placement.columnSpan === 1 : placement.rowSpan === 1
-  );
-}
-
-function gridAreasCanReorder(layout: NodeLayout, axis: "column" | "row"): boolean {
-  return (layout.grid_areas ?? []).every((area) =>
-    axis === "column"
-      ? normalizeGridSpan(area.column_span) === undefined || normalizeGridSpan(area.column_span) === 1
-      : normalizeGridSpan(area.row_span) === undefined || normalizeGridSpan(area.row_span) === 1
+  const nextPlacement = moveGridPlacementAlongAxis(placement, axis, fromIndex, toIndex);
+  return (
+    nextPlacement.column !== placement.column ||
+    nextPlacement.row !== placement.row ||
+    nextPlacement.columnSpan !== placement.columnSpan ||
+    nextPlacement.rowSpan !== placement.rowSpan
   );
 }
 
@@ -2389,10 +2403,24 @@ function moveGridAreas(
     if (!normalizedArea) {
       return area;
     }
-    if (axis === "column") {
-      return { ...normalizedArea, column: moveTrackIndex(normalizedArea.column - 1, fromIndex, toIndex) + 1 };
-    }
-    return { ...normalizedArea, row: moveTrackIndex(normalizedArea.row - 1, fromIndex, toIndex) + 1 };
+    const movedArea = moveGridPlacementAlongAxis(
+      {
+        column: normalizedArea.column - 1,
+        row: normalizedArea.row - 1,
+        columnSpan: normalizedArea.column_span,
+        rowSpan: normalizedArea.row_span
+      },
+      axis,
+      fromIndex,
+      toIndex
+    );
+    return {
+      ...normalizedArea,
+      column: movedArea.column + 1,
+      row: movedArea.row + 1,
+      column_span: movedArea.columnSpan,
+      row_span: movedArea.rowSpan
+    };
   });
 }
 

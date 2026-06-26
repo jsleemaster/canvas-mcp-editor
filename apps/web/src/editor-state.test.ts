@@ -1226,6 +1226,116 @@ describe("editor state commands", () => {
     });
   });
 
+  test("reorders a spanned grid column item by bounding moved tracks", () => {
+    const document = sampleDocument();
+    const frame = findNodeById(document, "frame-1") as any;
+    frame.size = { width: 420, height: 160 };
+    frame.layout = {
+      mode: "grid",
+      direction: "horizontal",
+      grid_columns: 3,
+      grid_rows: 1,
+      grid_column_tracks: [
+        { type: "px", value: 120 },
+        { type: "px", value: 80 },
+        { type: "fr", value: 1 }
+      ],
+      grid_row_tracks: [{ type: "px", value: 90 }],
+      align_items: "start",
+      justify_content: "start",
+      gap: 0,
+      column_gap: 10,
+      padding: { top: 20, right: 20, bottom: 20, left: 20 }
+    };
+    const text = findNodeById(document, "text-1") as any;
+    text.size = { width: 80, height: 40 };
+    text.layout_item = {
+      grid_column: 1,
+      grid_row: 1,
+      grid_column_span: 2,
+      width_sizing: "fill",
+      margin: { top: 0, right: 0, bottom: 0, left: 0 }
+    };
+
+    const reordered = executeEditorCommand(createEditorState(document), {
+      type: "reorder_grid_track_with_children",
+      nodeId: "frame-1",
+      axis: "column",
+      fromIndex: 0,
+      toIndex: 2
+    });
+
+    expect(findNodeById(reordered.document, "frame-1")?.layout).toMatchObject({
+      mode: "grid",
+      grid_column_tracks: [
+        { type: "px", value: 80 },
+        { type: "fr", value: 1 },
+        { type: "px", value: 120 }
+      ]
+    });
+    expect(findNodeById(reordered.document, "text-1")?.layout_item).toMatchObject({
+      grid_column: 1,
+      grid_row: 1,
+      grid_column_span: 3
+    });
+    expect(findNodeById(reordered.document, "text-1")?.transform).toMatchObject({ x: 20, y: 20 });
+    expect(findNodeById(reordered.document, "text-1")?.size).toMatchObject({ width: 380, height: 40 });
+    expect(reordered.history.past).toHaveLength(1);
+  });
+
+  test("reorders a named grid area span while preserving the child area assignment", () => {
+    const document = sampleDocument();
+    const frame = findNodeById(document, "frame-1") as any;
+    frame.size = { width: 420, height: 160 };
+    frame.layout = {
+      mode: "grid",
+      direction: "horizontal",
+      grid_columns: 3,
+      grid_rows: 1,
+      grid_column_tracks: [
+        { type: "px", value: 120 },
+        { type: "px", value: 80 },
+        { type: "fr", value: 1 }
+      ],
+      grid_row_tracks: [{ type: "px", value: 90 }],
+      grid_areas: [{ name: "hero", column: 1, row: 1, column_span: 2, row_span: 1 }],
+      align_items: "start",
+      justify_content: "start",
+      gap: 0,
+      column_gap: 10,
+      padding: { top: 20, right: 20, bottom: 20, left: 20 }
+    };
+    const text = findNodeById(document, "text-1") as any;
+    text.size = { width: 80, height: 40 };
+    text.layout_item = {
+      grid_area: "hero",
+      width_sizing: "fill",
+      margin: { top: 0, right: 0, bottom: 0, left: 0 }
+    };
+
+    const reordered = executeEditorCommand(createEditorState(document), {
+      type: "reorder_grid_track_with_children",
+      nodeId: "frame-1",
+      axis: "column",
+      fromIndex: 0,
+      toIndex: 2
+    });
+
+    expect(findNodeById(reordered.document, "frame-1")?.layout).toMatchObject({
+      mode: "grid",
+      grid_column_tracks: [
+        { type: "px", value: 80 },
+        { type: "fr", value: 1 },
+        { type: "px", value: 120 }
+      ],
+      grid_areas: [{ name: "hero", column: 1, row: 1, column_span: 3, row_span: 1 }]
+    });
+    expect(findNodeById(reordered.document, "text-1")?.layout_item).toMatchObject({ grid_area: "hero" });
+    expect(findNodeById(reordered.document, "text-1")?.transform).toMatchObject({ x: 20, y: 20 });
+    expect(findNodeById(reordered.document, "text-1")?.size).toMatchObject({ width: 380, height: 40 });
+    expect(reordered.history.past).toHaveLength(1);
+  });
+
   test("grid layout places a child into a named area", () => {
     const document = sampleDocument();
     const frame = findNodeById(document, "frame-1") as any;
