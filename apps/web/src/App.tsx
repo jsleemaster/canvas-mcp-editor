@@ -544,11 +544,23 @@ interface GridViewportRemoveControl {
   title: string;
 }
 
+interface GridViewportHeaderControl {
+  id: string;
+  testId: string;
+  axis: "column" | "row";
+  index: number;
+  left: number;
+  top: number;
+  label: string;
+  title: string;
+}
+
 interface GridViewportOverlay {
   lines: GridViewportLine[];
   handles: GridViewportHandle[];
   addControls: GridViewportAddControl[];
   removeControls: GridViewportRemoveControl[];
+  headerControls: GridViewportHeaderControl[];
 }
 
 interface ObjectContextMenuState {
@@ -557,6 +569,16 @@ interface ObjectContextMenuState {
   nodeId: string | null;
   documentPoint: { x: number; y: number } | null;
 }
+
+interface GridTrackContextMenuState {
+  left: number;
+  top: number;
+  nodeId: string;
+  axis: "column" | "row";
+  index: number;
+}
+
+type GridTrackContextMenuAction = "insert-before" | "insert-after" | "duplicate" | "delete";
 
 const RESIZE_HANDLES: ResizeHandle[] = [
   "top-left",
@@ -569,6 +591,7 @@ const MIN_RESIZE_SIZE = 1;
 const GRID_RESIZE_HANDLE_SIZE = 10;
 const GRID_ADD_CONTROL_SIZE = 22;
 const GRID_ADD_CONTROL_OFFSET = 8;
+const GRID_HEADER_CONTROL_OFFSET = GRID_ADD_CONTROL_SIZE * 2 + GRID_ADD_CONTROL_OFFSET * 2;
 const GRID_MIN_TRACK_SIZE = 1;
 const IMPORTED_IMAGE_MIN_DIMENSION = 96;
 const IMPORTED_IMAGE_MAX_DIMENSION = 480;
@@ -1219,6 +1242,7 @@ function createGridViewportOverlay(
   const lines: GridViewportLine[] = [];
   const handles: GridViewportHandle[] = [];
   const removeControls: GridViewportRemoveControl[] = [];
+  const headerControls: GridViewportHeaderControl[] = [];
   const addControls: GridViewportAddControl[] = [
     {
       id: "add-column",
@@ -1253,6 +1277,16 @@ function createGridViewportOverlay(
       { x: gridLeft + start + columnSizes[index], y: gridTop, space: "document" },
       viewport
     );
+    headerControls.push({
+      id: `column-header-${index + 1}`,
+      testId: `grid-column-header-${index + 1}`,
+      axis: "column",
+      index,
+      left: Math.round((startPoint.x + endPoint.x) / 2 - GRID_ADD_CONTROL_SIZE / 2),
+      top: Math.round(topLeft.y - GRID_HEADER_CONTROL_OFFSET),
+      label: String(index + 1),
+      title: `그리드 ${index + 1}열 메뉴`
+    });
     if (columns > 1) {
       removeControls.push({
         id: `remove-column-${index + 1}`,
@@ -1300,6 +1334,16 @@ function createGridViewportOverlay(
       { x: gridLeft, y: gridTop + start + rowSizes[index], space: "document" },
       viewport
     );
+    headerControls.push({
+      id: `row-header-${index + 1}`,
+      testId: `grid-row-header-${index + 1}`,
+      axis: "row",
+      index,
+      left: Math.round(topLeft.x - GRID_HEADER_CONTROL_OFFSET),
+      top: Math.round((startPoint.y + endPoint.y) / 2 - GRID_ADD_CONTROL_SIZE / 2),
+      label: String(index + 1),
+      title: `그리드 ${index + 1}행 메뉴`
+    });
     if (rows > 1) {
       removeControls.push({
         id: `remove-row-${index + 1}`,
@@ -1334,7 +1378,7 @@ function createGridViewportOverlay(
     }
   });
 
-  return { lines, handles, addControls, removeControls };
+  return { lines, handles, addControls, removeControls, headerControls };
 }
 
 function addFrameSpacingSegment(
@@ -1472,6 +1516,14 @@ function normalizeGridTrackForOverlay(track: GridTrack | undefined): GridTrack {
     return { type: "auto" };
   }
   return { type: "fr", value: Math.max(0.0001, finiteGridValue(track?.value, 1)) };
+}
+
+function duplicateGridTrackForOverlay(track: GridTrack): GridTrack {
+  if (track.type === "auto") {
+    return { type: "auto" };
+  }
+
+  return { type: track.type, value: track.value };
 }
 
 function finiteGridValue(value: number | undefined, fallback: number): number {
@@ -2911,6 +2963,7 @@ export function App() {
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
   const [inlineTextEditingNodeId, setInlineTextEditingNodeId] = useState<string | null>(null);
   const [objectContextMenu, setObjectContextMenu] = useState<ObjectContextMenuState | null>(null);
+  const [gridTrackContextMenu, setGridTrackContextMenu] = useState<GridTrackContextMenuState | null>(null);
   const editorRef = useRef<EditorState | null>(null);
   const objectClipboardRef = useRef<EditorNodeClipboard | null>(null);
   const styleClipboardRef = useRef<EditorNodeStyle | null>(null);
@@ -3107,6 +3160,24 @@ export function App() {
   const canUngroupContextSelection = Boolean(
     contextMenuNode && contextMenuNode.kind === "group" && !contextMenuNodeIsLocked
   );
+  const canDeleteGridTrackFromContextMenu = useMemo(() => {
+    if (!editor || !gridTrackContextMenu) {
+      return false;
+    }
+
+    const node = findNodeById(editor.document, gridTrackContextMenu.nodeId);
+    if (!node || (node.kind !== "frame" && node.kind !== "component")) {
+      return false;
+    }
+
+    const layout = normalizedInspectorLayout(node.layout);
+    if (layout.mode !== "grid") {
+      return false;
+    }
+
+    const { columns, rows } = gridViewportTrackCountsForOverlay(layout, node);
+    return gridTrackContextMenu.axis === "column" ? columns > 1 : rows > 1;
+  }, [editor, gridTrackContextMenu]);
   const canAlignSelection = selectedNodeIds.length >= 2;
   const canDistributeSelection = selectedNodeIds.length >= 3;
   const canAlignInspectorSelection = selectedNodeIds.length === 1 ? true : canAlignSelection;
@@ -3346,6 +3417,35 @@ export function App() {
       window.removeEventListener("keydown", closeFromEscape);
     };
   }, [objectContextMenu]);
+
+  useEffect(() => {
+    if (!gridTrackContextMenu) {
+      return undefined;
+    }
+
+    const closeFromPointer = (event: PointerEvent) => {
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.closest('[data-testid="grid-track-context-menu"]')
+      ) {
+        return;
+      }
+
+      setGridTrackContextMenu(null);
+    };
+    const closeFromEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setGridTrackContextMenu(null);
+      }
+    };
+
+    window.addEventListener("pointerdown", closeFromPointer);
+    window.addEventListener("keydown", closeFromEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeFromPointer);
+      window.removeEventListener("keydown", closeFromEscape);
+    };
+  }, [gridTrackContextMenu]);
 
   const normalizePresenceForOverlay = (
     nextPresence: CollaborationPresence[],
@@ -3833,6 +3933,7 @@ export function App() {
     event.cancelBubble = true;
     setInlineTextEditingNodeId(null);
     setMeasurementTargetNodeId(null);
+    setGridTrackContextMenu(null);
 
     if (!editor) {
       return;
@@ -4541,6 +4642,115 @@ export function App() {
         grid_row_tracks: tracks.filter((_, index) => index !== control.index)
       }
     });
+  };
+
+  const openGridTrackContextMenuFromHeader = (
+    control: GridViewportHeaderControl,
+    event: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!editor || !selectedNode || selectedNode.id !== editor.selection.nodeId) {
+      return;
+    }
+
+    setInlineTextEditingNodeId(null);
+    setMeasurementTargetNodeId(null);
+    setObjectContextMenu(null);
+    setGridTrackContextMenu({
+      ...objectContextMenuPosition(event.clientX, event.clientY),
+      nodeId: selectedNode.id,
+      axis: control.axis,
+      index: control.index
+    });
+  };
+
+  const layoutForGridTrackContextAction = (
+    state: EditorState,
+    menu: GridTrackContextMenuState,
+    action: GridTrackContextMenuAction
+  ): NodeLayout | null => {
+    const node = findNodeById(state.document, menu.nodeId);
+    if (
+      !node ||
+      isNodeLocked(node) ||
+      !isNodeVisible(node) ||
+      (node.kind !== "frame" && node.kind !== "component")
+    ) {
+      return null;
+    }
+
+    const layout = normalizedInspectorLayout(node.layout);
+    if (layout.mode !== "grid") {
+      return null;
+    }
+
+    const { columns, rows } = gridViewportTrackCountsForOverlay(layout, node);
+    const trackCount = menu.axis === "column" ? columns : rows;
+    if (menu.index < 0 || menu.index >= trackCount) {
+      return null;
+    }
+
+    const currentTracks =
+      menu.axis === "column"
+        ? resolveGridTracksForOverlay(layout.grid_column_tracks, columns)
+        : resolveGridTracksForOverlay(layout.grid_row_tracks, rows);
+    const selectedTrack = currentTracks[menu.index];
+    if (!selectedTrack) {
+      return null;
+    }
+
+    const nextTracks = (() => {
+      if (action === "delete") {
+        return currentTracks.length <= 1
+          ? null
+          : currentTracks.filter((_, index) => index !== menu.index);
+      }
+
+      const insertedTrack =
+        action === "duplicate" ? duplicateGridTrackForOverlay(selectedTrack) : ({ type: "fr", value: 1 } as const);
+      const insertionIndex = action === "insert-before" ? menu.index : menu.index + 1;
+      return [
+        ...currentTracks.slice(0, insertionIndex),
+        insertedTrack,
+        ...currentTracks.slice(insertionIndex)
+      ];
+    })();
+    if (!nextTracks) {
+      return null;
+    }
+
+    return menu.axis === "column"
+      ? {
+          ...layout,
+          grid_columns: nextTracks.length,
+          grid_column_tracks: nextTracks
+        }
+      : {
+          ...layout,
+          grid_rows: nextTracks.length,
+          grid_row_tracks: nextTracks
+        };
+  };
+
+  const applyGridTrackContextAction = (action: GridTrackContextMenuAction) => {
+    const currentEditor = editorRef.current;
+    if (!currentEditor || !gridTrackContextMenu) {
+      return;
+    }
+
+    const nextLayout = layoutForGridTrackContextAction(currentEditor, gridTrackContextMenu, action);
+    if (!nextLayout) {
+      setGridTrackContextMenu(null);
+      return;
+    }
+
+    dispatch({
+      type: "set_node_layout",
+      nodeId: gridTrackContextMenu.nodeId,
+      layout: nextLayout
+    });
+    setGridTrackContextMenu(null);
   };
 
   const startGridResize = (
@@ -6054,6 +6264,24 @@ export function App() {
                     }
                   />
                 ))}
+                {gridViewportOverlay.headerControls.map((control) => (
+                  <button
+                    key={control.id}
+                    type="button"
+                    className={`grid-track-header grid-track-header-${control.axis}`}
+                    data-testid={control.testId}
+                    aria-label={control.title}
+                    title={control.title}
+                    style={{
+                      left: control.left,
+                      top: control.top
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onContextMenu={(event) => openGridTrackContextMenuFromHeader(control, event)}
+                  >
+                    {control.label}
+                  </button>
+                ))}
                 {gridViewportOverlay.addControls.map((control) => (
                   <button
                     key={control.id}
@@ -6533,6 +6761,53 @@ export function App() {
               onClick={() => distributeContextSelection("vertical")}
             />
           </ContextMenuSection>
+        </div>
+      ) : null}
+      {gridTrackContextMenu ? (
+        <div
+          className="object-context-menu"
+          data-testid="grid-track-context-menu"
+          role="menu"
+          aria-label={gridTrackContextMenu.axis === "column" ? "그리드 열 메뉴" : "그리드 행 메뉴"}
+          onContextMenu={(event) => event.preventDefault()}
+          onMouseDown={(event) => event.stopPropagation()}
+          style={{ left: gridTrackContextMenu.left, top: gridTrackContextMenu.top }}
+        >
+          {gridTrackContextMenu.axis === "column" ? (
+            <ContextMenuSection label="열">
+              <ContextMenuItem label="열 복제" onClick={() => applyGridTrackContextAction("duplicate")} />
+              <ContextMenuItem
+                label="왼쪽에 열 추가"
+                onClick={() => applyGridTrackContextAction("insert-before")}
+              />
+              <ContextMenuItem
+                label="오른쪽에 열 추가"
+                onClick={() => applyGridTrackContextAction("insert-after")}
+              />
+              <ContextMenuItem
+                label="열 삭제"
+                disabled={!canDeleteGridTrackFromContextMenu}
+                onClick={() => applyGridTrackContextAction("delete")}
+              />
+            </ContextMenuSection>
+          ) : (
+            <ContextMenuSection label="행">
+              <ContextMenuItem label="행 복제" onClick={() => applyGridTrackContextAction("duplicate")} />
+              <ContextMenuItem
+                label="위에 행 추가"
+                onClick={() => applyGridTrackContextAction("insert-before")}
+              />
+              <ContextMenuItem
+                label="아래에 행 추가"
+                onClick={() => applyGridTrackContextAction("insert-after")}
+              />
+              <ContextMenuItem
+                label="행 삭제"
+                disabled={!canDeleteGridTrackFromContextMenu}
+                onClick={() => applyGridTrackContextAction("delete")}
+              />
+            </ContextMenuSection>
+          )}
         </div>
       ) : null}
       <input
