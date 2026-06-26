@@ -31,6 +31,7 @@ import {
 } from "@layo/collaboration";
 import { apiUrl } from "./api-base";
 import {
+  addCommentReply,
   createCommentThread,
   exportDesignTokensDtcg,
   importDesignTokensDtcg,
@@ -2855,13 +2856,16 @@ function Inspector({
   canEditTokens,
   commentThreads,
   commentBody,
+  commentReplyBodies,
   commentStatus,
   canComment,
   onTokenDtcgDraftChange,
   onExportTokensDtcg,
   onImportTokensDtcg,
   onCommentBodyChange,
+  onCommentReplyBodyChange,
   onCreateComment,
+  onCreateCommentReply,
   onResolveComment
 }: {
   selectedNode: RendererNode | null;
@@ -2886,13 +2890,16 @@ function Inspector({
   canEditTokens: boolean;
   commentThreads: CommentThread[];
   commentBody: string;
+  commentReplyBodies: Record<string, string>;
   commentStatus: string;
   canComment: boolean;
   onTokenDtcgDraftChange: (value: string) => void;
   onExportTokensDtcg: () => void;
   onImportTokensDtcg: () => void;
   onCommentBodyChange: (value: string) => void;
+  onCommentReplyBodyChange: (threadId: string, value: string) => void;
   onCreateComment: (nodeId: string) => void;
+  onCreateCommentReply: (threadId: string) => void;
   onResolveComment: (threadId: string) => void;
 }) {
   const tokenControls = (
@@ -3243,19 +3250,49 @@ function Inspector({
           ) : (
             commentThreads.map((thread) => (
               <li className="comment-row" key={thread.threadId}>
-                <span className="comment-summary">
-                  <strong>{thread.body}</strong>
-                  <span>
-                    {thread.nodeId} · {thread.authorName}
+                <div className="comment-row-header">
+                  <span className="comment-summary">
+                    <strong>{thread.body}</strong>
+                    <span>
+                      {thread.nodeId} · {thread.authorName}
+                    </span>
                   </span>
-                </span>
-                <button
-                  type="button"
-                  aria-label={`${thread.body} 해결`}
-                  onClick={() => onResolveComment(thread.threadId)}
-                >
-                  해결
-                </button>
+                  <button
+                    type="button"
+                    aria-label={`${thread.body} 해결`}
+                    onClick={() => onResolveComment(thread.threadId)}
+                  >
+                    해결
+                  </button>
+                </div>
+                {thread.replies.length > 0 ? (
+                  <ul className="comment-reply-list" data-testid="comment-reply-list">
+                    {thread.replies.map((reply) => (
+                      <li className="comment-reply" key={reply.replyId}>
+                        <strong>{reply.body}</strong>
+                        <span>{reply.authorName}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <div className="comment-reply-compose">
+                  <textarea
+                    className="comment-body-field comment-reply-body-field"
+                    data-testid="comment-reply-body"
+                    placeholder="답글 입력"
+                    value={commentReplyBodies[thread.threadId] ?? ""}
+                    onChange={(event) =>
+                      onCommentReplyBodyChange(thread.threadId, event.currentTarget.value)
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onCreateCommentReply(thread.threadId)}
+                    disabled={!canComment || !(commentReplyBodies[thread.threadId] ?? "").trim()}
+                  >
+                    답글 추가
+                  </button>
+                </div>
               </li>
             ))
           )}
@@ -3943,6 +3980,7 @@ export function App() {
   const [fileVersionStatus, setFileVersionStatus] = useState("버전 기록 대기 중");
   const [commentThreads, setCommentThreads] = useState<CommentThread[]>([]);
   const [commentBody, setCommentBody] = useState("");
+  const [commentReplyBodies, setCommentReplyBodies] = useState<Record<string, string>>({});
   const [commentStatus, setCommentStatus] = useState("코멘트 대기 중");
   const [tokenDtcgDraft, setTokenDtcgDraft] = useState("");
   const [tokenDtcgStatus, setTokenDtcgStatus] = useState("");
@@ -4026,6 +4064,7 @@ export function App() {
   const resetCommentThreads = (status = "코멘트 대기 중") => {
     setCommentThreads([]);
     setCommentBody("");
+    setCommentReplyBodies({});
     setCommentStatus(status);
   };
 
@@ -4037,6 +4076,7 @@ export function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "코멘트를 불러오지 못했습니다";
       setCommentThreads([]);
+      setCommentReplyBodies({});
       setCommentStatus(message);
     }
   };
@@ -6703,6 +6743,30 @@ export function App() {
     }
   };
 
+  const createSelectedNodeCommentReply = async (threadId: string) => {
+    if (!currentProject) {
+      setCommentStatus("프로젝트 없음");
+      return;
+    }
+    const body = (commentReplyBodies[threadId] ?? "").trim();
+    if (!body) {
+      setCommentStatus("답글 내용을 입력하세요");
+      return;
+    }
+
+    try {
+      await addCommentReply(currentProject.currentDocumentId, threadId, {
+        body,
+        authorName: "사용자"
+      });
+      setCommentReplyBodies((current) => ({ ...current, [threadId]: "" }));
+      await refreshCommentThreads(currentProject.currentDocumentId, "답글 추가됨");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "답글을 추가하지 못했습니다";
+      setCommentStatus(message);
+    }
+  };
+
   const resolveSelectedNodeComment = async (threadId: string) => {
     if (!currentProject) {
       setCommentStatus("프로젝트 없음");
@@ -8498,13 +8562,18 @@ export function App() {
         canEditTokens={Boolean(currentProject && editor)}
         commentThreads={selectedNodeCommentThreads}
         commentBody={commentBody}
+        commentReplyBodies={commentReplyBodies}
         commentStatus={commentStatus}
         canComment={Boolean(currentProject && editor && selectedNode)}
         onTokenDtcgDraftChange={setTokenDtcgDraft}
         onExportTokensDtcg={() => void exportCurrentDocumentTokensDtcg()}
         onImportTokensDtcg={() => void importCurrentDocumentTokensDtcg()}
         onCommentBodyChange={setCommentBody}
+        onCommentReplyBodyChange={(threadId, value) =>
+          setCommentReplyBodies((current) => ({ ...current, [threadId]: value }))
+        }
         onCreateComment={(nodeId) => void createSelectedNodeComment(nodeId)}
+        onCreateCommentReply={(threadId) => void createSelectedNodeCommentReply(threadId)}
         onResolveComment={(threadId) => void resolveSelectedNodeComment(threadId)}
         onGeometryChange={updateGeometry}
         onFillChange={(nodeId, fill) => dispatch({ type: "set_fill", nodeId, fill })}

@@ -164,6 +164,19 @@ export function createHttpServer(storage = new FileStorage(), options: HttpServe
     };
   });
 
+  server.post<{
+    Params: { fileId: string; threadId: string };
+    Body: { body: string; authorName?: string };
+  }>("/files/:fileId/comments/:threadId/replies", async (request) => {
+    return {
+      thread: await storage.addCommentReply(
+        request.params.fileId,
+        request.params.threadId,
+        request.body
+      )
+    };
+  });
+
   server.post<{ Params: { fileId: string; threadId: string } }>(
     "/files/:fileId/comments/:threadId/resolve",
     async (request) => {
