@@ -43,6 +43,7 @@ type GridAutoCell = GridCell & { nextCursor: number };
 function relayoutGridChildren(node: DesignNode, layout: NodeLayout, flowChildren: DesignNode[]): void {
   const columnGap = layout.column_gap ?? layout.gap;
   const rowGap = layout.row_gap ?? layout.gap;
+  const justifyItems = layout.justify_items ?? "start";
   let columns = gridTrackCount(layout.grid_column_tracks, layout.grid_columns, 2);
   let rows = gridTrackCount(layout.grid_row_tracks, layout.grid_rows, Math.max(1, Math.ceil(flowChildren.length / columns)));
   if (isVerticalLayoutDirection(layout.direction)) {
@@ -107,7 +108,7 @@ function relayoutGridChildren(node: DesignNode, layout: NodeLayout, flowChildren
     const innerWidth = Math.max(0, placementWidth - margin.left - margin.right);
     const innerHeight = Math.max(0, placementHeight - margin.top - margin.bottom);
 
-    if (layoutItem.width_sizing === "fill") {
+    if (layoutItem.width_sizing === "fill" || justifyItems === "stretch") {
       child.size.width = clampLayoutItemWidth(child, innerWidth);
     }
     if (layoutItem.height_sizing === "fill" || layout.align_items === "stretch") {
@@ -116,7 +117,7 @@ function relayoutGridChildren(node: DesignNode, layout: NodeLayout, flowChildren
 
     child.transform = {
       ...child.transform,
-      x: layout.padding.left + columnStarts[column] + margin.left + gridAxisOffset(layout.justify_content, innerWidth, child.size.width),
+      x: layout.padding.left + columnStarts[column] + margin.left + gridAxisOffset(justifyItems, innerWidth, child.size.width),
       y: layout.padding.top + rowStarts[row] + margin.top + gridAxisOffset(layout.align_items, innerHeight, child.size.height)
     };
   });
@@ -529,6 +530,7 @@ export function normalizeNodeLayout(layout: NodeLayout): NodeLayout {
   const direction = normalizeLayoutDirection(layout.direction);
   const wrap = isLayoutWrap(layout.wrap) ? layout.wrap : "nowrap";
   const alignContent = isLayoutAlignContent(layout.align_content) ? layout.align_content : "start";
+  const justifyItems = isLayoutJustifyItems(layout.justify_items) ? layout.justify_items : "start";
   const widthSizing = isLayoutSizing(layout.width_sizing) ? layout.width_sizing : "fixed";
   const heightSizing = isLayoutSizing(layout.height_sizing) ? layout.height_sizing : "fixed";
   const minWidth = normalizeMinSizeLimit(layout.min_width);
@@ -549,6 +551,7 @@ export function normalizeNodeLayout(layout: NodeLayout): NodeLayout {
     ...(wrap === "wrap" ? { wrap } : {}),
     align_items: isLayoutAlignItems(layout.align_items) ? layout.align_items : "start",
     justify_content: isLayoutJustifyContent(layout.justify_content) ? layout.justify_content : "start",
+    ...(mode === "grid" && justifyItems !== "start" ? { justify_items: justifyItems } : {}),
     ...(wrap === "wrap" || alignContent !== "start" ? { align_content: alignContent } : {}),
     ...(widthSizing === "fit" ? { width_sizing: widthSizing } : {}),
     ...(heightSizing === "fit" ? { height_sizing: heightSizing } : {}),
@@ -924,7 +927,7 @@ function gridCellKey(cell: GridCell): string {
 }
 
 function gridAxisOffset(
-  alignment: NodeLayout["align_items"] | NodeLayout["justify_content"],
+  alignment: NodeLayout["align_items"] | NodeLayout["justify_content"] | NonNullable<NodeLayout["justify_items"]>,
   available: number,
   size: number
 ): number {
@@ -948,6 +951,10 @@ function isLayoutAlignItems(value: string): value is NodeLayout["align_items"] {
 
 function isLayoutJustifyContent(value: string): value is NodeLayout["justify_content"] {
   return ["start", "center", "end", "space_between", "space_around", "space_evenly"].includes(value);
+}
+
+function isLayoutJustifyItems(value: string | undefined): value is NonNullable<NodeLayout["justify_items"]> {
+  return value === "start" || value === "center" || value === "end" || value === "stretch";
 }
 
 function isLayoutAlignContent(value: string | undefined): value is NonNullable<NodeLayout["align_content"]> {

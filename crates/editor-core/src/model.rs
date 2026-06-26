@@ -101,6 +101,8 @@ pub struct NodeLayout {
     pub align_items: LayoutAlignItems,
     #[serde(default = "default_layout_justify_content")]
     pub justify_content: LayoutJustifyContent,
+    #[serde(default = "default_layout_justify_items")]
+    pub justify_items: LayoutJustifyItems,
     #[serde(default = "default_layout_align_content")]
     pub align_content: LayoutAlignContent,
     #[serde(default = "default_layout_sizing", skip_serializing_if = "is_fixed_layout_sizing")]
@@ -268,6 +270,16 @@ pub enum LayoutJustifyContent {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
 #[serde(rename_all = "snake_case")]
 #[ts(export)]
+pub enum LayoutJustifyItems {
+    Start,
+    Center,
+    End,
+    Stretch,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
 pub enum LayoutAlignContent {
     Start,
     Center,
@@ -295,6 +307,10 @@ fn default_layout_align_items() -> LayoutAlignItems {
 
 fn default_layout_justify_content() -> LayoutJustifyContent {
     LayoutJustifyContent::Start
+}
+
+fn default_layout_justify_items() -> LayoutJustifyItems {
+    LayoutJustifyItems::Start
 }
 
 fn default_layout_align_content() -> LayoutAlignContent {

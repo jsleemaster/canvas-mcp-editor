@@ -24,6 +24,7 @@ export interface NodeLayout {
   wrap?: "nowrap" | "wrap";
   align_items: "start" | "center" | "end" | "stretch";
   justify_content: "start" | "center" | "end" | "space_between" | "space_around" | "space_evenly";
+  justify_items?: "start" | "center" | "end" | "stretch";
   align_content?: "start" | "center" | "end" | "space_between" | "space_around" | "space_evenly";
   width_sizing?: "fixed" | "fit";
   height_sizing?: "fixed" | "fit";

@@ -73,6 +73,7 @@ fn layout_metadata_round_trips_through_json() {
                 "wrap": "wrap",
                 "align_items": "center",
                 "justify_content": "space_between",
+                "justify_items": "stretch",
                 "align_content": "space_around",
                 "width_sizing": "fit",
                 "height_sizing": "fit",
@@ -165,6 +166,10 @@ fn layout_metadata_round_trips_through_json() {
         editor_core::LayoutJustifyContent::SpaceBetween
     );
     assert_eq!(
+        frame.layout.as_ref().unwrap().justify_items,
+        editor_core::LayoutJustifyItems::Stretch
+    );
+    assert_eq!(
         frame.layout.as_ref().unwrap().align_content,
         editor_core::LayoutAlignContent::SpaceAround
     );
@@ -229,6 +234,7 @@ fn layout_metadata_round_trips_through_json() {
     assert!(json.contains("\"grid_column_tracks\""));
     assert!(json.contains("\"grid_row_tracks\""));
     assert!(json.contains("\"grid_areas\""));
+    assert!(json.contains("\"justify_items\":\"stretch\""));
     assert!(json.contains("\"name\":\"hero\""));
     assert!(json.contains("\"grid_area\":\"hero\""));
     assert!(json.contains("\"type\":\"px\""));
@@ -280,6 +286,7 @@ fn legacy_layout_metadata_defaults_alignment_fields() {
         layout.justify_content,
         editor_core::LayoutJustifyContent::Start
     );
+    assert_eq!(layout.justify_items, editor_core::LayoutJustifyItems::Start);
     assert_eq!(layout.width_sizing, editor_core::LayoutSizing::Fixed);
     assert_eq!(layout.height_sizing, editor_core::LayoutSizing::Fixed);
     assert_eq!(layout.row_gap, None);

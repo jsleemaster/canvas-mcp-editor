@@ -9,7 +9,7 @@ pub use geometry::{Bounds, Point, Size, Transform};
 pub use model::{
     ComponentDefinition, ComponentInstance, ComponentOverride, ComponentProperty, ComponentVariant,
     DesignFile, GridArea, GridTrack, GridTrackType, HorizontalConstraint, LayoutAlignContent, LayoutAlignItems,
-    LayoutDirection, LayoutItemPosition, LayoutItemSizing, LayoutJustifyContent, LayoutMode,
+    LayoutDirection, LayoutItemPosition, LayoutItemSizing, LayoutJustifyContent, LayoutJustifyItems, LayoutMode,
     LayoutPadding, LayoutSizing, LayoutWrap,
     Node, NodeConstraints, NodeContent, NodeKind, NodeLayout, NodeLayoutItem, Page, Style,
     VerticalConstraint,

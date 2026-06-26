@@ -75,6 +75,7 @@ Use this order when entering the repo:
 
 | Plan | Status | Evidence |
 | --- | --- | --- |
+| `2026-06-26-penpot-grid-justify-items-stretch.md` | Completed | Added Penpot-like container-level grid horizontal item alignment with `justify_items: stretch`. The field is now in renderer/server/Rust layout contracts, MCP `set_layout`, web/server grid solvers, structured export metadata, and a grid-only inspector select. Verified with RED/GREEN web and server tests, Rust JSON round-trip/default tests, focused Playwright CLI, and Playwright API-log interaction proof. Per-item self alignment, baseline alignment, and deeper resizing semantics remain later maturity gaps. |
 | `2026-06-26-vercel-fullstack-deployment.md` | Waiting on external Vercel deployment credentials | Vercel full-stack routing merged in PR #95 and the incorrect GitHub About homepage was removed. A real Vercel deployment URL is still unavailable because this workstation has no Vercel CLI token/login, repo secrets, `.vercel` project link, or connector action capable of creating/deploying the project. |
 
 ## Handoff Plan
