@@ -753,6 +753,35 @@ export function createMcpServer(storage = new FileStorage()) {
   );
 
   server.registerTool(
+    "add_comment_reply",
+    {
+      description: "Add a reply to one selected-node comment thread for a Layo design file.",
+      annotations: writeToolAnnotations,
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files"),
+        threadId: z.string().describe("Comment thread id returned by list_comment_threads"),
+        body: z.string().describe("Reply body"),
+        authorName: z.string().optional().describe("Display name for the reply author")
+      }
+    },
+    async ({ fileId, threadId, body, authorName }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              thread: await storage.addCommentReply(fileId, threadId, { body, authorName })
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
     "import_design_tokens",
     {
       description: "Import W3C/DTCG design tokens into a saved Layo document.",

@@ -1,6 +1,6 @@
 # Team Collaboration Roadmap
 
-Last checked: 2026-06-18
+Last checked: 2026-06-27
 
 This roadmap describes how Layo should support team formation and
 shared project work while staying local-first and team-owned. It complements the
@@ -34,6 +34,8 @@ deployment details in `docs/deployment/collaboration.md`.
 - Selected-node comment threads persist in local sidecar storage, can be
   created/resolved from the Inspector, and show unresolved viewport bubbles on
   the commented canvas object.
+- Selected-node comment threads support persisted replies through storage,
+  HTTP, MCP, web API helpers, and the Inspector.
 
 ## Phase 1: Local Team Creation
 
@@ -121,9 +123,9 @@ Exit criteria:
 ## Later Team Features
 
 - Invite links and one-time join flows.
-- Replies, mentions, unread notifications, live comment sync, and dashboard
-  notifications beyond the landed selected-node comment thread and viewport
-  bubble foundation.
+- Mentions, unread notifications, live comment sync, and dashboard
+  notifications beyond the landed selected-node comment thread, reply, and
+  viewport bubble foundation.
 - Named checkpoints and activity history.
 - Branch, review, and merge flows for design changes.
 - Document-level permission policies beyond relay connection roles.

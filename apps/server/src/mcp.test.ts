@@ -423,8 +423,27 @@ describe("MCP AI editing workflow", () => {
       nodeId: "text-1",
       nodeName: "헤드라인",
       body: "문구 확인 필요",
+      replies: [],
       resolvedAt: null
     });
+
+    const replied = parseToolJson(
+      await client.callTool({
+        name: "add_comment_reply",
+        arguments: {
+          fileId: "comment-file",
+          threadId: created.thread.threadId,
+          body: "문구를 더 짧게 줄였어요",
+          authorName: "개발 팀"
+        }
+      })
+    );
+    expect(replied.thread.replies).toEqual([
+      expect.objectContaining({
+        body: "문구를 더 짧게 줄였어요",
+        authorName: "개발 팀"
+      })
+    ]);
 
     const listed = parseToolJson(
       await client.callTool({
@@ -433,6 +452,9 @@ describe("MCP AI editing workflow", () => {
       })
     );
     expect(listed.threads.map((thread: { body: string }) => thread.body)).toEqual(["문구 확인 필요"]);
+    expect(listed.threads[0].replies.map((reply: { body: string }) => reply.body)).toEqual([
+      "문구를 더 짧게 줄였어요"
+    ]);
 
     const resolved = parseToolJson(
       await client.callTool({

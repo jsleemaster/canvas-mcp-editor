@@ -309,12 +309,32 @@ describe("HTTP server", () => {
       nodeName: "헤드라인",
       body: "문구 확인 필요",
       authorName: "디자인 팀",
+      replies: [],
       resolvedAt: null
     });
+
+    const replied = await server.inject({
+      method: "POST",
+      url: `/files/sample-file/comments/${created.json().thread.threadId}/replies`,
+      payload: {
+        body: "문구를 더 짧게 줄였어요",
+        authorName: "개발 팀"
+      }
+    });
+    expect(replied.statusCode).toBe(200);
+    expect(replied.json().thread.replies).toEqual([
+      expect.objectContaining({
+        body: "문구를 더 짧게 줄였어요",
+        authorName: "개발 팀"
+      })
+    ]);
 
     const listed = await server.inject({ method: "GET", url: "/files/sample-file/comments" });
     expect(listed.statusCode).toBe(200);
     expect(listed.json().threads.map((thread: { body: string }) => thread.body)).toEqual(["문구 확인 필요"]);
+    expect(listed.json().threads[0].replies.map((reply: { body: string }) => reply.body)).toEqual([
+      "문구를 더 짧게 줄였어요"
+    ]);
 
     const resolved = await server.inject({
       method: "POST",

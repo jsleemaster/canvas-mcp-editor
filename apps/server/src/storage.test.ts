@@ -184,6 +184,7 @@ describe("FileStorage", () => {
       nodeName: "헤드라인",
       body: "문구 확인 필요",
       authorName: "디자인 팀",
+      replies: [],
       resolvedAt: null
     });
     expect(created.threadId).toMatch(/^comment-/);
@@ -202,6 +203,36 @@ describe("FileStorage", () => {
     expect(await storage.listCommentThreads("sample-file", { includeResolved: true })).toHaveLength(1);
   });
 
+  test("comment threads keep replies in the sidecar store", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+
+    const created = await storage.createCommentThread("sample-file", {
+      nodeId: "text-1",
+      body: "문구 확인 필요",
+      authorName: "디자인 팀"
+    });
+    const replied = await storage.addCommentReply("sample-file", created.threadId, {
+      body: "문구를 더 짧게 줄였어요",
+      authorName: "개발 팀"
+    });
+
+    expect(replied.replies).toHaveLength(1);
+    expect(replied.replies[0]).toMatchObject({
+      schemaVersion: 1,
+      body: "문구를 더 짧게 줄였어요",
+      authorName: "개발 팀",
+      createdAt: expect.any(String)
+    });
+    expect(replied.replies[0].replyId).toMatch(/^reply-/);
+    expect(await storage.listCommentThreads("sample-file")).toEqual([replied]);
+
+    const sidecar = JSON.parse(await readFile(path.join(tempRoot, "comments", "sample-file.json"), "utf8"));
+    expect(sidecar.threads[0].replies.map((reply: { body: string }) => reply.body)).toEqual([
+      "문구를 더 짧게 줄였어요"
+    ]);
+  });
+
   test("comment threads reject a missing body with a validation error", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
     const storage = await storageWithDocument(tempRoot);
@@ -209,6 +240,22 @@ describe("FileStorage", () => {
     await expect(
       storage.createCommentThread("sample-file", {
         nodeId: "text-1",
+        body: undefined as unknown as string
+      })
+    ).rejects.toThrow("comment body is required");
+  });
+
+  test("comment replies reject a missing body with a validation error", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+
+    const created = await storage.createCommentThread("sample-file", {
+      nodeId: "text-1",
+      body: "문구 확인 필요"
+    });
+
+    await expect(
+      storage.addCommentReply("sample-file", created.threadId, {
         body: undefined as unknown as string
       })
     ).rejects.toThrow("comment body is required");

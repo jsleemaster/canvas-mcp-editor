@@ -232,10 +232,24 @@ export interface StoredCommentThread {
   authorName: string;
   createdAt: string;
   resolvedAt: string | null;
+  replies: StoredCommentReply[];
+}
+
+export interface StoredCommentReply {
+  schemaVersion: 1;
+  replyId: string;
+  body: string;
+  authorName: string;
+  createdAt: string;
 }
 
 export interface CreateCommentThreadInput {
   nodeId: string;
+  body: string;
+  authorName?: string;
+}
+
+export interface CreateCommentReplyInput {
   body: string;
   authorName?: string;
 }
@@ -765,7 +779,8 @@ export class FileStorage {
       body: normalizeCommentBody(input.body),
       authorName: normalizeName(input.authorName, "사용자"),
       createdAt: now,
-      resolvedAt: null
+      resolvedAt: null,
+      replies: []
     };
     const store = await this.readCommentThreadFile(fileId);
     await this.writeCommentThreadFile({
@@ -773,6 +788,39 @@ export class FileStorage {
       threads: [thread, ...store.threads]
     });
     return thread;
+  }
+
+  async addCommentReply(
+    fileId: string,
+    threadId: string,
+    input: CreateCommentReplyInput
+  ): Promise<StoredCommentThread> {
+    assertSafeStorageId(threadId);
+    await this.readFile(fileId);
+    const store = await this.readCommentThreadFile(fileId);
+    const thread = store.threads.find((candidate) => candidate.threadId === threadId);
+    if (!thread) {
+      throw new Error(`comment thread not found: ${threadId}`);
+    }
+
+    const reply: StoredCommentReply = {
+      schemaVersion: 1,
+      replyId: createStorageId("reply"),
+      body: normalizeCommentBody(input.body),
+      authorName: normalizeName(input.authorName, "사용자"),
+      createdAt: new Date().toISOString()
+    };
+    const repliedThread: StoredCommentThread = {
+      ...thread,
+      replies: [...thread.replies, reply]
+    };
+    await this.writeCommentThreadFile({
+      ...store,
+      threads: store.threads.map((candidate) =>
+        candidate.threadId === threadId ? repliedThread : candidate
+      )
+    });
+    return repliedThread;
   }
 
   async resolveCommentThread(fileId: string, threadId: string): Promise<StoredCommentThread> {
@@ -1408,7 +1456,30 @@ function parseStoredCommentThread(input: unknown, expectedFileId: string): Store
     body: normalizeCommentBody(candidate.body),
     authorName: normalizeName(candidate.authorName, "사용자"),
     createdAt: normalizeName(candidate.createdAt, new Date(0).toISOString()),
-    resolvedAt: candidate.resolvedAt ? normalizeName(candidate.resolvedAt, "") : null
+    resolvedAt: candidate.resolvedAt ? normalizeName(candidate.resolvedAt, "") : null,
+    replies: Array.isArray(candidate.replies)
+      ? candidate.replies.map((reply) => parseStoredCommentReply(reply))
+      : []
+  };
+}
+
+function parseStoredCommentReply(input: unknown): StoredCommentReply {
+  if (!input || typeof input !== "object") {
+    throw new Error("invalid comment reply");
+  }
+
+  const candidate = input as StoredCommentReply;
+  if (candidate.schemaVersion !== 1) {
+    throw new Error(`unsupported comment reply schema: ${String(candidate.schemaVersion)}`);
+  }
+  assertSafeStorageId(candidate.replyId);
+
+  return {
+    schemaVersion: 1,
+    replyId: candidate.replyId,
+    body: normalizeCommentBody(candidate.body),
+    authorName: normalizeName(candidate.authorName, "사용자"),
+    createdAt: normalizeName(candidate.createdAt, new Date(0).toISOString())
   };
 }
 

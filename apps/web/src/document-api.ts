@@ -32,10 +32,24 @@ export interface CommentThread {
   authorName: string;
   createdAt: string;
   resolvedAt: string | null;
+  replies: CommentReply[];
+}
+
+export interface CommentReply {
+  schemaVersion: 1;
+  replyId: string;
+  body: string;
+  authorName: string;
+  createdAt: string;
 }
 
 export interface CreateCommentThreadInput {
   nodeId: string;
+  body: string;
+  authorName?: string;
+}
+
+export interface CreateCommentReplyInput {
   body: string;
   authorName?: string;
 }
@@ -136,6 +150,21 @@ export async function createCommentThread(
   fetcher: typeof fetch = fetch
 ): Promise<CommentThread> {
   const response = await fetcher(apiUrl(`/files/${fileId}/comments`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  const payload = await readDocumentJson(response);
+  return (payload as { thread: CommentThread }).thread;
+}
+
+export async function addCommentReply(
+  fileId: string,
+  threadId: string,
+  input: CreateCommentReplyInput,
+  fetcher: typeof fetch = fetch
+): Promise<CommentThread> {
+  const response = await fetcher(apiUrl(`/files/${fileId}/comments/${threadId}/replies`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input)

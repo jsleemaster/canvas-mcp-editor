@@ -1317,6 +1317,38 @@ test("comments panel creates and resolves a selected-layer thread", async ({ pag
   });
 });
 
+test("comments panel adds replies to a selected-layer thread", async ({ page }) => {
+  const { documentId } = await createProjectFromEmptyState(page);
+
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await page.getByTestId("comment-body").fill("문구 확인 필요");
+  await page.getByRole("button", { name: "코멘트 추가" }).click();
+  await expect(page.getByTestId("comment-status")).toContainText("코멘트 추가됨");
+
+  await page.getByTestId("comment-reply-body").fill("문구를 더 짧게 줄였어요");
+  await page.getByRole("button", { name: "답글 추가" }).click();
+  await expect(page.getByTestId("comment-status")).toContainText("답글 추가됨");
+  await expect(page.getByTestId("comment-list")).toContainText("문구를 더 짧게 줄였어요");
+  await expect(page.getByTestId("comment-list")).toContainText("사용자");
+
+  await expect
+    .poll(async () => {
+      const response = await page.request.get(
+        `http://127.0.0.1:4317/files/${documentId}/comments?includeResolved=true`
+      );
+      if (!response.ok()) {
+        return "";
+      }
+      const threads = (await response.json()).threads as Array<{
+        body: string;
+        replies: Array<{ body: string; authorName: string }>;
+      }>;
+      const thread = threads.find((candidate) => candidate.body === "문구 확인 필요");
+      return thread?.replies[0]?.body ?? "";
+    })
+    .toBe("문구를 더 짧게 줄였어요");
+});
+
 test("canvas comment bubbles open selected-layer threads and disappear after resolve", async ({ page }) => {
   await createProjectFromEmptyState(page);
 
