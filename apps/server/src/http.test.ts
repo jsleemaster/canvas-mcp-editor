@@ -353,6 +353,76 @@ describe("HTTP server", () => {
     expect(all.json().threads).toHaveLength(1);
   });
 
+  test("serves comment mentions and viewer read state routes", async () => {
+    const server = await createServerWithDocument();
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/comments",
+      payload: {
+        nodeId: "text-1",
+        body: "@민지 문구 확인 필요",
+        authorName: "디자인 팀"
+      }
+    });
+    expect(created.statusCode).toBe(200);
+    expect(created.json().thread).toMatchObject({
+      mentions: ["민지"],
+      readBy: ["디자인 팀"]
+    });
+
+    const unread = await server.inject({
+      method: "GET",
+      url: "/files/sample-file/comments?viewerId=%EC%82%AC%EC%9A%A9%EC%9E%90"
+    });
+    expect(unread.statusCode).toBe(200);
+    expect(unread.json().threads).toEqual([
+      expect.objectContaining({
+        threadId: created.json().thread.threadId,
+        unread: true
+      })
+    ]);
+
+    const read = await server.inject({
+      method: "POST",
+      url: `/files/sample-file/comments/${created.json().thread.threadId}/read`,
+      payload: { viewerId: "사용자" }
+    });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().thread).toMatchObject({
+      threadId: created.json().thread.threadId,
+      readBy: ["디자인 팀", "사용자"],
+      unread: false
+    });
+
+    const replied = await server.inject({
+      method: "POST",
+      url: `/files/sample-file/comments/${created.json().thread.threadId}/replies`,
+      payload: {
+        body: "@민지 수정했어요",
+        authorName: "개발 팀"
+      }
+    });
+    expect(replied.statusCode).toBe(200);
+    expect(replied.json().thread).toMatchObject({
+      readBy: ["개발 팀"],
+      replies: [
+        expect.objectContaining({
+          mentions: ["민지"]
+        })
+      ]
+    });
+
+    const unreadAfterReply = await server.inject({
+      method: "GET",
+      url: "/files/sample-file/comments?viewerId=%EC%82%AC%EC%9A%A9%EC%9E%90"
+    });
+    expect(unreadAfterReply.json().threads[0]).toMatchObject({
+      threadId: created.json().thread.threadId,
+      unread: true
+    });
+  });
+
   test("updates image node assets and persists replacement metadata", async () => {
     const server = await createServerWithDocument();
 

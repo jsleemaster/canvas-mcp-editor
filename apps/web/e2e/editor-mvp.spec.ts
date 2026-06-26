@@ -1349,6 +1349,43 @@ test("comments panel adds replies to a selected-layer thread", async ({ page }) 
     .toBe("문구를 더 짧게 줄였어요");
 });
 
+test("comments panel shows mentions and marks unread threads read", async ({ page }) => {
+  const { documentId } = await createProjectFromEmptyState(page);
+
+  const created = await page.request.post(`http://127.0.0.1:4317/files/${documentId}/comments`, {
+    data: {
+      nodeId: "text-1",
+      body: "@민지 문구 확인 필요",
+      authorName: "디자인 팀"
+    }
+  });
+  expect(created.ok()).toBeTruthy();
+  const threadId = (await created.json()).thread.threadId as string;
+
+  await page.reload();
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await expect(page.getByTestId("comment-list")).toContainText("@민지 문구 확인 필요");
+  await expect(page.getByTestId("comment-list")).toContainText("언급 민지");
+  await expect(page.getByTestId("comment-list")).toContainText("읽지 않음");
+  await expect(page.getByTestId("comment-status")).toContainText("1개 읽지 않은 코멘트");
+
+  await page.getByRole("button", { name: "읽음 처리" }).click();
+  await expect(page.getByTestId("comment-status")).toContainText("코멘트 읽음");
+  await expect(page.getByTestId("comment-list")).not.toContainText("읽지 않음");
+
+  const readResponse = await page.request.get(
+    `http://127.0.0.1:4317/files/${documentId}/comments?viewerId=${encodeURIComponent("사용자")}`
+  );
+  expect(readResponse.ok()).toBeTruthy();
+  const readThread = (await readResponse.json()).threads.find(
+    (thread: { threadId: string }) => thread.threadId === threadId
+  );
+  expect(readThread).toMatchObject({
+    unread: false,
+    readBy: ["디자인 팀", "사용자"]
+  });
+});
+
 test("canvas comment bubbles open selected-layer threads and disappear after resolve", async ({ page }) => {
   await createProjectFromEmptyState(page);
 

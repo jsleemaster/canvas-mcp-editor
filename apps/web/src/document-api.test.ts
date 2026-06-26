@@ -4,6 +4,7 @@ import {
   createCommentThread,
   listCommentThreads,
   listFileVersions,
+  markCommentThreadRead,
   parseDocumentPayload,
   readFileVersion,
   resolveCommentThread,
@@ -157,6 +158,8 @@ describe("comment API helpers", () => {
             body: "문구 확인 필요",
             authorName: "디자인 팀",
             createdAt: "2026-06-27T00:00:00.000Z",
+            mentions: [],
+            readBy: ["디자인 팀"],
             resolvedAt: null
           }
         });
@@ -171,6 +174,8 @@ describe("comment API helpers", () => {
             body: "문구 확인 필요",
             authorName: "디자인 팀",
             createdAt: "2026-06-27T00:00:00.000Z",
+            mentions: [],
+            readBy: ["디자인 팀"],
             replies: [],
             resolvedAt: "2026-06-27T00:01:00.000Z"
           }
@@ -191,26 +196,68 @@ describe("comment API helpers", () => {
             body: "문구 확인 필요",
             authorName: "디자인 팀",
             createdAt: "2026-06-27T00:00:00.000Z",
+            mentions: [],
+            readBy: ["디자인 팀"],
             replies: [
               {
                 replyId: "reply-1",
                 body: "문구를 더 짧게 줄였어요",
                 authorName: "개발 팀",
-                createdAt: "2026-06-27T00:02:00.000Z"
+                createdAt: "2026-06-27T00:02:00.000Z",
+                mentions: []
               }
             ],
             resolvedAt: null
           }
         });
       }
+      if (pathname === "/files/sample-file/comments/comment-1/read" && init?.method === "POST") {
+        expect(init.headers).toEqual({ "Content-Type": "application/json" });
+        expect(JSON.parse(String(init.body))).toEqual({ viewerId: "사용자" });
+        return jsonResponse({
+          thread: {
+            threadId: "comment-1",
+            fileId: "sample-file",
+            nodeId: "text-1",
+            nodeName: "헤드라인",
+            body: "문구 확인 필요",
+            authorName: "디자인 팀",
+            createdAt: "2026-06-27T00:00:00.000Z",
+            mentions: ["민지"],
+            readBy: ["디자인 팀", "사용자"],
+            replies: [],
+            resolvedAt: null,
+            unread: false
+          }
+        });
+      }
       if (pathname === "/files/sample-file/comments") {
-        return jsonResponse({ threads: [{ threadId: "comment-1", body: "문구 확인 필요", replies: [] }] });
+        expect(new URL(String(url), "http://127.0.0.1:4317").searchParams.get("viewerId")).toBe("사용자");
+        return jsonResponse({
+          threads: [
+            {
+              threadId: "comment-1",
+              body: "@민지 문구 확인 필요",
+              replies: [],
+              mentions: ["민지"],
+              readBy: ["디자인 팀"],
+              unread: true
+            }
+          ]
+        });
       }
       return new Response("not found", { status: 404 });
     };
 
-    await expect(listCommentThreads("sample-file", false, fetcher as typeof fetch)).resolves.toEqual([
-      { threadId: "comment-1", body: "문구 확인 필요", replies: [] }
+    await expect(listCommentThreads("sample-file", false, fetcher as typeof fetch, "사용자")).resolves.toEqual([
+      {
+        threadId: "comment-1",
+        body: "@민지 문구 확인 필요",
+        replies: [],
+        mentions: ["민지"],
+        readBy: ["디자인 팀"],
+        unread: true
+      }
     ]);
     await expect(
       createCommentThread(
@@ -238,11 +285,19 @@ describe("comment API helpers", () => {
       threadId: "comment-1",
       replies: [expect.objectContaining({ body: "문구를 더 짧게 줄였어요" })]
     });
+    await expect(
+      markCommentThreadRead("sample-file", "comment-1", "사용자", fetcher as typeof fetch)
+    ).resolves.toMatchObject({
+      threadId: "comment-1",
+      unread: false,
+      readBy: ["디자인 팀", "사용자"]
+    });
     expect(calls.map((call) => [call.url, call.init?.method ?? "GET"])).toEqual([
-      [expect.stringContaining("/files/sample-file/comments"), "GET"],
+      [expect.stringContaining("/files/sample-file/comments?viewerId="), "GET"],
       [expect.stringContaining("/files/sample-file/comments"), "POST"],
       [expect.stringContaining("/files/sample-file/comments/comment-1/resolve"), "POST"],
-      [expect.stringContaining("/files/sample-file/comments/comment-1/replies"), "POST"]
+      [expect.stringContaining("/files/sample-file/comments/comment-1/replies"), "POST"],
+      [expect.stringContaining("/files/sample-file/comments/comment-1/read"), "POST"]
     ]);
   });
 });

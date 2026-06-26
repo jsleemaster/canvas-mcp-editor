@@ -37,6 +37,7 @@ import {
   importDesignTokensDtcg,
   listCommentThreads,
   listFileVersions,
+  markCommentThreadRead,
   parseDocumentPayload,
   readFileVersion,
   restoreFileVersion,
@@ -139,6 +140,8 @@ import {
   shouldPublishCursor,
   type PublishedCursor
 } from "./collaboration/remote-overlays";
+
+const LOCAL_COMMENT_VIEWER_ID = "사용자";
 
 function numericInputValue(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
@@ -2866,7 +2869,8 @@ function Inspector({
   onCommentReplyBodyChange,
   onCreateComment,
   onCreateCommentReply,
-  onResolveComment
+  onResolveComment,
+  onMarkCommentRead
 }: {
   selectedNode: RendererNode | null;
   selectedParentNode: RendererNode | null;
@@ -2901,6 +2905,7 @@ function Inspector({
   onCreateComment: (nodeId: string) => void;
   onCreateCommentReply: (threadId: string) => void;
   onResolveComment: (threadId: string) => void;
+  onMarkCommentRead: (threadId: string) => void;
 }) {
   const tokenControls = (
     <InspectorTokenControls
@@ -3256,14 +3261,31 @@ function Inspector({
                     <span>
                       {thread.nodeId} · {thread.authorName}
                     </span>
+                    {thread.mentions.length > 0 ? (
+                      <span className="comment-mentions">
+                        {thread.mentions.map((mention) => (
+                          <span className="comment-mention" key={mention}>
+                            언급 {mention}
+                          </span>
+                        ))}
+                      </span>
+                    ) : null}
+                    {thread.unread ? <span className="comment-unread-badge">읽지 않음</span> : null}
                   </span>
-                  <button
-                    type="button"
-                    aria-label={`${thread.body} 해결`}
-                    onClick={() => onResolveComment(thread.threadId)}
-                  >
-                    해결
-                  </button>
+                  <span className="comment-row-actions">
+                    {thread.unread ? (
+                      <button type="button" onClick={() => onMarkCommentRead(thread.threadId)}>
+                        읽음 처리
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      aria-label={`${thread.body} 해결`}
+                      onClick={() => onResolveComment(thread.threadId)}
+                    >
+                      해결
+                    </button>
+                  </span>
                 </div>
                 {thread.replies.length > 0 ? (
                   <ul className="comment-reply-list" data-testid="comment-reply-list">
@@ -3271,6 +3293,15 @@ function Inspector({
                       <li className="comment-reply" key={reply.replyId}>
                         <strong>{reply.body}</strong>
                         <span>{reply.authorName}</span>
+                        {reply.mentions.length > 0 ? (
+                          <span className="comment-mentions">
+                            {reply.mentions.map((mention) => (
+                              <span className="comment-mention" key={mention}>
+                                언급 {mention}
+                              </span>
+                            ))}
+                          </span>
+                        ) : null}
                       </li>
                     ))}
                   </ul>
@@ -4070,9 +4101,17 @@ export function App() {
 
   const refreshCommentThreads = async (fileId: string, status?: string) => {
     try {
-      const threads = await listCommentThreads(fileId);
+      const threads = await listCommentThreads(fileId, false, fetch, LOCAL_COMMENT_VIEWER_ID);
+      const unreadCount = threads.filter((thread) => thread.unread).length;
       setCommentThreads(threads);
-      setCommentStatus(status ?? (threads.length > 0 ? `${threads.length}개 활성 코멘트` : "활성 코멘트 없음"));
+      setCommentStatus(
+        status ??
+          (unreadCount > 0
+            ? `${unreadCount}개 읽지 않은 코멘트`
+            : threads.length > 0
+              ? `${threads.length}개 활성 코멘트`
+              : "활성 코멘트 없음")
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : "코멘트를 불러오지 못했습니다";
       setCommentThreads([]);
@@ -6782,6 +6821,21 @@ export function App() {
     }
   };
 
+  const markSelectedNodeCommentRead = async (threadId: string) => {
+    if (!currentProject) {
+      setCommentStatus("프로젝트 없음");
+      return;
+    }
+
+    try {
+      await markCommentThreadRead(currentProject.currentDocumentId, threadId, LOCAL_COMMENT_VIEWER_ID);
+      await refreshCommentThreads(currentProject.currentDocumentId, "코멘트 읽음");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "코멘트를 읽음 처리하지 못했습니다";
+      setCommentStatus(message);
+    }
+  };
+
   const exportCurrentDocumentTokensDtcg = async () => {
     if (!currentProject) {
       setTokenDtcgStatus("프로젝트 없음");
@@ -8575,6 +8629,7 @@ export function App() {
         onCreateComment={(nodeId) => void createSelectedNodeComment(nodeId)}
         onCreateCommentReply={(threadId) => void createSelectedNodeCommentReply(threadId)}
         onResolveComment={(threadId) => void resolveSelectedNodeComment(threadId)}
+        onMarkCommentRead={(threadId) => void markSelectedNodeCommentRead(threadId)}
         onGeometryChange={updateGeometry}
         onFillChange={(nodeId, fill) => dispatch({ type: "set_fill", nodeId, fill })}
         onTextChange={updateTextNode}

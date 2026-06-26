@@ -110,7 +110,7 @@ Figma capabilities to bring over:
 Implementation shape:
 
 - Store comments and checkpoints as document-adjacent local/team data.
-- Use the landed selected-node comment thread sidecar as the base for viewport bubbles, replies, mentions, and resolved-review workflows. Replies are now persisted and exposed through storage, HTTP, MCP, web API helpers, and the Inspector; mentions and live team sync remain follow-up gaps.
+- Use the landed selected-node comment thread sidecar as the base for viewport bubbles, replies, mentions, unread state, and resolved-review workflows. Replies, persisted mention extraction, and local unread/read state are now exposed through storage, HTTP, MCP, web API helpers, and the Inspector; live team sync, dashboard notifications, and real team-member mention targeting remain follow-up gaps.
 - Reuse existing Yjs collaboration for live comment updates.
 - Reuse the landed version-preview change-summary logic as the basis for branch diff UI.
 - Keep audio out of scope unless a later user explicitly asks for it.

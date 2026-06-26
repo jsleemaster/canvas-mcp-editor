@@ -32,6 +32,9 @@ export interface CommentThread {
   authorName: string;
   createdAt: string;
   resolvedAt: string | null;
+  mentions: string[];
+  readBy: string[];
+  unread?: boolean;
   replies: CommentReply[];
 }
 
@@ -41,6 +44,7 @@ export interface CommentReply {
   body: string;
   authorName: string;
   createdAt: string;
+  mentions: string[];
 }
 
 export interface CreateCommentThreadInput {
@@ -136,9 +140,17 @@ export async function restoreFileVersion(
 export async function listCommentThreads(
   fileId: string,
   includeResolved = false,
-  fetcher: typeof fetch = fetch
+  fetcher: typeof fetch = fetch,
+  viewerId?: string
 ): Promise<CommentThread[]> {
-  const query = includeResolved ? "?includeResolved=true" : "";
+  const params = new URLSearchParams();
+  if (includeResolved) {
+    params.set("includeResolved", "true");
+  }
+  if (viewerId?.trim()) {
+    params.set("viewerId", viewerId);
+  }
+  const query = params.toString() ? `?${params.toString()}` : "";
   const response = await fetcher(apiUrl(`/files/${fileId}/comments${query}`));
   const payload = await readDocumentJson(response);
   return (payload as { threads: CommentThread[] }).threads;
@@ -180,6 +192,21 @@ export async function resolveCommentThread(
 ): Promise<CommentThread> {
   const response = await fetcher(apiUrl(`/files/${fileId}/comments/${threadId}/resolve`), {
     method: "POST"
+  });
+  const payload = await readDocumentJson(response);
+  return (payload as { thread: CommentThread }).thread;
+}
+
+export async function markCommentThreadRead(
+  fileId: string,
+  threadId: string,
+  viewerId = "사용자",
+  fetcher: typeof fetch = fetch
+): Promise<CommentThread> {
+  const response = await fetcher(apiUrl(`/files/${fileId}/comments/${threadId}/read`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ viewerId })
   });
   const payload = await readDocumentJson(response);
   return (payload as { thread: CommentThread }).thread;
