@@ -54,6 +54,18 @@ describe("MCP AI editing workflow", () => {
       idempotentHint: false,
       openWorldHint: false
     });
+    expect(byName.get("export_design_tokens")?.annotations).toMatchObject({
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
+    });
+    expect(byName.get("import_design_tokens")?.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: false
+    });
   });
 
   test("lets an MCP client manage project manifests", async () => {
@@ -242,6 +254,68 @@ describe("MCP AI editing workflow", () => {
       })
     );
     expect(validation.validation).toMatchObject({ ok: true, issueCount: 0 });
+  });
+
+  test("lets an MCP client import and export DTCG design tokens", async () => {
+    const client = await connectMcpClient();
+
+    await client.callTool({
+      name: "create_project",
+      arguments: {
+        projectId: "token-project",
+        name: "토큰 프로젝트",
+        documentId: "token-file",
+        documentName: "토큰 문서"
+      }
+    });
+
+    const imported = parseToolJson(
+      await client.callTool({
+        name: "import_design_tokens",
+        arguments: {
+          fileId: "token-file",
+          tokens: {
+            global: {
+              Brand: {
+                Primary: {
+                  $type: "color",
+                  $value: "#2563eb"
+                }
+              }
+            }
+          }
+        }
+      })
+    );
+    expect(imported.tokens).toEqual([
+      {
+        id: "color-brand-primary",
+        name: "Brand / Primary",
+        type: "color",
+        value: "#2563eb"
+      }
+    ]);
+
+    const exported = parseToolJson(
+      await client.callTool({
+        name: "export_design_tokens",
+        arguments: { fileId: "token-file" }
+      })
+    );
+    expect(exported.tokens).toMatchObject({
+      $metadata: {
+        tokenSetOrder: ["global"],
+        activeThemes: []
+      },
+      global: {
+        Brand: {
+          Primary: {
+            $type: "color",
+            $value: "#2563eb"
+          }
+        }
+      }
+    });
   });
 });
 

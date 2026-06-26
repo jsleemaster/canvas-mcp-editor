@@ -30,7 +30,11 @@ import {
   type TeamManifest
 } from "@layo/collaboration";
 import { apiUrl } from "./api-base";
-import { parseDocumentPayload } from "./document-api";
+import {
+  exportDesignTokensDtcg,
+  importDesignTokensDtcg,
+  parseDocumentPayload
+} from "./document-api";
 import { editorKonvaTokens } from "./design-tokens";
 import { uploadImageAsset, type UploadedAsset } from "./asset-api";
 import {
@@ -2652,6 +2656,49 @@ function InspectorEmptySections() {
   );
 }
 
+function InspectorTokenControls({
+  draft,
+  status,
+  canEdit,
+  onDraftChange,
+  onExport,
+  onImport
+}: {
+  draft: string;
+  status: string;
+  canEdit: boolean;
+  onDraftChange: (value: string) => void;
+  onExport: () => void;
+  onImport: () => void;
+}) {
+  return (
+    <section className="inspector-section" data-testid="inspector-section-tokens" aria-label="토큰">
+      <h3>토큰</h3>
+      <div className="inspector-token-actions">
+        <button type="button" onClick={onExport} disabled={!canEdit}>
+          토큰 내보내기
+        </button>
+        <button type="button" onClick={onImport} disabled={!canEdit || !draft.trim()}>
+          토큰 가져오기
+        </button>
+      </div>
+      <label className="stacked-field">
+        DTCG JSON
+        <textarea
+          className="inspector-token-textarea"
+          data-testid="dtcg-token-json"
+          value={draft}
+          onChange={(event) => onDraftChange(event.currentTarget.value)}
+          spellCheck={false}
+        />
+      </label>
+      <div className="inspector-token-status" data-testid="dtcg-token-status">
+        {status}
+      </div>
+    </section>
+  );
+}
+
 function Inspector({
   selectedNode,
   selectedParentNode,
@@ -2669,7 +2716,13 @@ function Inspector({
   onDistribute,
   zoomLabel,
   canShare,
-  onShare
+  onShare,
+  tokenDtcgDraft,
+  tokenDtcgStatus,
+  canEditTokens,
+  onTokenDtcgDraftChange,
+  onExportTokensDtcg,
+  onImportTokensDtcg
 }: {
   selectedNode: RendererNode | null;
   selectedParentNode: RendererNode | null;
@@ -2688,7 +2741,24 @@ function Inspector({
   zoomLabel: string;
   canShare: boolean;
   onShare: () => void;
+  tokenDtcgDraft: string;
+  tokenDtcgStatus: string;
+  canEditTokens: boolean;
+  onTokenDtcgDraftChange: (value: string) => void;
+  onExportTokensDtcg: () => void;
+  onImportTokensDtcg: () => void;
 }) {
+  const tokenControls = (
+    <InspectorTokenControls
+      draft={tokenDtcgDraft}
+      status={tokenDtcgStatus}
+      canEdit={canEditTokens}
+      onDraftChange={onTokenDtcgDraftChange}
+      onExport={onExportTokensDtcg}
+      onImport={onImportTokensDtcg}
+    />
+  );
+
   if (selectedNodeCount > 1) {
     return (
       <aside className="inspector">
@@ -2703,6 +2773,7 @@ function Inspector({
           onAlign={onAlign}
           onDistribute={onDistribute}
         />
+        {tokenControls}
       </aside>
     );
   }
@@ -2713,6 +2784,7 @@ function Inspector({
         <InspectorHeader zoomLabel={zoomLabel} canShare={canShare} onShare={onShare} />
         <p className="empty-state">레이어 또는 캔버스 요소를 선택하세요.</p>
         <InspectorEmptySections />
+        {tokenControls}
       </aside>
     );
   }
@@ -2906,6 +2978,7 @@ function Inspector({
           토큰 {fillToken?.name ?? selectedNode.style.fill_token}
         </div>
       ) : null}
+      {tokenControls}
       {selectedNode.content.type === "text" ? (
         <label className="stacked-field">
           텍스트
@@ -3535,6 +3608,8 @@ export function App() {
   const [projectSearch, setProjectSearch] = useState("");
   const [recentProjectIds, setRecentProjectIds] = useState<string[]>([]);
   const [projectStatus, setProjectStatus] = useState("프로젝트 불러오는 중");
+  const [tokenDtcgDraft, setTokenDtcgDraft] = useState("");
+  const [tokenDtcgStatus, setTokenDtcgStatus] = useState("");
   const [encryptionEnabled, setEncryptionEnabled] = useState(false);
   const [encryptionPassphrase, setEncryptionPassphrase] = useState("");
   const [teamPanelMode, setTeamPanelMode] = useState<TeamPanelMode>("local");
@@ -3608,6 +3683,8 @@ export function App() {
     await projectStore.setCurrentProjectId(project.projectId);
     setRecentProjectIds((current) => promoteRecentProject(project.projectId, current));
     setEditor(createEditorState(parseDocumentPayload(payload)));
+    setTokenDtcgDraft("");
+    setTokenDtcgStatus("");
     setProjectStatus(`${project.name} 불러옴`);
   };
 
@@ -3650,6 +3727,8 @@ export function App() {
         await projectStore.setCurrentProjectId(selectedProject.projectId);
         setRecentProjectIds(promoteRecentProject(selectedProject.projectId, storedRecentProjectIds));
         setEditor(createEditorState(parseDocumentPayload(payload)));
+        setTokenDtcgDraft("");
+        setTokenDtcgStatus("");
         setProjectStatus(`${selectedProject.name} 불러옴`);
       } catch {
         if (!cancelled) {
@@ -6126,6 +6205,51 @@ export function App() {
     }
   };
 
+  const exportCurrentDocumentTokensDtcg = async () => {
+    if (!currentProject) {
+      setTokenDtcgStatus("프로젝트 없음");
+      return;
+    }
+
+    try {
+      const tokens = await exportDesignTokensDtcg(currentProject.currentDocumentId);
+      setTokenDtcgDraft(JSON.stringify(tokens, null, 2));
+      const count = editorRef.current?.document.tokens?.filter((token) => token.type === "color").length ?? 0;
+      setTokenDtcgStatus(`${count}개 토큰 내보냄`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "토큰을 내보내지 못했습니다";
+      setTokenDtcgStatus(message);
+    }
+  };
+
+  const importCurrentDocumentTokensDtcg = async () => {
+    if (!currentProject) {
+      setTokenDtcgStatus("프로젝트 없음");
+      return;
+    }
+
+    let parsedTokens: unknown;
+    try {
+      parsedTokens = JSON.parse(tokenDtcgDraft);
+    } catch {
+      setTokenDtcgStatus("JSON 형식이 올바르지 않습니다");
+      return;
+    }
+
+    try {
+      const document = await importDesignTokensDtcg(currentProject.currentDocumentId, parsedTokens);
+      setEditor((current) => {
+        const nextState = createEditorState(document);
+        return current ? { ...nextState, viewport: current.viewport } : nextState;
+      });
+      setTokenDtcgStatus(`${document.tokens?.length ?? 0}개 토큰 가져옴`);
+      setProjectStatus("토큰 가져오기 완료");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "토큰을 가져오지 못했습니다";
+      setTokenDtcgStatus(message);
+    }
+  };
+
   const createNode = (kind: "rectangle" | "text") => {
     if (!editor) {
       return;
@@ -7729,6 +7853,12 @@ export function App() {
         zoomLabel={`${Math.round((editor?.viewport.scale ?? 1) * 100)}%`}
         canShare={Boolean(currentProject && collabSession)}
         onShare={linkProjectToCurrentTeam}
+        tokenDtcgDraft={tokenDtcgDraft}
+        tokenDtcgStatus={tokenDtcgStatus}
+        canEditTokens={Boolean(currentProject && editor)}
+        onTokenDtcgDraftChange={setTokenDtcgDraft}
+        onExportTokensDtcg={() => void exportCurrentDocumentTokensDtcg()}
+        onImportTokensDtcg={() => void importCurrentDocumentTokensDtcg()}
         onGeometryChange={updateGeometry}
         onFillChange={(nodeId, fill) => dispatch({ type: "set_fill", nodeId, fill })}
         onTextChange={(nodeId, value) => dispatch({ type: "update_text", nodeId, value })}

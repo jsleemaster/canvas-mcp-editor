@@ -22,6 +22,10 @@ import {
 } from "./code-export.js";
 import { applyAgentCommandsToCollaboration } from "./collaboration-agent.js";
 import {
+  exportColorTokensToDtcg,
+  importColorTokensFromDtcg
+} from "./design-token-io.js";
+import {
   applyConstraintsAfterParentResize,
   normalizeNodeLayoutItem,
   relayoutDesignFile
@@ -568,6 +572,22 @@ export class FileStorage {
     await mkdir(this.filesDir, { recursive: true });
     await writeFile(this.filePathFor(fileId), `${JSON.stringify(document, null, 2)}\n`, "utf8");
     return document;
+  }
+
+  async exportTokensDtcg(fileId: string): Promise<Record<string, unknown>> {
+    const document = await this.readFile(fileId);
+    return exportColorTokensToDtcg(document.tokens ?? []);
+  }
+
+  async importTokensDtcg(
+    fileId: string,
+    tokensDocument: unknown
+  ): Promise<{ file: DesignFile; tokens: DesignToken[] }> {
+    const document = await this.readFile(fileId);
+    const tokens = importColorTokensFromDtcg(tokensDocument);
+    document.tokens = tokens;
+    await this.writeFile(fileId, document);
+    return { file: document, tokens };
   }
 
   async updateNodeGeometry(fileId: string, nodeId: string, patch: GeometryPatch): Promise<DesignNode> {
