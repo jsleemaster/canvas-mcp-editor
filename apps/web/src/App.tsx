@@ -523,9 +523,20 @@ interface GridViewportHandle {
   cursor: "col-resize" | "row-resize";
 }
 
+interface GridViewportAddControl {
+  id: string;
+  testId: string;
+  axis: "column" | "row";
+  left: number;
+  top: number;
+  label: string;
+  title: string;
+}
+
 interface GridViewportOverlay {
   lines: GridViewportLine[];
   handles: GridViewportHandle[];
+  addControls: GridViewportAddControl[];
 }
 
 interface ObjectContextMenuState {
@@ -544,6 +555,8 @@ const RESIZE_HANDLES: ResizeHandle[] = [
 const RESIZE_HIT_HANDLES: ResizeHandle[] = RESIZE_HANDLES;
 const MIN_RESIZE_SIZE = 1;
 const GRID_RESIZE_HANDLE_SIZE = 10;
+const GRID_ADD_CONTROL_SIZE = 22;
+const GRID_ADD_CONTROL_OFFSET = 8;
 const GRID_MIN_TRACK_SIZE = 1;
 const IMPORTED_IMAGE_MIN_DIMENSION = 96;
 const IMPORTED_IMAGE_MAX_DIMENSION = 480;
@@ -1129,21 +1142,10 @@ function createFrameSpacingOverlay(
   return segments.length ? { segments } : null;
 }
 
-function createGridViewportOverlay(
-  frameBounds: SelectionBounds,
-  frame: RendererNode,
-  viewport: EditorState["viewport"]
-): GridViewportOverlay | null {
-  const layout = normalizedInspectorLayout(frame.layout);
-  if (layout.mode !== "grid") {
-    return null;
-  }
-
+function gridViewportTrackCountsForOverlay(layout: NodeLayout, frame: RendererNode) {
   const flowChildren = frame.children.filter(
     (child) => (child.layout_item?.position ?? "static") === "static" && isNodeVisible(child)
   );
-  const columnGap = layout.column_gap ?? layout.gap;
-  const rowGap = layout.row_gap ?? layout.gap;
   let columns = gridTrackCountForOverlay(layout.grid_column_tracks, layout.grid_columns, 2);
   let rows = gridTrackCountForOverlay(
     layout.grid_row_tracks,
@@ -1155,6 +1157,23 @@ function createGridViewportOverlay(
   } else {
     rows = Math.max(rows, Math.ceil(flowChildren.length / columns), 1);
   }
+
+  return { columns, rows };
+}
+
+function createGridViewportOverlay(
+  frameBounds: SelectionBounds,
+  frame: RendererNode,
+  viewport: EditorState["viewport"]
+): GridViewportOverlay | null {
+  const layout = normalizedInspectorLayout(frame.layout);
+  if (layout.mode !== "grid") {
+    return null;
+  }
+
+  const columnGap = layout.column_gap ?? layout.gap;
+  const rowGap = layout.row_gap ?? layout.gap;
+  const { columns, rows } = gridViewportTrackCountsForOverlay(layout, frame);
 
   const availableWidth = Math.max(
     0,
@@ -1187,6 +1206,26 @@ function createGridViewportOverlay(
   const viewportGridWidth = bottomRight.x - topLeft.x;
   const lines: GridViewportLine[] = [];
   const handles: GridViewportHandle[] = [];
+  const addControls: GridViewportAddControl[] = [
+    {
+      id: "add-column",
+      testId: "grid-column-add-control",
+      axis: "column",
+      left: Math.round(bottomRight.x + GRID_ADD_CONTROL_OFFSET),
+      top: Math.round(topLeft.y - GRID_ADD_CONTROL_SIZE - GRID_ADD_CONTROL_OFFSET),
+      label: "+",
+      title: "그리드 열 추가"
+    },
+    {
+      id: "add-row",
+      testId: "grid-row-add-control",
+      axis: "row",
+      left: Math.round(topLeft.x - GRID_ADD_CONTROL_SIZE - GRID_ADD_CONTROL_OFFSET),
+      top: Math.round(bottomRight.y + GRID_ADD_CONTROL_OFFSET),
+      label: "+",
+      title: "그리드 행 추가"
+    }
+  ];
 
   columnStarts.forEach((start, index) => {
     const startPoint = documentPointToViewport({ x: gridLeft + start, y: gridTop, space: "document" }, viewport);
@@ -1258,7 +1297,7 @@ function createGridViewportOverlay(
     }
   });
 
-  return { lines, handles };
+  return { lines, handles, addControls };
 }
 
 function addFrameSpacingSegment(
@@ -4278,22 +4317,9 @@ export function App() {
       return null;
     }
 
-    const flowChildren = node.children.filter(
-      (child) => (child.layout_item?.position ?? "static") === "static" && isNodeVisible(child)
-    );
     const columnGap = layout.column_gap ?? layout.gap;
     const rowGap = layout.row_gap ?? layout.gap;
-    let columns = gridTrackCountForOverlay(layout.grid_column_tracks, layout.grid_columns, 2);
-    let rows = gridTrackCountForOverlay(
-      layout.grid_row_tracks,
-      layout.grid_rows,
-      Math.max(1, Math.ceil(flowChildren.length / columns))
-    );
-    if (isVerticalGridDirection(layout.direction)) {
-      columns = Math.max(columns, Math.ceil(flowChildren.length / rows), 1);
-    } else {
-      rows = Math.max(rows, Math.ceil(flowChildren.length / columns), 1);
-    }
+    const { columns, rows } = gridViewportTrackCountsForOverlay(layout, node);
 
     if (session.axis === "column") {
       if (session.index < 0 || session.index >= columns - 1) {
@@ -4362,6 +4388,59 @@ export function App() {
     dispatch({
       type: "set_node_layout",
       nodeId: session.nodeId,
+      layout: nextLayout
+    });
+  };
+
+  const addGridTrackFromViewportControl = (
+    control: GridViewportAddControl,
+    event: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    const currentEditor = editorRef.current;
+    if (!currentEditor || !selectedNode || selectedNode.id !== currentEditor.selection.nodeId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    const node = findNodeById(currentEditor.document, selectedNode.id);
+    if (
+      !node ||
+      isNodeLocked(node) ||
+      !isNodeVisible(node) ||
+      (node.kind !== "frame" && node.kind !== "component")
+    ) {
+      return;
+    }
+
+    const layout = normalizedInspectorLayout(node.layout);
+    if (layout.mode !== "grid") {
+      return;
+    }
+
+    const { columns, rows } = gridViewportTrackCountsForOverlay(layout, node);
+    const nextLayout =
+      control.axis === "column"
+        ? {
+            ...layout,
+            grid_columns: columns + 1,
+            grid_column_tracks: [
+              ...resolveGridTracksForOverlay(layout.grid_column_tracks, columns),
+              { type: "fr" as const, value: 1 }
+            ]
+          }
+        : {
+            ...layout,
+            grid_rows: rows + 1,
+            grid_row_tracks: [
+              ...resolveGridTracksForOverlay(layout.grid_row_tracks, rows),
+              { type: "fr" as const, value: 1 }
+            ]
+          };
+
+    dispatch({
+      type: "set_node_layout",
+      nodeId: selectedNode.id,
       layout: nextLayout
     });
   };
@@ -5856,11 +5935,12 @@ export function App() {
               />
             ))}
             {gridViewportOverlay ? (
-              <div className="grid-viewport-overlay" data-testid="grid-viewport-overlay" aria-hidden="true">
+              <div className="grid-viewport-overlay" data-testid="grid-viewport-overlay">
                 {gridViewportOverlay.lines.map((line) => (
                   <div
                     key={line.id}
                     className={`grid-viewport-line grid-viewport-line-${line.orientation}`}
+                    aria-hidden="true"
                     style={
                       line.orientation === "vertical"
                         ? {
@@ -5876,11 +5956,29 @@ export function App() {
                     }
                   />
                 ))}
+                {gridViewportOverlay.addControls.map((control) => (
+                  <button
+                    key={control.id}
+                    type="button"
+                    className={`grid-add-control grid-add-control-${control.axis}`}
+                    data-testid={control.testId}
+                    aria-label={control.title}
+                    title={control.title}
+                    style={{
+                      left: control.left,
+                      top: control.top
+                    }}
+                    onClick={(event) => addGridTrackFromViewportControl(control, event)}
+                  >
+                    {control.label}
+                  </button>
+                ))}
                 {gridViewportOverlay.handles.map((handle) => (
                   <div
                     key={handle.id}
                     className={`grid-resize-handle grid-resize-handle-${handle.axis}`}
                     data-testid={handle.testId}
+                    aria-hidden="true"
                     style={{
                       left: handle.left,
                       top: handle.top,

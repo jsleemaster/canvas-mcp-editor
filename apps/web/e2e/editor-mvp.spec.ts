@@ -2026,6 +2026,54 @@ test("canvas grid column handles resize tracks directly in the viewport", async 
   await expect(page.getByTestId("inspector-y")).toHaveValue("140");
 });
 
+test("canvas grid viewport add controls append rows and columns", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+  await page.getByTestId("inspector-width").fill("420");
+  await page.getByTestId("inspector-height").fill("240");
+  await page.getByTestId("inspector-layout-mode").selectOption("grid");
+  await page.getByTestId("inspector-layout-direction").selectOption("horizontal");
+  await page.getByTestId("inspector-layout-grid-column-tracks").fill("120px 1fr");
+  await page.getByTestId("inspector-layout-grid-row-tracks").fill("90px 1fr");
+  await page.getByTestId("inspector-layout-gap").fill("0");
+  await page.getByTestId("inspector-layout-column-gap").fill("10");
+  await page.getByTestId("inspector-layout-row-gap").fill("0");
+  await page.getByTestId("inspector-layout-padding-top").fill("20");
+  await page.getByTestId("inspector-layout-padding-right").fill("20");
+  await page.getByTestId("inspector-layout-padding-bottom").fill("20");
+  await page.getByTestId("inspector-layout-padding-left").fill("20");
+
+  await expect(page.getByTestId("grid-column-add-control")).toBeVisible();
+  await expect(page.getByTestId("grid-row-add-control")).toBeVisible();
+  await page.getByTestId("grid-column-add-control").click();
+  await expect(page.getByTestId("inspector-layout-grid-column-tracks")).toHaveValue("120px 1fr 1fr");
+
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+  await page.getByRole("button", { name: "사각형 만들기" }).click();
+  await page.getByTestId("inspector-width").fill("80");
+  await page.getByTestId("inspector-height").fill("40");
+  await expect(page.getByTestId("inspector-x")).toHaveValue("150");
+  await expect(page.getByTestId("inspector-y")).toHaveValue("20");
+
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+  await page.getByRole("button", { name: "사각형 만들기" }).click();
+  await page.getByTestId("inspector-width").fill("80");
+  await page.getByTestId("inspector-height").fill("40");
+  await expect(page.getByTestId("inspector-x")).toHaveValue("280");
+  await expect(page.getByTestId("inspector-y")).toHaveValue("20");
+
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+  await page.getByTestId("grid-row-add-control").click();
+  await expect(page.getByTestId("inspector-layout-grid-row-tracks")).toHaveValue("90px 1fr 1fr");
+
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+  await page.getByRole("button", { name: "사각형 만들기" }).click();
+  await page.getByTestId("inspector-width").fill("80");
+  await page.getByTestId("inspector-height").fill("40");
+  await expect(page.getByTestId("inspector-x")).toHaveValue("20");
+  await expect(page.getByTestId("inspector-y")).toHaveValue("110");
+});
+
 test("inspector manual grid cell placement moves a child to the requested cell", async ({ page }) => {
   await createProjectFromEmptyState(page);
   await page.getByRole("button", { name: "랜딩 프레임" }).click();
