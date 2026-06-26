@@ -244,6 +244,78 @@ describe("editor state commands", () => {
     });
   });
 
+  test("preserves layout spacing token bindings and clears them on manual override", () => {
+    const document = sampleDocument() as any;
+    document.tokens = [
+      {
+        id: "spacing-layout-lg",
+        name: "Layout / Lg",
+        type: "spacing",
+        value: "32"
+      }
+    ];
+    const initial = createEditorState(document);
+
+    const bound = executeEditorCommand(initial, {
+      type: "set_node_layout",
+      nodeId: "frame-1",
+      layout: {
+        mode: "auto",
+        direction: "vertical",
+        align_items: "start",
+        justify_content: "start",
+        gap: 32,
+        row_gap: 32,
+        column_gap: 32,
+        padding: { top: 32, right: 32, bottom: 32, left: 32 },
+        spacing_tokens: {
+          gap: "spacing-layout-lg",
+          row_gap: "spacing-layout-lg",
+          column_gap: "spacing-layout-lg",
+          padding_top: "spacing-layout-lg",
+          padding_right: "spacing-layout-lg",
+          padding_bottom: "spacing-layout-lg",
+          padding_left: "spacing-layout-lg"
+        }
+      }
+    } as any);
+
+    expect(findNodeById(bound.document, "frame-1")?.layout).toMatchObject({
+      gap: 32,
+      row_gap: 32,
+      column_gap: 32,
+      spacing_tokens: {
+        gap: "spacing-layout-lg",
+        padding_top: "spacing-layout-lg"
+      }
+    });
+
+    const previousLayout = findNodeById(bound.document, "frame-1")?.layout as any;
+    const overridden = executeEditorCommand(bound, {
+      type: "set_node_layout",
+      nodeId: "frame-1",
+      layout: {
+        ...previousLayout,
+        gap: 12,
+        spacing_tokens: {
+          ...previousLayout.spacing_tokens,
+          gap: null,
+          row_gap: null,
+          column_gap: null
+        }
+      }
+    } as any);
+
+    const overriddenLayout = findNodeById(overridden.document, "frame-1")?.layout as any;
+    expect(overriddenLayout).toMatchObject({
+      gap: 12,
+      spacing_tokens: {
+        padding_top: "spacing-layout-lg"
+      }
+    });
+    expect(overriddenLayout.spacing_tokens.gap).toBeNull();
+  });
+
   test("creates nodes on the first page and selects the created node", () => {
     const initial = createEditorState(sampleDocument());
 

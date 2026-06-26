@@ -22,8 +22,8 @@ import {
 } from "./code-export.js";
 import { applyAgentCommandsToCollaboration } from "./collaboration-agent.js";
 import {
-  exportColorTokensToDtcg,
-  importColorTokensFromDtcg
+  exportDesignTokensToDtcg,
+  importDesignTokensFromDtcg
 } from "./design-token-io.js";
 import {
   applyConstraintsAfterParentResize,
@@ -42,6 +42,16 @@ export interface LayoutSpacing {
   right: number;
   bottom: number;
   left: number;
+}
+
+export interface LayoutSpacingTokens {
+  gap?: string | null;
+  row_gap?: string | null;
+  column_gap?: string | null;
+  padding_top?: string | null;
+  padding_right?: string | null;
+  padding_bottom?: string | null;
+  padding_left?: string | null;
 }
 
 export interface GridTrack {
@@ -79,6 +89,7 @@ export interface NodeLayout {
   grid_column_tracks?: GridTrack[];
   grid_row_tracks?: GridTrack[];
   grid_areas?: GridArea[];
+  spacing_tokens?: LayoutSpacingTokens | null;
   padding: LayoutSpacing;
 }
 
@@ -155,7 +166,7 @@ export interface ComponentInstance {
 export interface DesignToken {
   id: string;
   name: string;
-  type: "color";
+  type: "color" | "spacing";
   value: string;
 }
 
@@ -576,7 +587,7 @@ export class FileStorage {
 
   async exportTokensDtcg(fileId: string): Promise<Record<string, unknown>> {
     const document = await this.readFile(fileId);
-    return exportColorTokensToDtcg(document.tokens ?? []);
+    return exportDesignTokensToDtcg(document.tokens ?? []);
   }
 
   async importTokensDtcg(
@@ -584,7 +595,7 @@ export class FileStorage {
     tokensDocument: unknown
   ): Promise<{ file: DesignFile; tokens: DesignToken[] }> {
     const document = await this.readFile(fileId);
-    const tokens = importColorTokensFromDtcg(tokensDocument);
+    const tokens = importDesignTokensFromDtcg(tokensDocument);
     document.tokens = tokens;
     await this.writeFile(fileId, document);
     return { file: document, tokens };

@@ -3,8 +3,9 @@ import type { DesignToken } from "./storage.js";
 type JsonRecord = Record<string, unknown>;
 
 const DTCG_TOKEN_SET = "global";
+const SUPPORTED_TOKEN_TYPES = new Set(["color", "spacing", "dimension"]);
 
-export function exportColorTokensToDtcg(tokens: DesignToken[]): JsonRecord {
+export function exportDesignTokensToDtcg(tokens: DesignToken[]): JsonRecord {
   const root: JsonRecord = {
     $metadata: {
       tokenSetOrder: [DTCG_TOKEN_SET],
@@ -15,7 +16,7 @@ export function exportColorTokensToDtcg(tokens: DesignToken[]): JsonRecord {
   const tokenSet = root[DTCG_TOKEN_SET] as JsonRecord;
 
   for (const token of tokens) {
-    if (token.type !== "color" || !token.value.trim()) {
+    if (!SUPPORTED_TOKEN_TYPES.has(token.type) || !token.value.trim()) {
       continue;
     }
 
@@ -29,7 +30,7 @@ export function exportColorTokensToDtcg(tokens: DesignToken[]): JsonRecord {
       cursor = cursor[segment] as JsonRecord;
     }
     cursor[path[path.length - 1]] = {
-      $type: "color",
+      $type: token.type === "spacing" ? "dimension" : token.type,
       $value: token.value
     };
   }
@@ -37,7 +38,7 @@ export function exportColorTokensToDtcg(tokens: DesignToken[]): JsonRecord {
   return root;
 }
 
-export function importColorTokensFromDtcg(input: unknown): DesignToken[] {
+export function importDesignTokensFromDtcg(input: unknown): DesignToken[] {
   if (!isRecord(input)) {
     throw new Error("DTCG token document must be an object");
   }
@@ -47,11 +48,14 @@ export function importColorTokensFromDtcg(input: unknown): DesignToken[] {
   const roots = tokenSetRootsForDocument(input);
 
   for (const root of roots) {
-    collectColorTokens(root, [], inheritedTokenType(root), tokens, seenIds);
+    collectDesignTokens(root, [], inheritedTokenType(root), tokens, seenIds);
   }
 
   return tokens;
 }
+
+export const exportColorTokensToDtcg = exportDesignTokensToDtcg;
+export const importColorTokensFromDtcg = importDesignTokensFromDtcg;
 
 function tokenSetRootsForDocument(input: JsonRecord): JsonRecord[] {
   const orderedTokenSetRoots = tokenSetOrder(input)
@@ -77,7 +81,7 @@ function tokenSetOrder(input: JsonRecord): string[] {
   return metadata.tokenSetOrder.filter((value): value is string => typeof value === "string");
 }
 
-function collectColorTokens(
+function collectDesignTokens(
   node: JsonRecord,
   path: string[],
   inheritedType: string | null,
@@ -87,15 +91,17 @@ function collectColorTokens(
   const ownType = inheritedTokenType(node) ?? inheritedType;
   if ("$value" in node) {
     const value = node.$value;
-    if (ownType === "color" && typeof value === "string" && value.trim() && path.length) {
-      const baseId = slugifyTokenPath(path);
+    const tokenType = normalizeTokenType(ownType);
+    const tokenValue = normalizeTokenValue(tokenType, value);
+    if (tokenType && tokenValue && path.length) {
+      const baseId = slugifyTokenPath(path, tokenType);
       const seenCount = seenIds.get(baseId) ?? 0;
       seenIds.set(baseId, seenCount + 1);
       tokens.push({
         id: seenCount === 0 ? baseId : `${baseId}-${seenCount + 1}`,
         name: path.join(" / "),
-        type: "color",
-        value
+        type: tokenType,
+        value: tokenValue
       });
     }
     return;
@@ -105,8 +111,32 @@ function collectColorTokens(
     if (key.startsWith("$") || !isRecord(value)) {
       continue;
     }
-    collectColorTokens(value, [...path, key], ownType, tokens, seenIds);
+    collectDesignTokens(value, [...path, key], ownType, tokens, seenIds);
   }
+}
+
+function normalizeTokenType(input: string | null): DesignToken["type"] | null {
+  if (input === "color") {
+    return "color";
+  }
+  if (input === "spacing" || input === "dimension") {
+    return "spacing";
+  }
+  return null;
+}
+
+function normalizeTokenValue(tokenType: DesignToken["type"] | null, value: unknown): string | null {
+  if (!tokenType) {
+    return null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+  if (tokenType === "spacing" && typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return null;
 }
 
 function inheritedTokenType(node: JsonRecord): string | null {
@@ -124,7 +154,7 @@ function tokenNamePath(token: DesignToken): string[] {
   return [token.id || "Token"];
 }
 
-function slugifyTokenPath(path: string[]): string {
+function slugifyTokenPath(path: string[], tokenType: DesignToken["type"]): string {
   const slug = path
     .join("-")
     .normalize("NFKD")
@@ -132,7 +162,7 @@ function slugifyTokenPath(path: string[]): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .replace(/-+/g, "-");
-  return `color-${slug || "token"}`;
+  return `${tokenType}-${slug || "token"}`;
 }
 
 function isRecord(input: unknown): input is JsonRecord {

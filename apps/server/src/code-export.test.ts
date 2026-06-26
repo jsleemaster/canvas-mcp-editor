@@ -114,6 +114,56 @@ describe("code export", () => {
     });
   });
 
+  test("exports spacing token bindings as CSS variables and implementation metadata", () => {
+    const fixture = tossFixture() as any;
+    fixture.tokens = [
+      {
+        id: "spacing-layout-lg",
+        name: "Layout / Lg",
+        type: "spacing",
+        value: "32px"
+      }
+    ];
+    fixture.pages[0].children[0].layout = {
+      mode: "auto",
+      direction: "vertical",
+      align_items: "start",
+      justify_content: "start",
+      gap: 32,
+      row_gap: 32,
+      column_gap: 32,
+      padding: { top: 32, right: 32, bottom: 32, left: 32 },
+      spacing_tokens: {
+        gap: "spacing-layout-lg",
+        row_gap: "spacing-layout-lg",
+        column_gap: "spacing-layout-lg",
+        padding_top: "spacing-layout-lg",
+        padding_right: "spacing-layout-lg",
+        padding_bottom: "spacing-layout-lg",
+        padding_left: "spacing-layout-lg"
+      }
+    };
+
+    const result = exportDesignToCode(fixture);
+    const button = result.elements.find((element) => element.id === "tds-button-primary");
+
+    expect((result.implementationSpec.tokens as any).spacing).toEqual([
+      {
+        id: "spacing-layout-lg",
+        name: "Layout / Lg",
+        type: "spacing",
+        value: "32px"
+      }
+    ]);
+    expect(result.css).toContain("--layo-token-spacing-layout-lg: 32px;");
+    expect(result.css).toContain("gap: var(--layo-token-spacing-layout-lg, 32px);");
+    expect(result.css).toContain("padding: var(--layo-token-spacing-layout-lg, 32px);");
+    expect((button?.structure as any).layoutSpacingTokens).toMatchObject({
+      gap: "spacing-layout-lg",
+      paddingTop: "spacing-layout-lg"
+    });
+  });
+
   test("exports component definitions and instance references for agents", () => {
     const result = exportDesignToCode(componentFixture());
 

@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import {
-  exportColorTokensToDtcg,
-  importColorTokensFromDtcg
+  exportDesignTokensToDtcg,
+  importDesignTokensFromDtcg
 } from "./design-token-io";
 import { FileStorage } from "./storage";
 
@@ -20,7 +20,7 @@ afterEach(async () => {
 describe("DTCG color token import/export", () => {
   test("exports color tokens as nested DTCG JSON", () => {
     expect(
-      exportColorTokensToDtcg([
+      exportDesignTokensToDtcg([
         {
           id: "color-brand-primary",
           name: "Brand / Primary",
@@ -46,7 +46,7 @@ describe("DTCG color token import/export", () => {
 
   test("imports nested DTCG JSON into stable document color tokens", () => {
     expect(
-      importColorTokensFromDtcg({
+      importDesignTokensFromDtcg({
         $metadata: {
           tokenSetOrder: ["global"],
           activeThemes: []
@@ -87,7 +87,7 @@ describe("DTCG color token import/export", () => {
 
   test("imports raw DTCG token trees without dropping the top-level group", () => {
     expect(
-      importColorTokensFromDtcg({
+      importDesignTokensFromDtcg({
         Brand: {
           Primary: {
             $type: "color",
@@ -142,6 +142,60 @@ describe("DTCG color token import/export", () => {
         Brand: {
           Primary: {
             $value: "#2563eb"
+          }
+        }
+      }
+    });
+  });
+
+  test("imports DTCG spacing and dimension tokens into stable document spacing tokens", () => {
+    expect(
+      importDesignTokensFromDtcg({
+        global: {
+          Spacing: {
+            $type: "dimension",
+            Lg: {
+              $value: "32px"
+            },
+            Stack: {
+              $type: "spacing",
+              $value: "24"
+            }
+          }
+        }
+      })
+    ).toEqual([
+      {
+        id: "spacing-spacing-lg",
+        name: "Spacing / Lg",
+        type: "spacing",
+        value: "32px"
+      },
+      {
+        id: "spacing-spacing-stack",
+        name: "Spacing / Stack",
+        type: "spacing",
+        value: "24"
+      }
+    ]);
+  });
+
+  test("exports spacing tokens as DTCG dimension tokens", () => {
+    expect(
+      exportDesignTokensToDtcg([
+        {
+          id: "spacing-layout-gap",
+          name: "Layout / Gap",
+          type: "spacing",
+          value: "20"
+        }
+      ])
+    ).toMatchObject({
+      global: {
+        Layout: {
+          Gap: {
+            $type: "dimension",
+            $value: "20"
           }
         }
       }

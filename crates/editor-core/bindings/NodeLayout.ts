@@ -9,6 +9,7 @@ import type { LayoutJustifyItems } from "./LayoutJustifyItems";
 import type { LayoutMode } from "./LayoutMode";
 import type { LayoutPadding } from "./LayoutPadding";
 import type { LayoutSizing } from "./LayoutSizing";
+import type { LayoutSpacingTokens } from "./LayoutSpacingTokens";
 import type { LayoutWrap } from "./LayoutWrap";
 
-export type NodeLayout = { mode: LayoutMode, direction: LayoutDirection, wrap: LayoutWrap, align_items: LayoutAlignItems, justify_content: LayoutJustifyContent, justify_items: LayoutJustifyItems, align_content: LayoutAlignContent, width_sizing?: LayoutSizing, height_sizing?: LayoutSizing, min_width?: number | null, max_width?: number | null, min_height?: number | null, max_height?: number | null, gap: number, row_gap?: number | null, grid_columns?: number | null, grid_rows?: number | null, column_gap?: number | null, grid_column_tracks?: Array<GridTrack> | null, grid_row_tracks?: Array<GridTrack> | null, grid_areas?: Array<GridArea> | null, padding: LayoutPadding, };
+export type NodeLayout = { mode: LayoutMode, direction: LayoutDirection, wrap: LayoutWrap, align_items: LayoutAlignItems, justify_content: LayoutJustifyContent, justify_items: LayoutJustifyItems, align_content: LayoutAlignContent, width_sizing?: LayoutSizing, height_sizing?: LayoutSizing, min_width?: number | null, max_width?: number | null, min_height?: number | null, max_height?: number | null, gap: number, row_gap?: number | null, grid_columns?: number | null, grid_rows?: number | null, column_gap?: number | null, grid_column_tracks?: Array<GridTrack> | null, grid_row_tracks?: Array<GridTrack> | null, grid_areas?: Array<GridArea> | null, spacing_tokens?: LayoutSpacingTokens | null, padding: LayoutPadding, };

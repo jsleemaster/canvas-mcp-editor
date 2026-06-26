@@ -59,6 +59,15 @@ export interface CodeStructureNode {
     detached: boolean;
     overrides: Array<{ nodeId: string; field: string; value: string }>;
   };
+  layoutSpacingTokens?: {
+    gap?: string | null;
+    rowGap?: string | null;
+    columnGap?: string | null;
+    paddingTop?: string | null;
+    paddingRight?: string | null;
+    paddingBottom?: string | null;
+    paddingLeft?: string | null;
+  };
   layout?: NodeLayout;
   layout_item?: NodeLayoutItem;
   constraints?: NodeConstraints;
@@ -96,6 +105,7 @@ export interface TokenCandidateSummary {
 
 export interface TokenExportSummary {
   colors: DesignToken[];
+  spacing: DesignToken[];
 }
 
 export interface CodeImplementationSpec {
@@ -111,7 +121,8 @@ export function exportDesignToCode(
 ): CodeExportResult {
   const roots = document.pages.flatMap((page) => page.children).filter(isNodeExportVisible);
   const colorTokens = documentColorTokens(document);
-  const tokenMap = new Map(colorTokens.map((token) => [token.id, token]));
+  const spacingTokens = documentSpacingTokens(document);
+  const tokenMap = new Map([...colorTokens, ...spacingTokens].map((token) => [token.id, token]));
   const elements = roots.map((root) => exportElement(root, tokenMap));
   const moduleBasePath = options.moduleBasePath ?? ".";
   const components = (document.components ?? []).map((component) => exportComponent(component, tokenMap));
@@ -120,6 +131,7 @@ export function exportDesignToCode(
     css: [
       ".canvas-export-root {",
       ...colorTokens.map((token) => `  --${cssTokenName(token.id)}: ${token.value};`),
+      ...spacingTokens.map((token) => `  --${cssTokenName(token.id)}: ${cssSpacingTokenValue(token)};`),
       "  position: relative;",
       "  width: 100%;",
       "  min-height: 100vh;",
@@ -133,7 +145,8 @@ export function exportDesignToCode(
       elements,
       components,
       tokens: {
-        colors: colorTokens
+        colors: colorTokens,
+        spacing: spacingTokens
       },
       tokenCandidates: collectTokenCandidates([
         ...roots,
@@ -236,6 +249,17 @@ function structureFor(node: DesignNode, tokenMap: Map<string, DesignToken>): Cod
   }
   if (node.layout) {
     base.layout = node.layout;
+    if (node.layout.spacing_tokens) {
+      base.layoutSpacingTokens = {
+        gap: node.layout.spacing_tokens.gap,
+        rowGap: node.layout.spacing_tokens.row_gap,
+        columnGap: node.layout.spacing_tokens.column_gap,
+        paddingTop: node.layout.spacing_tokens.padding_top,
+        paddingRight: node.layout.spacing_tokens.padding_right,
+        paddingBottom: node.layout.spacing_tokens.padding_bottom,
+        paddingLeft: node.layout.spacing_tokens.padding_left
+      };
+    }
   }
   if (node.layout_item) {
     base.layout_item = node.layout_item;
@@ -391,6 +415,22 @@ function nodeCss(node: DesignNode, tokenMap: Map<string, DesignToken>): string[]
     }
   }
 
+  if (node.layout && (node.layout.mode === "auto" || node.layout.mode === "grid")) {
+    lines.push(`  gap: ${cssLayoutSpacingValue(node.layout, "gap", node.layout.gap, tokenMap)};`);
+    const padding = node.layout.padding;
+    const paddingValues = [
+      cssLayoutSpacingValue(node.layout, "padding_top", padding.top, tokenMap),
+      cssLayoutSpacingValue(node.layout, "padding_right", padding.right, tokenMap),
+      cssLayoutSpacingValue(node.layout, "padding_bottom", padding.bottom, tokenMap),
+      cssLayoutSpacingValue(node.layout, "padding_left", padding.left, tokenMap)
+    ];
+    if (new Set(paddingValues).size === 1) {
+      lines.push(`  padding: ${paddingValues[0]};`);
+    } else {
+      lines.push(`  padding: ${paddingValues.join(" ")};`);
+    }
+  }
+
   lines.push("}");
 
   return [...lines, ...node.children.filter(isNodeExportVisible).flatMap((child) => nodeCss(child, tokenMap))];
@@ -400,17 +440,43 @@ function documentColorTokens(document: DesignFile): DesignToken[] {
   return (document.tokens ?? []).filter((token) => token.type === "color");
 }
 
+function documentSpacingTokens(document: DesignFile): DesignToken[] {
+  return (document.tokens ?? []).filter((token) => token.type === "spacing");
+}
+
 function resolvedFill(node: DesignNode, tokenMap: Map<string, DesignToken>): string {
   const token = node.style.fill_token ? tokenMap.get(node.style.fill_token) : undefined;
-  return token?.value ?? node.style.fill;
+  return token?.type === "color" ? token.value : node.style.fill;
 }
 
 function cssFillValue(node: DesignNode, tokenMap: Map<string, DesignToken>): string {
   const token = node.style.fill_token ? tokenMap.get(node.style.fill_token) : undefined;
-  if (!token) {
+  if (!token || token.type !== "color") {
     return node.style.fill;
   }
   return `var(--${cssTokenName(token.id)}, ${token.value})`;
+}
+
+function cssLayoutSpacingValue(
+  layout: NodeLayout,
+  key: keyof NonNullable<NodeLayout["spacing_tokens"]>,
+  fallback: number,
+  tokenMap: Map<string, DesignToken>
+): string {
+  const tokenId = layout.spacing_tokens?.[key];
+  const token = tokenId ? tokenMap.get(tokenId) : undefined;
+  if (!token || token.type !== "spacing") {
+    return formatPx(fallback);
+  }
+  return `var(--${cssTokenName(token.id)}, ${cssSpacingTokenValue(token)})`;
+}
+
+function cssSpacingTokenValue(token: DesignToken): string {
+  const numeric = Number(token.value);
+  if (Number.isFinite(numeric) && token.value.trim() !== "") {
+    return formatPx(numeric);
+  }
+  return token.value;
 }
 
 function cssTokenName(tokenId: string): string {

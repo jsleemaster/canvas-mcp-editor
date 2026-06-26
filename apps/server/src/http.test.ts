@@ -543,7 +543,7 @@ describe("HTTP server", () => {
     expect(body.export.indexModule).toContain('from "./elements/frame-1.mjs"');
   });
 
-  test("imports and exports document color tokens as DTCG JSON", async () => {
+  test("imports and exports document design tokens as DTCG JSON", async () => {
     const server = await createServerWithDocument();
 
     const imported = await server.inject({
@@ -556,6 +556,12 @@ describe("HTTP server", () => {
               $type: "color",
               $value: "#2563eb"
             }
+          },
+          Spacing: {
+            Large: {
+              $type: "dimension",
+              $value: "32px"
+            }
           }
         }
       }
@@ -567,6 +573,12 @@ describe("HTTP server", () => {
         name: "Brand / Primary",
         type: "color",
         value: "#2563eb"
+      },
+      {
+        id: "spacing-spacing-large",
+        name: "Spacing / Large",
+        type: "spacing",
+        value: "32px"
       }
     ]);
 
@@ -585,6 +597,12 @@ describe("HTTP server", () => {
           Primary: {
             $type: "color",
             $value: "#2563eb"
+          }
+        },
+        Spacing: {
+          Large: {
+            $type: "dimension",
+            $value: "32px"
           }
         }
       }

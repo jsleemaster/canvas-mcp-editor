@@ -136,6 +136,24 @@ function optionalNumericInputValue(value: number | undefined) {
   return value === undefined ? "" : numericInputValue(value);
 }
 
+type LayoutSpacingTokenKey = keyof NonNullable<NodeLayout["spacing_tokens"]>;
+
+function spacingTokenNumber(token: DesignToken): number | null {
+  const match = token.value.trim().match(/^(\d+(?:\.\d+)?)(px)?$/i);
+  return match ? Number(match[1]) : null;
+}
+
+function uniformTokenValue(
+  tokens: NonNullable<NodeLayout["spacing_tokens"]> | null | undefined,
+  keys: LayoutSpacingTokenKey[]
+) {
+  const first = tokens?.[keys[0]];
+  if (!first || keys.some((key) => tokens?.[key] !== first)) {
+    return "";
+  }
+  return first;
+}
+
 function gridTrackInputValue(tracks: GridTrack[] | undefined, count: number) {
   return Array.from({ length: count }, (_, index) => gridTrackToken(tracks?.[index])).join(" ");
 }
@@ -831,6 +849,21 @@ async function persistImageFitMode(fileId: string, nodeId: string, fitMode: Imag
 
   if (!response.ok) {
     throw new Error(`이미지 맞춤 저장 실패: ${response.status} ${response.statusText}`.trim());
+  }
+}
+
+async function persistNodeLayout(fileId: string, nodeId: string, layout: NodeLayout) {
+  const response = await fetch(apiUrl(`/files/${fileId}/agent/commands`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dryRun: false,
+      commands: [{ type: "set_layout", nodeId, layout }]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`레이아웃 저장 실패: ${response.status} ${response.statusText}`.trim());
   }
 }
 
@@ -2820,21 +2853,93 @@ function Inspector({
   const fillToken = selectedNode.style.fill_token
     ? documentTokens.find((token) => token.id === selectedNode.style.fill_token && token.type === "color") ?? null
     : null;
+  const spacingTokens = documentTokens.filter((token) => token.type === "spacing");
   const updateLayout = (patch: Partial<NodeLayout>) => {
     onLayoutChange(selectedNode.id, {
       ...layout,
       ...patch,
-      padding: patch.padding ?? layout.padding
+      padding: patch.padding ?? layout.padding,
+      spacing_tokens: patch.spacing_tokens ?? layout.spacing_tokens
+    });
+  };
+  const bindGapSpacingToken = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const token = spacingTokens.find((candidate) => candidate.id === event.currentTarget.value);
+    if (!token) {
+      updateLayout({
+        spacing_tokens: {
+          ...(layout.spacing_tokens ?? {}),
+          gap: null,
+          row_gap: null,
+          column_gap: null
+        }
+      });
+      return;
+    }
+    const value = spacingTokenNumber(token);
+    if (value === null) {
+      return;
+    }
+    updateLayout({
+      mode: layout.mode === "none" ? "auto" : layout.mode,
+      gap: value,
+      row_gap: value,
+      column_gap: value,
+      spacing_tokens: {
+        ...(layout.spacing_tokens ?? {}),
+        gap: token.id,
+        row_gap: token.id,
+        column_gap: token.id
+      }
+    });
+  };
+  const bindPaddingSpacingToken = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const token = spacingTokens.find((candidate) => candidate.id === event.currentTarget.value);
+    if (!token) {
+      updateLayout({
+        spacing_tokens: {
+          ...(layout.spacing_tokens ?? {}),
+          padding_top: null,
+          padding_right: null,
+          padding_bottom: null,
+          padding_left: null
+        }
+      });
+      return;
+    }
+    const value = spacingTokenNumber(token);
+    if (value === null) {
+      return;
+    }
+    updateLayout({
+      mode: layout.mode === "none" ? "auto" : layout.mode,
+      padding: { top: value, right: value, bottom: value, left: value },
+      spacing_tokens: {
+        ...(layout.spacing_tokens ?? {}),
+        padding_top: token.id,
+        padding_right: token.id,
+        padding_bottom: token.id,
+        padding_left: token.id
+      }
     });
   };
   const updatePadding =
     (side: keyof NodeLayout["padding"]) => (event: React.ChangeEvent<HTMLInputElement>) => {
       const nextValue = Number(event.currentTarget.value);
       if (Number.isFinite(nextValue)) {
+        const tokenKeyBySide: Record<keyof NodeLayout["padding"], LayoutSpacingTokenKey> = {
+          top: "padding_top",
+          right: "padding_right",
+          bottom: "padding_bottom",
+          left: "padding_left"
+        };
         updateLayout({
           padding: {
             ...layout.padding,
             [side]: nextValue
+          },
+          spacing_tokens: {
+            ...(layout.spacing_tokens ?? {}),
+            [tokenKeyBySide[side]]: null
           }
         });
       }
@@ -3254,6 +3359,45 @@ function Inspector({
             </select>
           </label>
         ) : null}
+        {spacingTokens.length ? (
+          <div className="field-grid">
+            <label>
+              간격 토큰
+              <select
+                data-testid="inspector-layout-gap-token"
+                value={uniformTokenValue(layout.spacing_tokens, ["gap", "row_gap", "column_gap"])}
+                onChange={bindGapSpacingToken}
+              >
+                <option value="">토큰 없음</option>
+                {spacingTokens.map((token) => (
+                  <option key={token.id} value={token.id}>
+                    {token.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              패딩 토큰
+              <select
+                data-testid="inspector-layout-padding-token"
+                value={uniformTokenValue(layout.spacing_tokens, [
+                  "padding_top",
+                  "padding_right",
+                  "padding_bottom",
+                  "padding_left"
+                ])}
+                onChange={bindPaddingSpacingToken}
+              >
+                <option value="">토큰 없음</option>
+                {spacingTokens.map((token) => (
+                  <option key={token.id} value={token.id}>
+                    {token.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        ) : null}
         <div className="field-grid">
           <label>
             간격
@@ -3264,7 +3408,15 @@ function Inspector({
               onChange={(event) => {
                 const nextValue = Number(event.currentTarget.value);
                 if (Number.isFinite(nextValue)) {
-                  updateLayout({ gap: nextValue });
+                  updateLayout({
+                    gap: nextValue,
+                    spacing_tokens: {
+                      ...(layout.spacing_tokens ?? {}),
+                      gap: null,
+                      row_gap: null,
+                      column_gap: null
+                    }
+                  });
                 }
               }}
             />
@@ -3278,7 +3430,13 @@ function Inspector({
               onChange={(event) => {
                 const nextValue = Number(event.currentTarget.value);
                 if (Number.isFinite(nextValue)) {
-                  updateLayout({ row_gap: nextValue });
+                  updateLayout({
+                    row_gap: nextValue,
+                    spacing_tokens: {
+                      ...(layout.spacing_tokens ?? {}),
+                      row_gap: null
+                    }
+                  });
                 }
               }}
             />
@@ -3292,7 +3450,13 @@ function Inspector({
               onChange={(event) => {
                 const nextValue = Number(event.currentTarget.value);
                 if (Number.isFinite(nextValue)) {
-                  updateLayout({ column_gap: nextValue });
+                  updateLayout({
+                    column_gap: nextValue,
+                    spacing_tokens: {
+                      ...(layout.spacing_tokens ?? {}),
+                      column_gap: null
+                    }
+                  });
                 }
               }}
             />
@@ -5195,11 +5359,18 @@ export function App() {
   };
 
   const updateLayout = (nodeId: string, layout: NodeLayout) => {
+    const persistedLayout = layout.mode === "none" ? null : layout;
     dispatch({
       type: "set_node_layout",
       nodeId,
-      layout: layout.mode === "none" ? null : layout
+      layout: persistedLayout
     });
+    if (currentProject && persistedLayout) {
+      void persistNodeLayout(currentProject.currentDocumentId, nodeId, persistedLayout).catch((error) => {
+        const message = error instanceof Error ? error.message : "레이아웃을 저장하지 못했습니다";
+        setProjectStatus(message);
+      });
+    }
   };
 
   const layoutForGridResizeAtPoint = (
@@ -6214,7 +6385,7 @@ export function App() {
     try {
       const tokens = await exportDesignTokensDtcg(currentProject.currentDocumentId);
       setTokenDtcgDraft(JSON.stringify(tokens, null, 2));
-      const count = editorRef.current?.document.tokens?.filter((token) => token.type === "color").length ?? 0;
+      const count = editorRef.current?.document.tokens?.length ?? 0;
       setTokenDtcgStatus(`${count}개 토큰 내보냄`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "토큰을 내보내지 못했습니다";

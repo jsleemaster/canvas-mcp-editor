@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import { validateDocument as validateDesignFile } from "./agent-control";
 import { FileStorage } from "./storage";
 
 let tempRoot: string | undefined;
@@ -446,6 +447,94 @@ describe("FileStorage", () => {
     expect(result.validation.issueCount).toBe(0);
     expect(result.audit.commandTypes).toEqual(["create_token", "set_fill_token"]);
     expect(JSON.stringify(persisted)).not.toContain("color-brand-primary");
+  });
+
+  test("agent commands create spacing tokens and bind layout gaps and padding", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+
+    const result = await storage.applyAgentCommands("sample-file", {
+      dryRun: false,
+      commands: [
+        {
+          type: "create_token",
+          token: {
+            id: "spacing-layout-lg",
+            name: "Layout / Lg",
+            type: "spacing",
+            value: "32px"
+          }
+        },
+        {
+          type: "set_layout_spacing_token",
+          nodeId: "frame-1",
+          target: "all_gaps",
+          tokenId: "spacing-layout-lg"
+        },
+        {
+          type: "set_layout_spacing_token",
+          nodeId: "frame-1",
+          target: "all_padding",
+          tokenId: "spacing-layout-lg"
+        }
+      ] as any
+    });
+    const persisted = await storage.readFile("sample-file");
+    const frame = persisted.pages[0].children[0] as any;
+
+    expect(frame.layout).toMatchObject({
+      gap: 32,
+      row_gap: 32,
+      column_gap: 32,
+      padding: { top: 32, right: 32, bottom: 32, left: 32 },
+      spacing_tokens: {
+        gap: "spacing-layout-lg",
+        row_gap: "spacing-layout-lg",
+        column_gap: "spacing-layout-lg",
+        padding_top: "spacing-layout-lg",
+        padding_right: "spacing-layout-lg",
+        padding_bottom: "spacing-layout-lg",
+        padding_left: "spacing-layout-lg"
+      }
+    });
+    expect(result.validation.issueCount).toBe(0);
+    expect(result.audit.commandTypes).toEqual([
+      "create_token",
+      "set_layout_spacing_token",
+      "set_layout_spacing_token"
+    ]);
+  });
+
+  test("validates missing and wrong-type layout spacing token references", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+
+    const document = await storage.readFile("sample-file");
+    document.tokens = [
+      {
+        id: "color-brand-primary",
+        name: "Brand / Primary",
+        type: "color",
+        value: "#2563eb"
+      }
+    ];
+    document.pages[0].children[0].layout = {
+      mode: "auto",
+      direction: "vertical",
+      align_items: "start",
+      justify_content: "start",
+      gap: 12,
+      padding: { top: 0, right: 0, bottom: 0, left: 0 },
+      spacing_tokens: {
+        gap: "missing-spacing",
+        padding_top: "color-brand-primary"
+      }
+    } as any;
+
+    const validation = validateDesignFile(document as any);
+
+    expect(validation.issues.map((issue) => issue.code)).toContain("missing_layout_spacing_token");
+    expect(validation.issues.map((issue) => issue.code)).toContain("invalid_layout_spacing_token_type");
   });
 
   test("creates a node under a page parent", async () => {

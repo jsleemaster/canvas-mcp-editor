@@ -5,6 +5,16 @@ export interface LayoutSpacing {
   left: number;
 }
 
+export interface LayoutSpacingTokens {
+  gap?: string | null;
+  row_gap?: string | null;
+  column_gap?: string | null;
+  padding_top?: string | null;
+  padding_right?: string | null;
+  padding_bottom?: string | null;
+  padding_left?: string | null;
+}
+
 export interface GridTrack {
   type: "px" | "fr" | "auto";
   value?: number;
@@ -40,6 +50,7 @@ export interface NodeLayout {
   grid_column_tracks?: GridTrack[];
   grid_row_tracks?: GridTrack[];
   grid_areas?: GridArea[];
+  spacing_tokens?: LayoutSpacingTokens | null;
   padding: LayoutSpacing;
 }
 
@@ -122,7 +133,7 @@ export interface ComponentInstance {
 export interface DesignToken {
   id: string;
   name: string;
-  type: "color";
+  type: "color" | "spacing";
   value: string;
 }
 
