@@ -22,6 +22,24 @@ export interface RestoreFileVersionResult {
   recoveryVersion: FileVersionSummary;
 }
 
+export interface CommentThread {
+  schemaVersion: 1;
+  threadId: string;
+  fileId: string;
+  nodeId: string;
+  nodeName: string;
+  body: string;
+  authorName: string;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export interface CreateCommentThreadInput {
+  nodeId: string;
+  body: string;
+  authorName?: string;
+}
+
 export interface FileVersionChangeSummary {
   createdNodeIds: string[];
   updatedNodeIds: string[];
@@ -99,6 +117,43 @@ export async function restoreFileVersion(
     method: "POST"
   });
   return (await readDocumentJson(response)) as RestoreFileVersionResult;
+}
+
+export async function listCommentThreads(
+  fileId: string,
+  includeResolved = false,
+  fetcher: typeof fetch = fetch
+): Promise<CommentThread[]> {
+  const query = includeResolved ? "?includeResolved=true" : "";
+  const response = await fetcher(apiUrl(`/files/${fileId}/comments${query}`));
+  const payload = await readDocumentJson(response);
+  return (payload as { threads: CommentThread[] }).threads;
+}
+
+export async function createCommentThread(
+  fileId: string,
+  input: CreateCommentThreadInput,
+  fetcher: typeof fetch = fetch
+): Promise<CommentThread> {
+  const response = await fetcher(apiUrl(`/files/${fileId}/comments`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  const payload = await readDocumentJson(response);
+  return (payload as { thread: CommentThread }).thread;
+}
+
+export async function resolveCommentThread(
+  fileId: string,
+  threadId: string,
+  fetcher: typeof fetch = fetch
+): Promise<CommentThread> {
+  const response = await fetcher(apiUrl(`/files/${fileId}/comments/${threadId}/resolve`), {
+    method: "POST"
+  });
+  const payload = await readDocumentJson(response);
+  return (payload as { thread: CommentThread }).thread;
 }
 
 export async function summarizeDocumentChanges(

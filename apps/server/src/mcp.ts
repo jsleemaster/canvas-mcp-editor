@@ -670,6 +670,89 @@ export function createMcpServer(storage = new FileStorage()) {
   );
 
   server.registerTool(
+    "list_comment_threads",
+    {
+      description: "List selected-node comment threads for a Layo design file.",
+      annotations: readOnlyToolAnnotations,
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files"),
+        includeResolved: z.boolean().optional().describe("Include resolved comment threads")
+      }
+    },
+    async ({ fileId, includeResolved }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              threads: await storage.listCommentThreads(fileId, { includeResolved })
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "create_comment_thread",
+    {
+      description: "Create a comment thread attached to one selected Layo canvas node.",
+      annotations: writeToolAnnotations,
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files"),
+        nodeId: z.string().describe("Canvas node id to attach the comment to"),
+        body: z.string().describe("Comment body"),
+        authorName: z.string().optional().describe("Display name for the comment author")
+      }
+    },
+    async ({ fileId, nodeId, body, authorName }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              thread: await storage.createCommentThread(fileId, { nodeId, body, authorName })
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "resolve_comment_thread",
+    {
+      description: "Resolve one selected-node comment thread for a Layo design file.",
+      annotations: writeToolAnnotations,
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files"),
+        threadId: z.string().describe("Comment thread id returned by list_comment_threads")
+      }
+    },
+    async ({ fileId, threadId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              thread: await storage.resolveCommentThread(fileId, threadId)
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
     "import_design_tokens",
     {
       description: "Import W3C/DTCG design tokens into a saved Layo document.",

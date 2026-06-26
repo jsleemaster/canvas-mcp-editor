@@ -118,7 +118,7 @@ Exit criteria:
 ## Later Team Features
 
 - Invite links and one-time join flows.
-- Canvas comments, threads, mentions, and resolved state.
+- Viewport comment bubbles, replies, mentions, unread notifications, and live comment sync beyond the landed selected-node comment thread foundation.
 - Named checkpoints and activity history.
 - Branch, review, and merge flows for design changes.
 - Document-level permission policies beyond relay connection roles.

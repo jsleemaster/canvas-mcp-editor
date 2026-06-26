@@ -394,6 +394,63 @@ describe("MCP AI editing workflow", () => {
     expect(restored.recoveryVersion.source).toBe("restore");
   });
 
+  test("lets an MCP client create, list, and resolve selected-node comments", async () => {
+    const client = await connectMcpClient();
+
+    await client.callTool({
+      name: "create_project",
+      arguments: {
+        projectId: "comment-project",
+        name: "코멘트 프로젝트",
+        documentId: "comment-file",
+        documentName: "코멘트 문서"
+      }
+    });
+
+    const created = parseToolJson(
+      await client.callTool({
+        name: "create_comment_thread",
+        arguments: {
+          fileId: "comment-file",
+          nodeId: "text-1",
+          body: "문구 확인 필요",
+          authorName: "디자인 팀"
+        }
+      })
+    );
+    expect(created.thread).toMatchObject({
+      fileId: "comment-file",
+      nodeId: "text-1",
+      nodeName: "헤드라인",
+      body: "문구 확인 필요",
+      resolvedAt: null
+    });
+
+    const listed = parseToolJson(
+      await client.callTool({
+        name: "list_comment_threads",
+        arguments: { fileId: "comment-file" }
+      })
+    );
+    expect(listed.threads.map((thread: { body: string }) => thread.body)).toEqual(["문구 확인 필요"]);
+
+    const resolved = parseToolJson(
+      await client.callTool({
+        name: "resolve_comment_thread",
+        arguments: { fileId: "comment-file", threadId: created.thread.threadId }
+      })
+    );
+    expect(resolved.thread.resolvedAt).toEqual(expect.any(String));
+
+    const active = parseToolJson(
+      await client.callTool({
+        name: "list_comment_threads",
+        arguments: { fileId: "comment-file" }
+      })
+    );
+    expect(active.threads).toEqual([]);
+  });
+
   test("lists automatic file versions created by persisted MCP agent commands", async () => {
     const client = await connectMcpClient();
 

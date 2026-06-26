@@ -144,6 +144,35 @@ export function createHttpServer(storage = new FileStorage(), options: HttpServe
     }
   );
 
+  server.get<{ Params: { fileId: string }; Querystring: { includeResolved?: string } }>(
+    "/files/:fileId/comments",
+    async (request) => {
+      return {
+        threads: await storage.listCommentThreads(request.params.fileId, {
+          includeResolved: request.query.includeResolved === "true"
+        })
+      };
+    }
+  );
+
+  server.post<{
+    Params: { fileId: string };
+    Body: { nodeId: string; body: string; authorName?: string };
+  }>("/files/:fileId/comments", async (request) => {
+    return {
+      thread: await storage.createCommentThread(request.params.fileId, request.body)
+    };
+  });
+
+  server.post<{ Params: { fileId: string; threadId: string } }>(
+    "/files/:fileId/comments/:threadId/resolve",
+    async (request) => {
+      return {
+        thread: await storage.resolveCommentThread(request.params.fileId, request.params.threadId)
+      };
+    }
+  );
+
   server.get<{ Params: { fileId: string } }>("/files/:fileId/tokens/dtcg", async (request) => {
     return { tokens: await storage.exportTokensDtcg(request.params.fileId) };
   });
