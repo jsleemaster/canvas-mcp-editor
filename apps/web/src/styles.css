@@ -810,6 +810,15 @@ button:disabled {
   outline-offset: calc(var(--editor-border-hairline) * -1);
 }
 
+.grid-cell-selection-range {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  box-sizing: border-box;
+  border: var(--editor-border-hairline) solid var(--editor-color-selection);
+  background: color-mix(in srgb, var(--editor-color-selection) 14%, transparent);
+}
+
 .grid-add-control,
 .grid-remove-control,
 .grid-track-header {
