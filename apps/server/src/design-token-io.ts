@@ -44,16 +44,37 @@ export function importColorTokensFromDtcg(input: unknown): DesignToken[] {
 
   const tokens: DesignToken[] = [];
   const seenIds = new Map<string, number>();
-  const tokenSetRoots = Object.entries(input)
-    .filter(([key, value]) => !key.startsWith("$") && isRecord(value))
-    .map(([, value]) => value as JsonRecord);
-  const roots = tokenSetRoots.length ? tokenSetRoots : [input];
+  const roots = tokenSetRootsForDocument(input);
 
   for (const root of roots) {
     collectColorTokens(root, [], inheritedTokenType(root), tokens, seenIds);
   }
 
   return tokens;
+}
+
+function tokenSetRootsForDocument(input: JsonRecord): JsonRecord[] {
+  const orderedTokenSetRoots = tokenSetOrder(input)
+    .map((tokenSetName) => input[tokenSetName])
+    .filter(isRecord);
+  if (orderedTokenSetRoots.length) {
+    return orderedTokenSetRoots;
+  }
+
+  const globalTokenSet = input[DTCG_TOKEN_SET];
+  if (isRecord(globalTokenSet)) {
+    return [globalTokenSet];
+  }
+
+  return [input];
+}
+
+function tokenSetOrder(input: JsonRecord): string[] {
+  const metadata = input.$metadata;
+  if (!isRecord(metadata) || !Array.isArray(metadata.tokenSetOrder)) {
+    return [];
+  }
+  return metadata.tokenSetOrder.filter((value): value is string => typeof value === "string");
 }
 
 function collectColorTokens(

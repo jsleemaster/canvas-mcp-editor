@@ -85,6 +85,26 @@ describe("DTCG color token import/export", () => {
     ]);
   });
 
+  test("imports raw DTCG token trees without dropping the top-level group", () => {
+    expect(
+      importColorTokensFromDtcg({
+        Brand: {
+          Primary: {
+            $type: "color",
+            $value: "#2563eb"
+          }
+        }
+      })
+    ).toEqual([
+      {
+        id: "color-brand-primary",
+        name: "Brand / Primary",
+        type: "color",
+        value: "#2563eb"
+      }
+    ]);
+  });
+
   test("storage persists imported DTCG color tokens and exports them again", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "layo-token-"));
     const storage = new FileStorage(tempRoot);
