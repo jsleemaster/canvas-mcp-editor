@@ -793,7 +793,8 @@ button:disabled {
   height: var(--editor-border-hairline);
 }
 
-.grid-add-control {
+.grid-add-control,
+.grid-remove-control {
   position: absolute;
   pointer-events: auto;
   display: inline-flex;
@@ -811,9 +812,16 @@ button:disabled {
 }
 
 .grid-add-control:hover,
-.grid-add-control:focus-visible {
+.grid-add-control:focus-visible,
+.grid-remove-control:hover,
+.grid-remove-control:focus-visible {
   background: var(--editor-color-selection-soft);
   outline: none;
+}
+
+.grid-remove-control {
+  border-color: var(--editor-color-border-strong);
+  color: var(--editor-color-text-muted);
 }
 
 .grid-resize-handle {
