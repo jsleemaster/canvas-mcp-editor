@@ -1055,6 +1055,177 @@ describe("editor state commands", () => {
     expect(reordered.history.past).toHaveLength(0);
   });
 
+  test("reorders a grid column while preserving child positions when requested", () => {
+    const document = sampleDocument();
+    const frame = findNodeById(document, "frame-1") as any;
+    frame.size = { width: 420, height: 240 };
+    frame.layout = {
+      mode: "grid",
+      direction: "horizontal",
+      grid_columns: 3,
+      grid_rows: 1,
+      grid_column_tracks: [
+        { type: "px", value: 120 },
+        { type: "px", value: 80 },
+        { type: "fr", value: 1 }
+      ],
+      grid_row_tracks: [{ type: "px", value: 90 }],
+      align_items: "start",
+      justify_content: "start",
+      gap: 0,
+      column_gap: 10,
+      padding: { top: 20, right: 20, bottom: 20, left: 20 }
+    };
+    const text = findNodeById(document, "text-1") as any;
+    text.size = { width: 80, height: 40 };
+    for (const [id, fill] of [
+      ["preserve-column-rectangle-1", "#fde68a"],
+      ["preserve-column-rectangle-2", "#dcfce7"]
+    ]) {
+      frame.children.push({
+        id,
+        kind: "rectangle",
+        name: id,
+        transform: { x: 0, y: 0, rotation: 0 },
+        size: { width: 80, height: 40 },
+        style: { fill, stroke: null, stroke_width: 0, opacity: 1 },
+        content: { type: "empty" },
+        children: []
+      });
+    }
+
+    const laidOut = executeEditorCommand(createEditorState(document), {
+      type: "set_node_layout",
+      nodeId: "frame-1",
+      layout: frame.layout
+    });
+    const originalTextTransform = findNodeById(laidOut.document, "text-1")?.transform;
+    const originalFirstRectangleTransform = findNodeById(laidOut.document, "preserve-column-rectangle-1")?.transform;
+    const originalSecondRectangleTransform = findNodeById(laidOut.document, "preserve-column-rectangle-2")?.transform;
+
+    const reordered = executeEditorCommand(laidOut, {
+      type: "reorder_grid_track_with_children",
+      nodeId: "frame-1",
+      axis: "column",
+      fromIndex: 0,
+      toIndex: 2,
+      preserveChildren: true
+    });
+
+    expect(findNodeById(reordered.document, "frame-1")?.layout).toMatchObject({
+      mode: "grid",
+      grid_column_tracks: [
+        { type: "px", value: 80 },
+        { type: "fr", value: 1 },
+        { type: "px", value: 120 }
+      ]
+    });
+    expect(findNodeById(reordered.document, "text-1")?.transform).toMatchObject(originalTextTransform ?? {});
+    expect(findNodeById(reordered.document, "preserve-column-rectangle-1")?.transform).toMatchObject(
+      originalFirstRectangleTransform ?? {}
+    );
+    expect(findNodeById(reordered.document, "preserve-column-rectangle-2")?.transform).toMatchObject(
+      originalSecondRectangleTransform ?? {}
+    );
+    expect(findNodeById(reordered.document, "text-1")?.layout_item?.position).toBeUndefined();
+    expect(findNodeById(reordered.document, "preserve-column-rectangle-1")?.layout_item).toMatchObject({
+      grid_column: 2,
+      grid_row: 1,
+      margin: { left: 40 }
+    });
+    expect(reordered.history.past).toHaveLength(2);
+
+    const restored = undo(reordered);
+    expect(findNodeById(restored.document, "frame-1")?.layout).toMatchObject({
+      mode: "grid",
+      grid_column_tracks: [
+        { type: "px", value: 120 },
+        { type: "px", value: 80 },
+        { type: "fr", value: 1 }
+      ]
+    });
+    expect(findNodeById(restored.document, "preserve-column-rectangle-1")?.layout_item).toBeUndefined();
+  });
+
+  test("reorders a grid row while preserving child positions when requested", () => {
+    const document = sampleDocument();
+    const frame = findNodeById(document, "frame-1") as any;
+    frame.size = { width: 300, height: 260 };
+    frame.layout = {
+      mode: "grid",
+      direction: "horizontal",
+      grid_columns: 1,
+      grid_rows: 3,
+      grid_column_tracks: [{ type: "px", value: 120 }],
+      grid_row_tracks: [
+        { type: "px", value: 90 },
+        { type: "px", value: 40 },
+        { type: "fr", value: 1 }
+      ],
+      align_items: "start",
+      justify_content: "start",
+      gap: 0,
+      row_gap: 0,
+      padding: { top: 20, right: 20, bottom: 20, left: 20 }
+    };
+    const text = findNodeById(document, "text-1") as any;
+    text.size = { width: 80, height: 40 };
+    for (const [id, fill] of [
+      ["preserve-row-rectangle-1", "#fde68a"],
+      ["preserve-row-rectangle-2", "#dcfce7"]
+    ]) {
+      frame.children.push({
+        id,
+        kind: "rectangle",
+        name: id,
+        transform: { x: 0, y: 0, rotation: 0 },
+        size: { width: 80, height: 40 },
+        style: { fill, stroke: null, stroke_width: 0, opacity: 1 },
+        content: { type: "empty" },
+        children: []
+      });
+    }
+
+    const laidOut = executeEditorCommand(createEditorState(document), {
+      type: "set_node_layout",
+      nodeId: "frame-1",
+      layout: frame.layout
+    });
+    const originalTextTransform = findNodeById(laidOut.document, "text-1")?.transform;
+    const originalFirstRectangleTransform = findNodeById(laidOut.document, "preserve-row-rectangle-1")?.transform;
+    const originalSecondRectangleTransform = findNodeById(laidOut.document, "preserve-row-rectangle-2")?.transform;
+
+    const reordered = executeEditorCommand(laidOut, {
+      type: "reorder_grid_track_with_children",
+      nodeId: "frame-1",
+      axis: "row",
+      fromIndex: 0,
+      toIndex: 2,
+      preserveChildren: true
+    });
+
+    expect(findNodeById(reordered.document, "frame-1")?.layout).toMatchObject({
+      mode: "grid",
+      grid_row_tracks: [
+        { type: "px", value: 40 },
+        { type: "fr", value: 1 },
+        { type: "px", value: 90 }
+      ]
+    });
+    expect(findNodeById(reordered.document, "text-1")?.transform).toMatchObject(originalTextTransform ?? {});
+    expect(findNodeById(reordered.document, "preserve-row-rectangle-1")?.transform).toMatchObject(
+      originalFirstRectangleTransform ?? {}
+    );
+    expect(findNodeById(reordered.document, "preserve-row-rectangle-2")?.transform).toMatchObject(
+      originalSecondRectangleTransform ?? {}
+    );
+    expect(findNodeById(reordered.document, "preserve-row-rectangle-1")?.layout_item).toMatchObject({
+      grid_column: 1,
+      grid_row: 2,
+      margin: { top: 50 }
+    });
+  });
+
   test("grid layout places a child into a named area", () => {
     const document = sampleDocument();
     const frame = findNodeById(document, "frame-1") as any;

@@ -237,6 +237,7 @@ export type EditorCommand =
       axis: "column" | "row";
       fromIndex: number;
       toIndex: number;
+      preserveChildren?: boolean;
       previousNode?: RendererNode;
     }
   | {
@@ -1910,7 +1911,8 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
             nodeId: command.nodeId,
             axis: command.axis,
             fromIndex: command.fromIndex,
-            toIndex: command.toIndex
+            toIndex: command.toIndex,
+            preserveChildren: command.preserveChildren
           },
           selectedNodeId: command.nodeId
         };
@@ -1949,6 +1951,15 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       }
 
       const previousNode = structuredClone(node);
+      const previousChildSnapshots = new Map(
+        flowChildren.map((child) => [
+          child.id,
+          {
+            transform: { ...child.transform },
+            size: { ...child.size }
+          }
+        ])
+      );
       const columnTracks = resolveGridTracks(layout.grid_column_tracks, placementPlan.columns);
       const rowTracks = resolveGridTracks(layout.grid_row_tracks, placementPlan.rows);
       const nextLayout = normalizeNodeLayout({
@@ -1962,23 +1973,33 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       });
       node.layout = nextLayout;
 
-      for (const child of flowChildren) {
-        const placement = placementPlan.placements.get(child.id);
-        if (!placement) {
-          continue;
+      if (command.preserveChildren) {
+        materializePreservedGridChildPlacements(
+          node,
+          nextLayout,
+          flowChildren,
+          placementPlan.placements,
+          previousChildSnapshots
+        );
+      } else {
+        for (const child of flowChildren) {
+          const placement = placementPlan.placements.get(child.id);
+          if (!placement) {
+            continue;
+          }
+          const nextColumn =
+            command.axis === "column" ? moveTrackIndex(placement.column, fromIndex, toIndex) : placement.column;
+          const nextRow = command.axis === "row" ? moveTrackIndex(placement.row, fromIndex, toIndex) : placement.row;
+          const currentLayoutItem = normalizeNodeLayoutItem(child.layout_item ?? DEFAULT_LAYOUT_ITEM);
+          child.layout_item = normalizeNodeLayoutItem({
+            ...currentLayoutItem,
+            grid_area: undefined,
+            grid_column: nextColumn + 1,
+            grid_row: nextRow + 1,
+            grid_column_span: placement.columnSpan,
+            grid_row_span: placement.rowSpan
+          });
         }
-        const nextColumn =
-          command.axis === "column" ? moveTrackIndex(placement.column, fromIndex, toIndex) : placement.column;
-        const nextRow = command.axis === "row" ? moveTrackIndex(placement.row, fromIndex, toIndex) : placement.row;
-        const currentLayoutItem = normalizeNodeLayoutItem(child.layout_item ?? DEFAULT_LAYOUT_ITEM);
-        child.layout_item = normalizeNodeLayoutItem({
-          ...currentLayoutItem,
-          grid_area: undefined,
-          grid_column: nextColumn + 1,
-          grid_row: nextRow + 1,
-          grid_column_span: placement.columnSpan,
-          grid_row_span: placement.rowSpan
-        });
       }
       relayoutDocument(next);
 
@@ -1990,6 +2011,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
           axis: command.axis,
           fromIndex,
           toIndex,
+          preserveChildren: command.preserveChildren,
           previousNode
         },
         selectedNodeId: command.nodeId
@@ -2212,6 +2234,92 @@ function gridPlacementIntersectsTrack(placement: GridPlacement, axis: "column" |
   return axis === "column"
     ? placement.column <= index && index < placement.column + placement.columnSpan
     : placement.row <= index && index < placement.row + placement.rowSpan;
+}
+
+function materializePreservedGridChildPlacements(
+  parent: RendererNode,
+  layout: NodeLayout,
+  flowChildren: RendererNode[],
+  placements: Map<string, GridPlacement>,
+  previousChildSnapshots: Map<
+    string,
+    { transform: RendererNode["transform"]; size: RendererNode["size"] }
+  >
+): void {
+  const columns = gridTrackCount(layout.grid_column_tracks, layout.grid_columns, 2);
+  const rows = gridTrackCount(layout.grid_row_tracks, layout.grid_rows, 1);
+  const columnGap = layout.column_gap ?? layout.gap;
+  const rowGap = layout.row_gap ?? layout.gap;
+  const availableWidth = Math.max(
+    0,
+    parent.size.width - layout.padding.left - layout.padding.right - columnGap * Math.max(0, columns - 1)
+  );
+  const availableHeight = Math.max(
+    0,
+    parent.size.height - layout.padding.top - layout.padding.bottom - rowGap * Math.max(0, rows - 1)
+  );
+  const columnTracks = resolveGridTracks(layout.grid_column_tracks, columns);
+  const rowTracks = resolveGridTracks(layout.grid_row_tracks, rows);
+  const columnSizes = resolveGridTrackSizes(columnTracks, availableWidth, "column", flowChildren, placements);
+  const rowSizes = resolveGridTrackSizes(rowTracks, availableHeight, "row", flowChildren, placements);
+  const columnStarts = gridTrackStarts(columnSizes, columnGap);
+  const rowStarts = gridTrackStarts(rowSizes, rowGap);
+
+  for (const child of flowChildren) {
+    const placement = placements.get(child.id);
+    const previous = previousChildSnapshots.get(child.id);
+    if (!placement || !previous) {
+      continue;
+    }
+    const currentLayoutItem = normalizeNodeLayoutItem(child.layout_item ?? DEFAULT_LAYOUT_ITEM);
+    const column = gridTrackIndexForPreservedPosition(
+      previous.transform.x,
+      layout.padding.left,
+      columnStarts,
+      placement.columnSpan
+    );
+    const row = gridTrackIndexForPreservedPosition(
+      previous.transform.y,
+      layout.padding.top,
+      rowStarts,
+      placement.rowSpan
+    );
+    child.size = { ...previous.size };
+    child.layout_item = normalizeNodeLayoutItem({
+      ...currentLayoutItem,
+      grid_area: undefined,
+      grid_column: column + 1,
+      grid_row: row + 1,
+      grid_column_span: placement.columnSpan,
+      grid_row_span: placement.rowSpan,
+      margin: {
+        ...currentLayoutItem.margin,
+        left: layoutOffsetForPreservedPosition(previous.transform.x, layout.padding.left, columnStarts[column] ?? 0),
+        top: layoutOffsetForPreservedPosition(previous.transform.y, layout.padding.top, rowStarts[row] ?? 0)
+      }
+    });
+  }
+}
+
+function gridTrackIndexForPreservedPosition(
+  position: number,
+  paddingStart: number,
+  starts: number[],
+  span: number
+): number {
+  const maxIndex = Math.max(0, starts.length - Math.max(1, span));
+  let targetIndex = 0;
+  const relativePosition = position - paddingStart;
+  for (let index = 0; index <= maxIndex; index += 1) {
+    if (starts[index] <= relativePosition + 0.001) {
+      targetIndex = index;
+    }
+  }
+  return targetIndex;
+}
+
+function layoutOffsetForPreservedPosition(position: number, paddingStart: number, trackStart: number): number {
+  return Math.round(Math.max(0, position - paddingStart - trackStart) * 1000) / 1000;
 }
 
 function moveArrayItem<T>(items: T[], fromIndex: number, toIndex: number): T[] {
