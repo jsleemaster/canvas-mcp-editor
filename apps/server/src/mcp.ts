@@ -562,6 +562,114 @@ export function createMcpServer(storage = new FileStorage()) {
   );
 
   server.registerTool(
+    "list_file_versions",
+    {
+      description: "List saved local version snapshots for a Layo design file without returning full document payloads.",
+      annotations: readOnlyToolAnnotations,
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files")
+      }
+    },
+    async ({ fileId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              versions: await storage.listFileVersions(fileId)
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "save_file_version",
+    {
+      description: "Save the current local design file as a named version snapshot for later recovery.",
+      annotations: writeToolAnnotations,
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files"),
+        message: z.string().optional().describe("Human-readable reason for this saved version")
+      }
+    },
+    async ({ fileId, message }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              version: await storage.saveFileVersion(fileId, { message })
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "get_file_version",
+    {
+      description: "Read one saved Layo file version snapshot, including its document JSON for preview or comparison.",
+      annotations: readOnlyToolAnnotations,
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files"),
+        versionId: z.string().describe("Saved version id returned by list_file_versions")
+      }
+    },
+    async ({ fileId, versionId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              version: await storage.readFileVersion(fileId, versionId)
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "restore_file_version",
+    {
+      description:
+        "Restore a saved Layo file version. The current document is first saved as a recovery snapshot.",
+      annotations: writeToolAnnotations,
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files"),
+        versionId: z.string().describe("Saved version id returned by list_file_versions")
+      }
+    },
+    async ({ fileId, versionId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              ...(await storage.restoreFileVersion(fileId, versionId))
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
     "import_design_tokens",
     {
       description: "Import W3C/DTCG design tokens into a saved Layo document.",

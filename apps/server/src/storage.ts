@@ -193,6 +193,34 @@ export interface StoredFileSummary {
   modifiedAt: string;
 }
 
+export type FileVersionSource = "manual" | "restore";
+
+export interface StoredFileVersionSummary {
+  schemaVersion: 1;
+  versionId: string;
+  fileId: string;
+  name: string;
+  message: string;
+  source: FileVersionSource;
+  createdAt: string;
+  nodeCount: number;
+}
+
+export interface StoredFileVersion extends StoredFileVersionSummary {
+  document: DesignFile;
+}
+
+export interface SaveFileVersionInput {
+  message?: string;
+  source?: FileVersionSource;
+}
+
+export interface RestoreFileVersionResult {
+  file: DesignFile;
+  restoredVersion: StoredFileVersionSummary;
+  recoveryVersion: StoredFileVersionSummary;
+}
+
 export interface ProjectDocumentSummary {
   documentId: string;
   name: string;
@@ -279,9 +307,23 @@ export class FileStorage {
     return path.join(this.rootDir, "projects");
   }
 
+  private get historyDir() {
+    return path.join(this.rootDir, "history");
+  }
+
   private filePathFor(fileId: string) {
     const safeFileId = fileId.replace(/[^a-zA-Z0-9_-]/g, "");
     return path.join(this.filesDir, `${safeFileId}.json`);
+  }
+
+  private fileHistoryDirFor(fileId: string) {
+    assertSafeStorageId(fileId);
+    return path.join(this.historyDir, fileId);
+  }
+
+  private fileVersionPathFor(fileId: string, versionId: string) {
+    assertSafeStorageId(versionId);
+    return path.join(this.fileHistoryDirFor(fileId), `${versionId}.json`);
   }
 
   private projectPathFor(projectId: string) {
@@ -583,6 +625,59 @@ export class FileStorage {
     await mkdir(this.filesDir, { recursive: true });
     await writeFile(this.filePathFor(fileId), `${JSON.stringify(document, null, 2)}\n`, "utf8");
     return document;
+  }
+
+  async listFileVersions(fileId: string): Promise<StoredFileVersionSummary[]> {
+    await this.adoptPriorDefaultStoreIfNeeded();
+    let entries: string[];
+    try {
+      entries = await readdir(this.fileHistoryDirFor(fileId));
+    } catch {
+      return [];
+    }
+
+    const versions = await Promise.all(
+      entries
+        .filter((entry) => entry.endsWith(".json"))
+        .map(async (entry) => {
+          const raw = await readFile(path.join(this.fileHistoryDirFor(fileId), entry), "utf8");
+          return summarizeStoredFileVersion(parseStoredFileVersion(JSON.parse(raw), fileId));
+        })
+    );
+
+    return versions.sort(
+      (a, b) => b.createdAt.localeCompare(a.createdAt) || b.versionId.localeCompare(a.versionId)
+    );
+  }
+
+  async saveFileVersion(
+    fileId: string,
+    input: SaveFileVersionInput = {}
+  ): Promise<StoredFileVersionSummary> {
+    const document = await this.readFile(fileId);
+    return this.writeFileVersion(fileId, document, input);
+  }
+
+  async readFileVersion(fileId: string, versionId: string): Promise<StoredFileVersion> {
+    await this.adoptPriorDefaultStoreIfNeeded();
+    const raw = await readFile(this.fileVersionPathFor(fileId, versionId), "utf8");
+    return parseStoredFileVersion(JSON.parse(raw), fileId);
+  }
+
+  async restoreFileVersion(fileId: string, versionId: string): Promise<RestoreFileVersionResult> {
+    const restoredVersion = await this.readFileVersion(fileId, versionId);
+    const currentDocument = await this.readFile(fileId);
+    const recoveryVersion = await this.writeFileVersion(fileId, currentDocument, {
+      message: "복원 전 자동 저장",
+      source: "restore"
+    });
+    const restoredDocument = { ...structuredClone(restoredVersion.document), id: fileId };
+    await this.writeFile(fileId, restoredDocument);
+    return {
+      file: restoredDocument,
+      restoredVersion: summarizeStoredFileVersion(restoredVersion),
+      recoveryVersion
+    };
   }
 
   async exportTokensDtcg(fileId: string): Promise<Record<string, unknown>> {
@@ -897,6 +992,34 @@ export class FileStorage {
     await writeFile(this.projectPathFor(parsed.projectId), `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
     return parsed;
   }
+
+  private async writeFileVersion(
+    fileId: string,
+    document: DesignFile,
+    input: SaveFileVersionInput = {}
+  ): Promise<StoredFileVersionSummary> {
+    assertSafeStorageId(fileId);
+    const versionId = createStorageId("version");
+    const createdAt = new Date().toISOString();
+    const version: StoredFileVersion = {
+      schemaVersion: 1,
+      versionId,
+      fileId,
+      name: document.name,
+      message: normalizeName(input.message, "저장된 버전"),
+      source: input.source ?? "manual",
+      createdAt,
+      nodeCount: countDocumentNodes(document),
+      document: structuredClone(document)
+    };
+    await mkdir(this.fileHistoryDirFor(fileId), { recursive: true });
+    await writeFile(
+      this.fileVersionPathFor(fileId, versionId),
+      `${JSON.stringify(version, null, 2)}\n`,
+      "utf8"
+    );
+    return summarizeStoredFileVersion(version);
+  }
 }
 
 function assertSafeStorageId(value: string) {
@@ -985,6 +1108,61 @@ function parseStoredAsset(input: unknown): StoredAsset {
     byteLength: Math.max(0, Math.round(Number(candidate.byteLength) || 0)),
     url: `/assets/${candidate.assetId}`
   };
+}
+
+function parseStoredFileVersion(input: unknown, expectedFileId: string): StoredFileVersion {
+  if (!input || typeof input !== "object") {
+    throw new Error("invalid file version");
+  }
+
+  const candidate = input as StoredFileVersion;
+  if (candidate.schemaVersion !== 1) {
+    throw new Error(`unsupported file version schema: ${String(candidate.schemaVersion)}`);
+  }
+  assertSafeStorageId(candidate.versionId);
+  assertSafeStorageId(candidate.fileId);
+  if (candidate.fileId !== expectedFileId) {
+    throw new Error(`file version mismatch: ${candidate.fileId}`);
+  }
+  if (candidate.source !== "manual" && candidate.source !== "restore") {
+    throw new Error(`unsupported file version source: ${String(candidate.source)}`);
+  }
+  if (!candidate.document || candidate.document.id !== expectedFileId) {
+    throw new Error("file version document mismatch");
+  }
+
+  return {
+    schemaVersion: 1,
+    versionId: candidate.versionId,
+    fileId: candidate.fileId,
+    name: normalizeName(candidate.name, candidate.document.name),
+    message: normalizeName(candidate.message, "저장된 버전"),
+    source: candidate.source,
+    createdAt: normalizeName(candidate.createdAt, new Date(0).toISOString()),
+    nodeCount: Math.max(0, Math.round(Number(candidate.nodeCount) || countDocumentNodes(candidate.document))),
+    document: candidate.document
+  };
+}
+
+function summarizeStoredFileVersion(version: StoredFileVersion): StoredFileVersionSummary {
+  return {
+    schemaVersion: version.schemaVersion,
+    versionId: version.versionId,
+    fileId: version.fileId,
+    name: version.name,
+    message: version.message,
+    source: version.source,
+    createdAt: version.createdAt,
+    nodeCount: version.nodeCount
+  };
+}
+
+function countDocumentNodes(document: DesignFile) {
+  return document.pages.reduce((total, page) => total + countNodes(page.children), 0);
+}
+
+function countNodes(nodes: DesignNode[]): number {
+  return nodes.reduce((total, node) => total + 1 + countNodes(node.children), 0);
 }
 
 async function readProjectIfPresent(projectPath: string): Promise<ProjectManifest | null> {

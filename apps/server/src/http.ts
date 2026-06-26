@@ -117,6 +117,33 @@ export function createHttpServer(storage = new FileStorage(), options: HttpServe
     return { file: await storage.readFile(request.params.fileId) };
   });
 
+  server.get<{ Params: { fileId: string } }>("/files/:fileId/versions", async (request) => {
+    return { versions: await storage.listFileVersions(request.params.fileId) };
+  });
+
+  server.post<{ Params: { fileId: string }; Body: { message?: string } }>(
+    "/files/:fileId/versions",
+    async (request) => {
+      return { version: await storage.saveFileVersion(request.params.fileId, request.body) };
+    }
+  );
+
+  server.get<{ Params: { fileId: string; versionId: string } }>(
+    "/files/:fileId/versions/:versionId",
+    async (request) => {
+      return {
+        version: await storage.readFileVersion(request.params.fileId, request.params.versionId)
+      };
+    }
+  );
+
+  server.post<{ Params: { fileId: string; versionId: string } }>(
+    "/files/:fileId/versions/:versionId/restore",
+    async (request) => {
+      return await storage.restoreFileVersion(request.params.fileId, request.params.versionId);
+    }
+  );
+
   server.get<{ Params: { fileId: string } }>("/files/:fileId/tokens/dtcg", async (request) => {
     return { tokens: await storage.exportTokensDtcg(request.params.fileId) };
   });
