@@ -222,6 +222,34 @@ export interface RestoreFileVersionResult {
   recoveryVersion: StoredFileVersionSummary;
 }
 
+export interface StoredCommentThread {
+  schemaVersion: 1;
+  threadId: string;
+  fileId: string;
+  nodeId: string;
+  nodeName: string;
+  body: string;
+  authorName: string;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export interface CreateCommentThreadInput {
+  nodeId: string;
+  body: string;
+  authorName?: string;
+}
+
+export interface ListCommentThreadsOptions {
+  includeResolved?: boolean;
+}
+
+interface StoredCommentThreadFile {
+  schemaVersion: 1;
+  fileId: string;
+  threads: StoredCommentThread[];
+}
+
 interface AutoFileVersionState {
   schemaVersion: 1;
   fileId: string;
@@ -324,6 +352,10 @@ export class FileStorage {
     return path.join(this.rootDir, "history-state");
   }
 
+  private get commentsDir() {
+    return path.join(this.rootDir, "comments");
+  }
+
   private filePathFor(fileId: string) {
     const safeFileId = fileId.replace(/[^a-zA-Z0-9_-]/g, "");
     return path.join(this.filesDir, `${safeFileId}.json`);
@@ -342,6 +374,11 @@ export class FileStorage {
   private fileHistoryStatePathFor(fileId: string) {
     assertSafeStorageId(fileId);
     return path.join(this.historyStateDir, `${fileId}.json`);
+  }
+
+  private commentThreadsPathFor(fileId: string) {
+    assertSafeStorageId(fileId);
+    return path.join(this.commentsDir, `${fileId}.json`);
   }
 
   private projectPathFor(projectId: string) {
@@ -696,6 +733,68 @@ export class FileStorage {
       restoredVersion: summarizeStoredFileVersion(restoredVersion),
       recoveryVersion
     };
+  }
+
+  async listCommentThreads(
+    fileId: string,
+    options: ListCommentThreadsOptions = {}
+  ): Promise<StoredCommentThread[]> {
+    await this.readFile(fileId);
+    const store = await this.readCommentThreadFile(fileId);
+    return store.threads.filter((thread) => options.includeResolved || thread.resolvedAt === null);
+  }
+
+  async createCommentThread(
+    fileId: string,
+    input: CreateCommentThreadInput
+  ): Promise<StoredCommentThread> {
+    assertSafeStorageId(input.nodeId);
+    const document = await this.readFile(fileId);
+    const node = findNodeById(document, input.nodeId);
+    if (!node) {
+      throw new Error(`node not found: ${input.nodeId}`);
+    }
+
+    const now = new Date().toISOString();
+    const thread: StoredCommentThread = {
+      schemaVersion: 1,
+      threadId: createStorageId("comment"),
+      fileId,
+      nodeId: node.id,
+      nodeName: node.name,
+      body: normalizeCommentBody(input.body),
+      authorName: normalizeName(input.authorName, "사용자"),
+      createdAt: now,
+      resolvedAt: null
+    };
+    const store = await this.readCommentThreadFile(fileId);
+    await this.writeCommentThreadFile({
+      ...store,
+      threads: [thread, ...store.threads]
+    });
+    return thread;
+  }
+
+  async resolveCommentThread(fileId: string, threadId: string): Promise<StoredCommentThread> {
+    assertSafeStorageId(threadId);
+    await this.readFile(fileId);
+    const store = await this.readCommentThreadFile(fileId);
+    const thread = store.threads.find((candidate) => candidate.threadId === threadId);
+    if (!thread) {
+      throw new Error(`comment thread not found: ${threadId}`);
+    }
+
+    const resolvedThread: StoredCommentThread = {
+      ...thread,
+      resolvedAt: thread.resolvedAt ?? new Date().toISOString()
+    };
+    await this.writeCommentThreadFile({
+      ...store,
+      threads: store.threads.map((candidate) =>
+        candidate.threadId === threadId ? resolvedThread : candidate
+      )
+    });
+    return resolvedThread;
   }
 
   async exportTokensDtcg(fileId: string): Promise<Record<string, unknown>> {
@@ -1107,6 +1206,27 @@ export class FileStorage {
     });
     return version;
   }
+
+  private async readCommentThreadFile(fileId: string): Promise<StoredCommentThreadFile> {
+    await this.adoptPriorDefaultStoreIfNeeded();
+    let raw: string;
+    try {
+      raw = await readFile(this.commentThreadsPathFor(fileId), "utf8");
+    } catch {
+      return { schemaVersion: 1, fileId, threads: [] };
+    }
+
+    return parseStoredCommentThreadFile(JSON.parse(raw), fileId);
+  }
+
+  private async writeCommentThreadFile(store: StoredCommentThreadFile): Promise<void> {
+    await mkdir(this.commentsDir, { recursive: true });
+    await writeFile(
+      this.commentThreadsPathFor(store.fileId),
+      `${JSON.stringify(store, null, 2)}\n`,
+      "utf8"
+    );
+  }
 }
 
 function assertSafeStorageId(value: string) {
@@ -1123,6 +1243,14 @@ function normalizeName(value: string | undefined, fallback: string) {
   const normalized = value?.trim() || fallback;
   if (!normalized.trim()) {
     throw new Error("name is required");
+  }
+  return normalized;
+}
+
+function normalizeCommentBody(value: unknown) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) {
+    throw inputValidationError("comment body is required");
   }
   return normalized;
 }
@@ -1228,6 +1356,59 @@ function parseStoredFileVersion(input: unknown, expectedFileId: string): StoredF
     createdAt: normalizeName(candidate.createdAt, new Date(0).toISOString()),
     nodeCount: Math.max(0, Math.round(Number(candidate.nodeCount) || countDocumentNodes(candidate.document))),
     document: candidate.document
+  };
+}
+
+function parseStoredCommentThreadFile(input: unknown, expectedFileId: string): StoredCommentThreadFile {
+  if (!input || typeof input !== "object") {
+    throw new Error("invalid comment thread file");
+  }
+
+  const candidate = input as StoredCommentThreadFile;
+  if (candidate.schemaVersion !== 1) {
+    throw new Error(`unsupported comment thread file schema: ${String(candidate.schemaVersion)}`);
+  }
+  assertSafeStorageId(candidate.fileId);
+  if (candidate.fileId !== expectedFileId) {
+    throw new Error(`comment thread file mismatch: ${candidate.fileId}`);
+  }
+  if (!Array.isArray(candidate.threads)) {
+    throw new Error("comment threads are required");
+  }
+
+  return {
+    schemaVersion: 1,
+    fileId: candidate.fileId,
+    threads: candidate.threads.map((thread) => parseStoredCommentThread(thread, expectedFileId))
+  };
+}
+
+function parseStoredCommentThread(input: unknown, expectedFileId: string): StoredCommentThread {
+  if (!input || typeof input !== "object") {
+    throw new Error("invalid comment thread");
+  }
+
+  const candidate = input as StoredCommentThread;
+  if (candidate.schemaVersion !== 1) {
+    throw new Error(`unsupported comment thread schema: ${String(candidate.schemaVersion)}`);
+  }
+  assertSafeStorageId(candidate.threadId);
+  assertSafeStorageId(candidate.fileId);
+  assertSafeStorageId(candidate.nodeId);
+  if (candidate.fileId !== expectedFileId) {
+    throw new Error(`comment thread mismatch: ${candidate.fileId}`);
+  }
+
+  return {
+    schemaVersion: 1,
+    threadId: candidate.threadId,
+    fileId: candidate.fileId,
+    nodeId: candidate.nodeId,
+    nodeName: normalizeName(candidate.nodeName, candidate.nodeId),
+    body: normalizeCommentBody(candidate.body),
+    authorName: normalizeName(candidate.authorName, "사용자"),
+    createdAt: normalizeName(candidate.createdAt, new Date(0).toISOString()),
+    resolvedAt: candidate.resolvedAt ? normalizeName(candidate.resolvedAt, "") : null
   };
 }
 

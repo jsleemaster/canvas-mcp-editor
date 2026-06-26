@@ -290,6 +290,49 @@ describe("HTTP server", () => {
     expect(created.json().node.id).toBe("rectangle-99");
   });
 
+  test("serves selected-node comment thread routes", async () => {
+    const server = await createServerWithDocument();
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/comments",
+      payload: {
+        nodeId: "text-1",
+        body: "문구 확인 필요",
+        authorName: "디자인 팀"
+      }
+    });
+    expect(created.statusCode).toBe(200);
+    expect(created.json().thread).toMatchObject({
+      fileId: "sample-file",
+      nodeId: "text-1",
+      nodeName: "헤드라인",
+      body: "문구 확인 필요",
+      authorName: "디자인 팀",
+      resolvedAt: null
+    });
+
+    const listed = await server.inject({ method: "GET", url: "/files/sample-file/comments" });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().threads.map((thread: { body: string }) => thread.body)).toEqual(["문구 확인 필요"]);
+
+    const resolved = await server.inject({
+      method: "POST",
+      url: `/files/sample-file/comments/${created.json().thread.threadId}/resolve`
+    });
+    expect(resolved.statusCode).toBe(200);
+    expect(resolved.json().thread).toMatchObject({
+      threadId: created.json().thread.threadId,
+      resolvedAt: expect.any(String)
+    });
+
+    const active = await server.inject({ method: "GET", url: "/files/sample-file/comments" });
+    expect(active.json().threads).toEqual([]);
+
+    const all = await server.inject({ method: "GET", url: "/files/sample-file/comments?includeResolved=true" });
+    expect(all.json().threads).toHaveLength(1);
+  });
+
   test("updates image node assets and persists replacement metadata", async () => {
     const server = await createServerWithDocument();
 

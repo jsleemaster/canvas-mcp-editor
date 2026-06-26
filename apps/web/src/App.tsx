@@ -31,14 +31,18 @@ import {
 } from "@layo/collaboration";
 import { apiUrl } from "./api-base";
 import {
+  createCommentThread,
   exportDesignTokensDtcg,
   importDesignTokensDtcg,
+  listCommentThreads,
   listFileVersions,
   parseDocumentPayload,
   readFileVersion,
   restoreFileVersion,
+  resolveCommentThread,
   saveFileVersion,
   summarizeDocumentChanges,
+  type CommentThread,
   type FileVersionChangeSummary,
   type FileVersionSummary
 } from "./document-api";
@@ -2804,9 +2808,16 @@ function Inspector({
   tokenDtcgDraft,
   tokenDtcgStatus,
   canEditTokens,
+  commentThreads,
+  commentBody,
+  commentStatus,
+  canComment,
   onTokenDtcgDraftChange,
   onExportTokensDtcg,
-  onImportTokensDtcg
+  onImportTokensDtcg,
+  onCommentBodyChange,
+  onCreateComment,
+  onResolveComment
 }: {
   selectedNode: RendererNode | null;
   selectedParentNode: RendererNode | null;
@@ -2828,9 +2839,16 @@ function Inspector({
   tokenDtcgDraft: string;
   tokenDtcgStatus: string;
   canEditTokens: boolean;
+  commentThreads: CommentThread[];
+  commentBody: string;
+  commentStatus: string;
+  canComment: boolean;
   onTokenDtcgDraftChange: (value: string) => void;
   onExportTokensDtcg: () => void;
   onImportTokensDtcg: () => void;
+  onCommentBodyChange: (value: string) => void;
+  onCreateComment: (nodeId: string) => void;
+  onResolveComment: (threadId: string) => void;
 }) {
   const tokenControls = (
     <InspectorTokenControls
@@ -3147,6 +3165,57 @@ function Inspector({
           />
         </label>
       ) : null}
+      <section className="inspector-section comment-panel" data-testid="comment-panel" aria-label="코멘트">
+        <h3>코멘트</h3>
+        <div className="comment-target">
+          <strong>{selectedNode.name}</strong>
+          <span>{selectedNode.id}</span>
+        </div>
+        <label className="stacked-field">
+          새 코멘트
+          <textarea
+            className="comment-body-field"
+            data-testid="comment-body"
+            placeholder="코멘트 입력"
+            value={commentBody}
+            onChange={(event) => onCommentBodyChange(event.currentTarget.value)}
+          />
+        </label>
+        <button
+          type="button"
+          className="comment-submit"
+          onClick={() => onCreateComment(selectedNode.id)}
+          disabled={!canComment || !commentBody.trim()}
+        >
+          코멘트 추가
+        </button>
+        <div className="comment-status" data-testid="comment-status" aria-live="polite">
+          {commentStatus}
+        </div>
+        <ul className="comment-list" data-testid="comment-list">
+          {commentThreads.length === 0 ? (
+            <li className="comment-empty">활성 코멘트 없음</li>
+          ) : (
+            commentThreads.map((thread) => (
+              <li className="comment-row" key={thread.threadId}>
+                <span className="comment-summary">
+                  <strong>{thread.body}</strong>
+                  <span>
+                    {thread.nodeId} · {thread.authorName}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  aria-label={`${thread.body} 해결`}
+                  onClick={() => onResolveComment(thread.threadId)}
+                >
+                  해결
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      </section>
       <section className="inspector-section" aria-label="레이아웃">
         <h3>레이아웃</h3>
         <label className="stacked-field">
@@ -3827,6 +3896,9 @@ export function App() {
   const [fileVersionPreview, setFileVersionPreview] = useState<FileVersionPreviewState | null>(null);
   const [fileVersionMessage, setFileVersionMessage] = useState("검토 전");
   const [fileVersionStatus, setFileVersionStatus] = useState("버전 기록 대기 중");
+  const [commentThreads, setCommentThreads] = useState<CommentThread[]>([]);
+  const [commentBody, setCommentBody] = useState("");
+  const [commentStatus, setCommentStatus] = useState("코멘트 대기 중");
   const [tokenDtcgDraft, setTokenDtcgDraft] = useState("");
   const [tokenDtcgStatus, setTokenDtcgStatus] = useState("");
   const [encryptionEnabled, setEncryptionEnabled] = useState(false);
@@ -3906,6 +3978,24 @@ export function App() {
     }
   };
 
+  const resetCommentThreads = (status = "코멘트 대기 중") => {
+    setCommentThreads([]);
+    setCommentBody("");
+    setCommentStatus(status);
+  };
+
+  const refreshCommentThreads = async (fileId: string, status?: string) => {
+    try {
+      const threads = await listCommentThreads(fileId);
+      setCommentThreads(threads);
+      setCommentStatus(status ?? (threads.length > 0 ? `${threads.length}개 활성 코멘트` : "활성 코멘트 없음"));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "코멘트를 불러오지 못했습니다";
+      setCommentThreads([]);
+      setCommentStatus(message);
+    }
+  };
+
   useEffect(() => {
     editorRef.current = editor;
   }, [editor]);
@@ -3926,6 +4016,7 @@ export function App() {
     setTokenDtcgStatus("");
     setProjectStatus(`${project.name} 불러옴`);
     void refreshFileVersions(project.currentDocumentId);
+    void refreshCommentThreads(project.currentDocumentId);
   };
 
   useEffect(() => {
@@ -3949,6 +4040,7 @@ export function App() {
             setRecentProjectIds(storedRecentProjectIds);
             setProjectStatus("저장된 프로젝트 없음");
             resetFileVersions("프로젝트 없음");
+            resetCommentThreads("프로젝트 없음");
             setEditor(null);
           }
           return;
@@ -3972,10 +4064,12 @@ export function App() {
         setTokenDtcgStatus("");
         setProjectStatus(`${selectedProject.name} 불러옴`);
         void refreshFileVersions(selectedProject.currentDocumentId);
+        void refreshCommentThreads(selectedProject.currentDocumentId);
       } catch {
         if (!cancelled) {
           setProjectStatus("로컬 서버를 시작하면 프로젝트를 불러옵니다");
           resetFileVersions("버전 기록 대기 중");
+          resetCommentThreads("코멘트 대기 중");
           setEditor(null);
         }
       }
@@ -4032,6 +4126,10 @@ export function App() {
   const selectedNode = useMemo(
     () => (editor?.selection.nodeId ? findNodeById(editor.document, editor.selection.nodeId) : null),
     [editor]
+  );
+  const selectedNodeCommentThreads = useMemo(
+    () => (selectedNode ? commentThreads.filter((thread) => thread.nodeId === selectedNode.id) : []),
+    [commentThreads, selectedNode]
   );
   const selectedParentNode = useMemo(
     () =>
@@ -6422,6 +6520,7 @@ export function App() {
         setCurrentProject(null);
         setProjectNameDraft("");
         resetFileVersions("프로젝트 없음");
+        resetCommentThreads("프로젝트 없음");
         await projectStore.setCurrentProjectId("");
       }
       setProjectStatus(`${deletedProject.name} 프로젝트 삭제됨`);
@@ -6523,9 +6622,50 @@ export function App() {
       setTokenDtcgDraft("");
       setTokenDtcgStatus("");
       await refreshFileVersions(currentProject.currentDocumentId, `${version.message} 복원됨`);
+      void refreshCommentThreads(currentProject.currentDocumentId);
     } catch (error) {
       const message = error instanceof Error ? error.message : "버전을 복원하지 못했습니다";
       setFileVersionStatus(message);
+    }
+  };
+
+  const createSelectedNodeComment = async (nodeId: string) => {
+    if (!currentProject) {
+      setCommentStatus("프로젝트 없음");
+      return;
+    }
+    const body = commentBody.trim();
+    if (!body) {
+      setCommentStatus("코멘트 내용을 입력하세요");
+      return;
+    }
+
+    try {
+      await createCommentThread(currentProject.currentDocumentId, {
+        nodeId,
+        body,
+        authorName: "사용자"
+      });
+      setCommentBody("");
+      await refreshCommentThreads(currentProject.currentDocumentId, "코멘트 추가됨");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "코멘트를 추가하지 못했습니다";
+      setCommentStatus(message);
+    }
+  };
+
+  const resolveSelectedNodeComment = async (threadId: string) => {
+    if (!currentProject) {
+      setCommentStatus("프로젝트 없음");
+      return;
+    }
+
+    try {
+      await resolveCommentThread(currentProject.currentDocumentId, threadId);
+      await refreshCommentThreads(currentProject.currentDocumentId, "코멘트 해결됨");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "코멘트를 해결하지 못했습니다";
+      setCommentStatus(message);
     }
   };
 
@@ -8278,9 +8418,16 @@ export function App() {
         tokenDtcgDraft={tokenDtcgDraft}
         tokenDtcgStatus={tokenDtcgStatus}
         canEditTokens={Boolean(currentProject && editor)}
+        commentThreads={selectedNodeCommentThreads}
+        commentBody={commentBody}
+        commentStatus={commentStatus}
+        canComment={Boolean(currentProject && editor && selectedNode)}
         onTokenDtcgDraftChange={setTokenDtcgDraft}
         onExportTokensDtcg={() => void exportCurrentDocumentTokensDtcg()}
         onImportTokensDtcg={() => void importCurrentDocumentTokensDtcg()}
+        onCommentBodyChange={setCommentBody}
+        onCreateComment={(nodeId) => void createSelectedNodeComment(nodeId)}
+        onResolveComment={(threadId) => void resolveSelectedNodeComment(threadId)}
         onGeometryChange={updateGeometry}
         onFillChange={(nodeId, fill) => dispatch({ type: "set_fill", nodeId, fill })}
         onTextChange={updateTextNode}

@@ -1266,6 +1266,57 @@ test("file version history previews saved version differences before restore", a
   await expect(page.getByTestId("inspector-text")).toHaveValue("Layo");
 });
 
+test("comments panel creates and resolves a selected-layer thread", async ({ page }) => {
+  const { documentId } = await createProjectFromEmptyState(page);
+
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await expect(page.getByTestId("comment-panel")).toContainText("헤드라인");
+  await page.getByTestId("comment-body").fill("문구 확인 필요");
+  await page.getByRole("button", { name: "코멘트 추가" }).click();
+
+  await expect(page.getByTestId("comment-status")).toContainText("코멘트 추가됨");
+  await expect(page.getByTestId("comment-list")).toContainText("문구 확인 필요");
+  await expect(page.getByTestId("comment-list")).toContainText("text-1");
+
+  let createdThreadId = "";
+  await expect
+    .poll(async () => {
+      const response = await page.request.get(
+        `http://127.0.0.1:4317/files/${documentId}/comments?includeResolved=true`
+      );
+      if (!response.ok()) {
+        return "";
+      }
+      const threads = (await response.json()).threads as Array<{
+        threadId: string;
+        nodeId: string;
+        body: string;
+        resolvedAt: string | null;
+      }>;
+      const thread = threads.find((candidate) => candidate.body === "문구 확인 필요");
+      createdThreadId = thread?.nodeId === "text-1" && thread.resolvedAt === null ? thread.threadId : "";
+      return createdThreadId;
+    })
+    .not.toBe("");
+
+  await page.getByRole("button", { name: "문구 확인 필요 해결" }).click();
+  await expect(page.getByTestId("comment-status")).toContainText("코멘트 해결됨");
+  await expect(page.getByTestId("comment-list")).toContainText("활성 코멘트 없음");
+
+  const resolvedResponse = await page.request.get(
+    `http://127.0.0.1:4317/files/${documentId}/comments?includeResolved=true`
+  );
+  expect(resolvedResponse.ok()).toBeTruthy();
+  const resolvedThread = (await resolvedResponse.json()).threads.find(
+    (thread: { threadId: string }) => thread.threadId === createdThreadId
+  );
+  expect(resolvedThread).toMatchObject({
+    nodeId: "text-1",
+    body: "문구 확인 필요",
+    resolvedAt: expect.any(String)
+  });
+});
+
 test("file version history shows automatic saved versions from persisted edits", async ({ page }) => {
   const { documentId } = await createProjectFromEmptyState(page);
 

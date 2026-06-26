@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
@@ -165,6 +165,53 @@ describe("FileStorage", () => {
 
     const autoSnapshot = await storage.readFileVersion("sample-file", autoVersions[0].versionId);
     expect(findTextValue(autoSnapshot.document, "text-1")).toBe("자동 변경 3");
+  });
+
+  test("comment threads are stored beside the design file and can be resolved", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+
+    const created = await storage.createCommentThread("sample-file", {
+      nodeId: "text-1",
+      body: "문구 확인 필요",
+      authorName: "디자인 팀"
+    });
+
+    expect(created).toMatchObject({
+      schemaVersion: 1,
+      fileId: "sample-file",
+      nodeId: "text-1",
+      nodeName: "헤드라인",
+      body: "문구 확인 필요",
+      authorName: "디자인 팀",
+      resolvedAt: null
+    });
+    expect(created.threadId).toMatch(/^comment-/);
+    expect(await storage.listCommentThreads("sample-file")).toEqual([created]);
+
+    const sidecar = JSON.parse(await readFile(path.join(tempRoot, "comments", "sample-file.json"), "utf8"));
+    expect(sidecar.threads).toHaveLength(1);
+    expect((await storage.readFile("sample-file")) as { comments?: unknown }).not.toHaveProperty("comments");
+
+    const resolved = await storage.resolveCommentThread("sample-file", created.threadId);
+    expect(resolved).toMatchObject({
+      threadId: created.threadId,
+      resolvedAt: expect.any(String)
+    });
+    expect(await storage.listCommentThreads("sample-file")).toEqual([]);
+    expect(await storage.listCommentThreads("sample-file", { includeResolved: true })).toHaveLength(1);
+  });
+
+  test("comment threads reject a missing body with a validation error", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+
+    await expect(
+      storage.createCommentThread("sample-file", {
+        nodeId: "text-1",
+        body: undefined as unknown as string
+      })
+    ).rejects.toThrow("comment body is required");
   });
 
   test("creates, reads, renames, shares, and appends documents to projects", async () => {
