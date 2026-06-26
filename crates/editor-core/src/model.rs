@@ -30,6 +30,7 @@ pub struct DesignToken {
 #[ts(export)]
 pub enum DesignTokenType {
     Color,
+    Spacing,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
@@ -151,7 +152,28 @@ pub struct NodeLayout {
     pub grid_row_tracks: Option<Vec<GridTrack>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grid_areas: Option<Vec<GridArea>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spacing_tokens: Option<LayoutSpacingTokens>,
     pub padding: LayoutPadding,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct LayoutSpacingTokens {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gap: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row_gap: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column_gap: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub padding_top: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub padding_right: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub padding_bottom: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub padding_left: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]

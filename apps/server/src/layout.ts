@@ -580,6 +580,7 @@ export function normalizeNodeLayout(layout: NodeLayout): NodeLayout {
   const gridColumnTracks = normalizeOptionalGridTracks(layout.grid_column_tracks, gridColumns);
   const gridRowTracks = normalizeOptionalGridTracks(layout.grid_row_tracks, gridRows);
   const gridAreas = normalizeOptionalGridAreas(layout.grid_areas, gridColumns, gridRows);
+  const spacingTokens = normalizeLayoutSpacingTokens(layout.spacing_tokens);
   return {
     mode,
     direction,
@@ -595,8 +596,8 @@ export function normalizeNodeLayout(layout: NodeLayout): NodeLayout {
     ...(minHeight !== undefined ? { min_height: minHeight } : {}),
     ...(maxHeight !== undefined ? { max_height: maxHeight } : {}),
     gap,
-    ...(rowGap !== gap ? { row_gap: rowGap } : {}),
-    ...(columnGap !== gap ? { column_gap: columnGap } : {}),
+    ...(rowGap !== gap || spacingTokens?.row_gap ? { row_gap: rowGap } : {}),
+    ...(columnGap !== gap || spacingTokens?.column_gap ? { column_gap: columnGap } : {}),
     ...(mode === "grid"
       ? {
           grid_columns: gridColumns,
@@ -606,6 +607,7 @@ export function normalizeNodeLayout(layout: NodeLayout): NodeLayout {
           ...(gridAreas ? { grid_areas: gridAreas } : {})
         }
       : {}),
+    ...(spacingTokens ? { spacing_tokens: spacingTokens } : {}),
     padding: {
       top: Math.max(0, finiteNumber(layout.padding?.top, 0)),
       right: Math.max(0, finiteNumber(layout.padding?.right, 0)),
@@ -613,6 +615,32 @@ export function normalizeNodeLayout(layout: NodeLayout): NodeLayout {
       left: Math.max(0, finiteNumber(layout.padding?.left, 0))
     }
   };
+}
+
+function normalizeLayoutSpacingTokens(
+  tokens: NodeLayout["spacing_tokens"] | null | undefined
+): NonNullable<NodeLayout["spacing_tokens"]> | undefined {
+  if (!tokens || typeof tokens !== "object") {
+    return undefined;
+  }
+  const normalized: NonNullable<NodeLayout["spacing_tokens"]> = {};
+  for (const key of [
+    "gap",
+    "row_gap",
+    "column_gap",
+    "padding_top",
+    "padding_right",
+    "padding_bottom",
+    "padding_left"
+  ] as const) {
+    const value = tokens[key];
+    if (typeof value === "string" && value.trim()) {
+      normalized[key] = value.trim();
+    } else if (value === null) {
+      normalized[key] = null;
+    }
+  }
+  return Object.keys(normalized).length ? normalized : undefined;
 }
 
 export function normalizeNodeLayoutItem(layoutItem: NodeLayoutItem): NodeLayoutItem {

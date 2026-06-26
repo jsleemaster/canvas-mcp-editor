@@ -281,6 +281,12 @@ describe("MCP AI editing workflow", () => {
                   $type: "color",
                   $value: "#2563eb"
                 }
+              },
+              Spacing: {
+                Large: {
+                  $type: "dimension",
+                  $value: "32px"
+                }
               }
             }
           }
@@ -293,6 +299,12 @@ describe("MCP AI editing workflow", () => {
         name: "Brand / Primary",
         type: "color",
         value: "#2563eb"
+      },
+      {
+        id: "spacing-spacing-large",
+        name: "Spacing / Large",
+        type: "spacing",
+        value: "32px"
       }
     ]);
 
@@ -313,9 +325,106 @@ describe("MCP AI editing workflow", () => {
             $type: "color",
             $value: "#2563eb"
           }
+        },
+        Spacing: {
+          Large: {
+            $type: "dimension",
+            $value: "32px"
+          }
         }
       }
     });
+  });
+
+  test("lets an MCP client bind spacing tokens to layout gap and padding", async () => {
+    const client = await connectMcpClient();
+
+    await client.callTool({
+      name: "create_project",
+      arguments: {
+        projectId: "spacing-token-project",
+        name: "간격 토큰 프로젝트",
+        documentId: "spacing-token-file",
+        documentName: "간격 토큰 문서"
+      }
+    });
+
+    const persisted = parseToolJson(
+      await client.callTool({
+        name: "apply_agent_commands",
+        arguments: {
+          fileId: "spacing-token-file",
+          dryRun: false,
+          commands: [
+            {
+              type: "create_token",
+              token: {
+                id: "spacing-layout-large",
+                name: "Layout / Large",
+                type: "spacing",
+                value: "32px"
+              }
+            },
+            {
+              type: "set_layout_spacing_token",
+              nodeId: "frame-1",
+              target: "all_gaps",
+              tokenId: "spacing-layout-large"
+            },
+            {
+              type: "set_layout_spacing_token",
+              nodeId: "frame-1",
+              target: "all_padding",
+              tokenId: "spacing-layout-large"
+            }
+          ]
+        }
+      })
+    );
+    expect(persisted.result).toMatchObject({
+      persisted: true,
+      audit: {
+        commandTypes: ["create_token", "set_layout_spacing_token", "set_layout_spacing_token"],
+        changedNodeIds: ["spacing-layout-large", "frame-1"]
+      },
+      validation: { ok: true, issueCount: 0 }
+    });
+
+    const inspection = parseToolJson(
+      await client.callTool({
+        name: "inspect_canvas",
+        arguments: { fileId: "spacing-token-file" }
+      })
+    );
+    const frame = inspection.inspection.nodes.find((node: { id: string }) => node.id === "frame-1");
+    expect(frame.layout).toMatchObject({
+      gap: 32,
+      row_gap: 32,
+      column_gap: 32,
+      padding: {
+        top: 32,
+        right: 32,
+        bottom: 32,
+        left: 32
+      },
+      spacing_tokens: {
+        gap: "spacing-layout-large",
+        row_gap: "spacing-layout-large",
+        column_gap: "spacing-layout-large",
+        padding_top: "spacing-layout-large",
+        padding_right: "spacing-layout-large",
+        padding_bottom: "spacing-layout-large",
+        padding_left: "spacing-layout-large"
+      }
+    });
+
+    const validation = parseToolJson(
+      await client.callTool({
+        name: "validate_document",
+        arguments: { fileId: "spacing-token-file" }
+      })
+    );
+    expect(validation.validation).toMatchObject({ ok: true, issueCount: 0 });
   });
 });
 

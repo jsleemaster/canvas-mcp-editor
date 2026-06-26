@@ -54,6 +54,18 @@ const nodeLayoutSchema = z.object({
   grid_column_tracks: z.array(gridTrackSchema).optional(),
   grid_row_tracks: z.array(gridTrackSchema).optional(),
   grid_areas: z.array(gridAreaSchema).optional(),
+  spacing_tokens: z
+    .object({
+      gap: z.string().nullable().optional(),
+      row_gap: z.string().nullable().optional(),
+      column_gap: z.string().nullable().optional(),
+      padding_top: z.string().nullable().optional(),
+      padding_right: z.string().nullable().optional(),
+      padding_bottom: z.string().nullable().optional(),
+      padding_left: z.string().nullable().optional()
+    })
+    .nullable()
+    .optional(),
   padding: z.object({
     top: z.number(),
     right: z.number(),
@@ -93,7 +105,7 @@ const nodeConstraintsSchema = z.object({
 const designTokenSchema = z.object({
   id: z.string(),
   name: z.string(),
-  type: z.enum(["color"]),
+  type: z.enum(["color", "spacing"]),
   value: z.string()
 });
 
@@ -118,6 +130,12 @@ const agentCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("set_fill_token"),
     nodeId: z.string(),
+    tokenId: z.string()
+  }),
+  z.object({
+    type: z.literal("set_layout_spacing_token"),
+    nodeId: z.string(),
+    target: z.enum(["all_gaps", "all_padding"]),
     tokenId: z.string()
   }),
   z.object({
@@ -520,7 +538,7 @@ export function createMcpServer(storage = new FileStorage()) {
   server.registerTool(
     "export_design_tokens",
     {
-      description: "Export document-local Layo color design tokens as W3C/DTCG JSON.",
+      description: "Export document-local Layo design tokens as W3C/DTCG JSON.",
       annotations: readOnlyToolAnnotations,
       inputSchema: {
         fileId: z.string().describe("Design file id returned by list_files")
@@ -546,7 +564,7 @@ export function createMcpServer(storage = new FileStorage()) {
   server.registerTool(
     "import_design_tokens",
     {
-      description: "Import W3C/DTCG color design tokens into a saved Layo document.",
+      description: "Import W3C/DTCG design tokens into a saved Layo document.",
       annotations: writeToolAnnotations,
       inputSchema: {
         fileId: z.string().describe("Design file id returned by list_files"),

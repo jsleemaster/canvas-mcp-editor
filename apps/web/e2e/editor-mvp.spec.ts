@@ -1261,6 +1261,71 @@ test("right inspector imports and exports DTCG token JSON", async ({ page }) => 
   await expect(page.getByTestId("dtcg-token-json")).toHaveValue(/#f97316/);
 });
 
+test("right inspector binds imported spacing tokens to layout gap and padding", async ({ page }) => {
+  const { documentId } = await createProjectFromEmptyState(page);
+  const importedTokenJson = JSON.stringify(
+    {
+      global: {
+        Spacing: {
+          Lg: {
+            $type: "dimension",
+            $value: "32px"
+          }
+        }
+      }
+    },
+    null,
+    2
+  );
+
+  await page.getByTestId("dtcg-token-json").fill(importedTokenJson);
+  await page.getByRole("button", { name: "토큰 가져오기" }).click();
+  await expect(page.getByTestId("dtcg-token-status")).toContainText("1개 토큰 가져옴");
+
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+  await expect(page.getByTestId("inspector-layout-gap-token")).toBeVisible();
+  await page.getByTestId("inspector-layout-gap-token").selectOption("spacing-spacing-lg");
+  await expect(page.getByTestId("inspector-layout-mode")).toHaveValue("auto");
+  await expect(page.getByTestId("inspector-layout-gap")).toHaveValue("32");
+  await expect(page.getByTestId("inspector-layout-row-gap")).toHaveValue("32");
+  await expect(page.getByTestId("inspector-layout-column-gap")).toHaveValue("32");
+
+  await page.getByTestId("inspector-layout-padding-token").selectOption("spacing-spacing-lg");
+  await expect(page.getByTestId("inspector-layout-padding-top")).toHaveValue("32");
+  await expect(page.getByTestId("inspector-layout-padding-right")).toHaveValue("32");
+  await expect(page.getByTestId("inspector-layout-padding-bottom")).toHaveValue("32");
+  await expect(page.getByTestId("inspector-layout-padding-left")).toHaveValue("32");
+
+  await expect
+    .poll(async () => {
+      const fileResponse = await page.request.get(`http://127.0.0.1:4317/files/${documentId}`);
+      expect(fileResponse.ok()).toBeTruthy();
+      const frame = (await fileResponse.json()).file.pages[0].children[0];
+      return frame.layout;
+    })
+    .toEqual(
+      expect.objectContaining({
+        gap: 32,
+        row_gap: 32,
+        column_gap: 32,
+        padding: { top: 32, right: 32, bottom: 32, left: 32 },
+        spacing_tokens: {
+          gap: "spacing-spacing-lg",
+          row_gap: "spacing-spacing-lg",
+          column_gap: "spacing-spacing-lg",
+          padding_top: "spacing-spacing-lg",
+          padding_right: "spacing-spacing-lg",
+          padding_bottom: "spacing-spacing-lg",
+          padding_left: "spacing-spacing-lg"
+        }
+      })
+    );
+
+  await page.getByRole("button", { name: "토큰 내보내기" }).click();
+  await expect(page.getByTestId("dtcg-token-json")).toHaveValue(/"Spacing"/);
+  await expect(page.getByTestId("dtcg-token-json")).toHaveValue(/"dimension"/);
+});
+
 test("Figma-like edit shortcuts duplicate and delete selected layers", async ({ page }) => {
   await createProjectFromEmptyState(page);
 

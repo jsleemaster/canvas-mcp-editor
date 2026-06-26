@@ -80,6 +80,12 @@ export type AgentCommand =
   | { type: "set_fill"; nodeId: string; fill: string }
   | { type: "create_token"; token: DesignToken }
   | { type: "set_fill_token"; nodeId: string; tokenId: string }
+  | {
+      type: "set_layout_spacing_token";
+      nodeId: string;
+      target: "all_gaps" | "all_padding";
+      tokenId: string;
+    }
   | { type: "update_text"; nodeId: string; value: string }
   | {
       type: "create_rectangle";
@@ -216,17 +222,17 @@ export function validateDocument(document: DesignFile): DocumentValidation {
   const issues: DocumentValidationIssue[] = [];
   const ids = new Map<string, string[][]>();
   const componentIds = new Set<string>();
-  const tokenIds = new Set<string>();
+  const tokenTypes = new Map<string, DesignToken["type"]>();
 
   for (const token of document.tokens ?? []) {
-    if (tokenIds.has(token.id)) {
+    if (tokenTypes.has(token.id)) {
       issues.push({
         code: "duplicate_token_id",
         message: `duplicate token id: ${token.id}`
       });
     }
-    tokenIds.add(token.id);
-    if (token.type !== "color") {
+    tokenTypes.set(token.id, token.type);
+    if (token.type !== "color" && token.type !== "spacing") {
       issues.push({
         code: "invalid_token_type",
         message: `unsupported token type: ${token.id}`
@@ -259,7 +265,7 @@ export function validateDocument(document: DesignFile): DocumentValidation {
   for (const page of document.pages) {
     registerId(ids, page.id, [page.id]);
     for (const node of page.children) {
-      validateNode(node, [page.id, node.id], ids, componentIds, tokenIds, issues);
+      validateNode(node, [page.id, node.id], ids, componentIds, tokenTypes, issues);
     }
   }
 
@@ -412,7 +418,7 @@ function validateNode(
   path: string[],
   ids: Map<string, string[][]>,
   componentIds: Set<string>,
-  tokenIds: Set<string>,
+  tokenTypes: Map<string, DesignToken["type"]>,
   issues: DocumentValidationIssue[]
 ) {
   registerId(ids, node.id, path);
@@ -435,7 +441,7 @@ function validateNode(
     });
   }
 
-  if (node.style.fill_token && !tokenIds.has(node.style.fill_token)) {
+  if (node.style.fill_token && !tokenTypes.has(node.style.fill_token)) {
     issues.push({
       code: "missing_fill_token",
       message: `node references missing fill token: ${node.style.fill_token}`,
@@ -443,6 +449,8 @@ function validateNode(
       path
     });
   }
+
+  validateLayoutSpacingTokenReferences(node, path, tokenTypes, issues);
 
   if (node.kind === "text" && node.content.type !== "text") {
     issues.push({
@@ -472,7 +480,41 @@ function validateNode(
   }
 
   for (const child of node.children) {
-    validateNode(child, [...path, child.id], ids, componentIds, tokenIds, issues);
+    validateNode(child, [...path, child.id], ids, componentIds, tokenTypes, issues);
+  }
+}
+
+function validateLayoutSpacingTokenReferences(
+  node: DesignNode,
+  path: string[],
+  tokenTypes: Map<string, DesignToken["type"]>,
+  issues: DocumentValidationIssue[]
+) {
+  const spacingTokens = node.layout?.spacing_tokens;
+  if (!spacingTokens) {
+    return;
+  }
+
+  for (const tokenId of Object.values(spacingTokens)) {
+    if (!tokenId) {
+      continue;
+    }
+    const tokenType = tokenTypes.get(tokenId);
+    if (!tokenType) {
+      issues.push({
+        code: "missing_layout_spacing_token",
+        message: `node references missing layout spacing token: ${tokenId}`,
+        nodeId: node.id,
+        path
+      });
+    } else if (tokenType !== "spacing") {
+      issues.push({
+        code: "invalid_layout_spacing_token_type",
+        message: `node layout spacing token is not spacing: ${tokenId}`,
+        nodeId: node.id,
+        path
+      });
+    }
   }
 }
 
@@ -537,6 +579,36 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
       const node = requireNode(document, command.nodeId);
       const token = requireColorToken(document, command.tokenId);
       node.style = { ...node.style, fill: token.value, fill_token: token.id };
+      return node.id;
+    }
+    case "set_layout_spacing_token": {
+      const node = requireNode(document, command.nodeId);
+      const token = requireSpacingToken(document, command.tokenId);
+      const value = spacingTokenValueToNumber(token);
+      const layout = normalizeNodeLayout(node.layout ?? defaultNodeLayout());
+      const spacingTokens = { ...(layout.spacing_tokens ?? {}) };
+
+      if (command.target === "all_gaps") {
+        layout.gap = value;
+        layout.row_gap = value;
+        layout.column_gap = value;
+        spacingTokens.gap = token.id;
+        spacingTokens.row_gap = token.id;
+        spacingTokens.column_gap = token.id;
+      } else {
+        layout.padding = {
+          top: value,
+          right: value,
+          bottom: value,
+          left: value
+        };
+        spacingTokens.padding_top = token.id;
+        spacingTokens.padding_right = token.id;
+        spacingTokens.padding_bottom = token.id;
+        spacingTokens.padding_left = token.id;
+      }
+
+      node.layout = normalizeNodeLayout({ ...layout, spacing_tokens: spacingTokens });
       return node.id;
     }
     case "update_text": {
@@ -662,6 +734,36 @@ function requireColorToken(document: DesignFile, tokenId: string): DesignToken {
     throw new Error(`token is not a color token: ${tokenId}`);
   }
   return token;
+}
+
+function requireSpacingToken(document: DesignFile, tokenId: string): DesignToken {
+  const token = (document.tokens ?? []).find((candidate) => candidate.id === tokenId);
+  if (!token) {
+    throw new Error(`token not found: ${tokenId}`);
+  }
+  if (token.type !== "spacing") {
+    throw new Error(`token is not a spacing token: ${tokenId}`);
+  }
+  return token;
+}
+
+function spacingTokenValueToNumber(token: DesignToken): number {
+  const match = token.value.trim().match(/^(\d+(?:\.\d+)?)(px)?$/i);
+  if (!match) {
+    throw new Error(`spacing token value must be a non-negative px number: ${token.id}`);
+  }
+  return Number(match[1]);
+}
+
+function defaultNodeLayout(): NodeLayout {
+  return {
+    mode: "auto",
+    direction: "vertical",
+    align_items: "start",
+    justify_content: "start",
+    gap: 0,
+    padding: { top: 0, right: 0, bottom: 0, left: 0 }
+  };
 }
 
 function requireNode(document: DesignFile, nodeId: string): DesignNode {

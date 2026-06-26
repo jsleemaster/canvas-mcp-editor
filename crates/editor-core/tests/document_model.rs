@@ -254,6 +254,65 @@ fn layout_metadata_round_trips_through_json() {
 }
 
 #[test]
+fn spacing_tokens_round_trip_through_json() {
+    let raw = r##"
+    {
+      "id": "spacing-token-file",
+      "name": "Spacing Token File",
+      "version": 1,
+      "tokens": [
+        { "id": "spacing-layout-lg", "name": "Layout / Lg", "type": "spacing", "value": "32px" }
+      ],
+      "components": [],
+      "pages": [
+        {
+          "id": "page-1",
+          "name": "페이지 1",
+          "children": [
+            {
+              "id": "frame-1",
+              "kind": "frame",
+              "name": "Auto Frame",
+              "layout": {
+                "mode": "auto",
+                "direction": "vertical",
+                "align_items": "start",
+                "justify_content": "start",
+                "gap": 32,
+                "row_gap": 32,
+                "column_gap": 32,
+                "padding": { "top": 32, "right": 32, "bottom": 32, "left": 32 },
+                "spacing_tokens": {
+                  "gap": "spacing-layout-lg",
+                  "row_gap": "spacing-layout-lg",
+                  "column_gap": "spacing-layout-lg",
+                  "padding_top": "spacing-layout-lg",
+                  "padding_right": "spacing-layout-lg",
+                  "padding_bottom": "spacing-layout-lg",
+                  "padding_left": "spacing-layout-lg"
+                }
+              },
+              "transform": { "x": 0, "y": 0, "rotation": 0 },
+              "size": { "width": 320, "height": 240 },
+              "style": { "fill": "#ffffff", "stroke": null, "stroke_width": 0, "opacity": 1 },
+              "content": { "type": "empty" },
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+    "##;
+
+    let parsed: DesignFile = serde_json::from_str(raw).unwrap();
+    let json = serde_json::to_string(&parsed).unwrap();
+
+    assert!(json.contains("\"type\":\"spacing\""));
+    assert!(json.contains("\"spacing_tokens\""));
+    assert!(json.contains("\"padding_top\":\"spacing-layout-lg\""));
+}
+
+#[test]
 fn legacy_layout_metadata_defaults_alignment_fields() {
     let raw = r##"
     {
