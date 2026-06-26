@@ -583,6 +583,7 @@ interface GridTrackDragState {
   nodeId: string;
   axis: "column" | "row";
   index: number;
+  preserveChildren: boolean;
 }
 
 type GridTrackContextMenuAction = "insert-before" | "insert-after" | "duplicate" | "delete" | "delete-with-children";
@@ -4658,6 +4659,9 @@ export function App() {
   ) => {
     event.preventDefault();
     event.stopPropagation();
+    if (gridTrackDragRef.current) {
+      return;
+    }
     if (!editor || !selectedNode || selectedNode.id !== editor.selection.nodeId) {
       return;
     }
@@ -4693,7 +4697,8 @@ export function App() {
     gridTrackDragRef.current = {
       nodeId: selectedNode.id,
       axis: control.axis,
-      index: control.index
+      index: control.index,
+      preserveChildren: event.ctrlKey || event.metaKey
     };
     document.body.style.cursor = "grabbing";
   };
@@ -4727,7 +4732,8 @@ export function App() {
         nodeId: session.nodeId,
         axis: session.axis,
         fromIndex: session.index,
-        toIndex: targetIndex
+        toIndex: targetIndex,
+        preserveChildren: session.preserveChildren
       });
     };
 
