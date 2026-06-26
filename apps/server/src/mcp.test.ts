@@ -336,6 +336,64 @@ describe("MCP AI editing workflow", () => {
     });
   });
 
+  test("lets an MCP client save, read, list, and restore file versions", async () => {
+    const client = await connectMcpClient();
+
+    await client.callTool({
+      name: "create_project",
+      arguments: {
+        projectId: "history-project",
+        name: "히스토리 프로젝트",
+        documentId: "history-file",
+        documentName: "히스토리 문서"
+      }
+    });
+
+    const saved = parseToolJson(
+      await client.callTool({
+        name: "save_file_version",
+        arguments: { fileId: "history-file", message: "검토 전" }
+      })
+    );
+    expect(saved.version).toMatchObject({
+      fileId: "history-file",
+      message: "검토 전",
+      source: "manual"
+    });
+
+    await client.callTool({
+      name: "update_text",
+      arguments: { fileId: "history-file", nodeId: "text-1", value: "MCP 복원 대상" }
+    });
+
+    const listed = parseToolJson(
+      await client.callTool({
+        name: "list_file_versions",
+        arguments: { fileId: "history-file" }
+      })
+    );
+    expect(listed.versions.map((item: { versionId: string }) => item.versionId)).toContain(
+      saved.version.versionId
+    );
+
+    const read = parseToolJson(
+      await client.callTool({
+        name: "get_file_version",
+        arguments: { fileId: "history-file", versionId: saved.version.versionId }
+      })
+    );
+    expect(read.version.document.pages[0].children[0].children[0].content.value).toBe("Layo");
+
+    const restored = parseToolJson(
+      await client.callTool({
+        name: "restore_file_version",
+        arguments: { fileId: "history-file", versionId: saved.version.versionId }
+      })
+    );
+    expect(restored.file.pages[0].children[0].children[0].content.value).toBe("Layo");
+    expect(restored.recoveryVersion.source).toBe("restore");
+  });
+
   test("lets an MCP client bind spacing tokens to layout gap and padding", async () => {
     const client = await connectMcpClient();
 

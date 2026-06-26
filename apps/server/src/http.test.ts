@@ -508,6 +508,51 @@ describe("HTTP server", () => {
     expect(summary.json().summary.createdNodeIds).toEqual(["agent-http-note"]);
   });
 
+  test("serves file version save, list, read, and restore routes", async () => {
+    const server = await createServerWithDocument();
+
+    const saved = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/versions",
+      payload: { message: "검토 전" }
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().version).toMatchObject({
+      fileId: "sample-file",
+      message: "검토 전",
+      source: "manual"
+    });
+
+    const changed = await server.inject({
+      method: "PATCH",
+      url: "/files/sample-file/nodes/text-1/text",
+      payload: { value: "HTTP 복원 대상" }
+    });
+    expect(changed.statusCode).toBe(200);
+
+    const listed = await server.inject({ method: "GET", url: "/files/sample-file/versions" });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().versions.map((item: { versionId: string }) => item.versionId)).toContain(
+      saved.json().version.versionId
+    );
+    expect(JSON.stringify(listed.json())).not.toContain("\"document\"");
+
+    const read = await server.inject({
+      method: "GET",
+      url: `/files/sample-file/versions/${saved.json().version.versionId}`
+    });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().version.document.pages[0].children[0].children[0].content.value).toBe("Layo");
+
+    const restored = await server.inject({
+      method: "POST",
+      url: `/files/sample-file/versions/${saved.json().version.versionId}/restore`
+    });
+    expect(restored.statusCode).toBe(200);
+    expect(restored.json().file.pages[0].children[0].children[0].content.value).toBe("Layo");
+    expect(restored.json().recoveryVersion.source).toBe("restore");
+  });
+
   test("exports a design file as CSS, HTML, and importable element modules", async () => {
     const server = await createServerWithDocument();
 

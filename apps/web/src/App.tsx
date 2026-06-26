@@ -33,7 +33,11 @@ import { apiUrl } from "./api-base";
 import {
   exportDesignTokensDtcg,
   importDesignTokensDtcg,
-  parseDocumentPayload
+  listFileVersions,
+  parseDocumentPayload,
+  restoreFileVersion,
+  saveFileVersion,
+  type FileVersionSummary
 } from "./document-api";
 import { editorKonvaTokens } from "./design-tokens";
 import { uploadImageAsset, type UploadedAsset } from "./asset-api";
@@ -334,6 +338,10 @@ function ContextMenuItem({
 const teamStore = createIndexedDbTeamStore();
 const projectStore = createIndexedDbProjectStore();
 const LOCAL_USER_COLOR = "var(--editor-color-selection)";
+const fileVersionDateFormatter = new Intl.DateTimeFormat("ko-KR", {
+  dateStyle: "short",
+  timeStyle: "short"
+});
 const DEFAULT_NODE_LAYOUT: NodeLayout = {
   mode: "none",
   direction: "vertical",
@@ -353,6 +361,15 @@ const DEFAULT_NODE_LAYOUT_ITEM: NodeLayoutItem = {
   height_sizing: "fixed",
   margin: { top: 0, right: 0, bottom: 0, left: 0 }
 };
+
+function formatFileVersionCreatedAt(createdAt: string) {
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) {
+    return createdAt;
+  }
+  return fileVersionDateFormatter.format(date);
+}
+
 const DEFAULT_NODE_CONSTRAINTS: NodeConstraints = {
   horizontal: "left",
   vertical: "top"
@@ -864,6 +881,21 @@ async function persistNodeLayout(fileId: string, nodeId: string, layout: NodeLay
 
   if (!response.ok) {
     throw new Error(`레이아웃 저장 실패: ${response.status} ${response.statusText}`.trim());
+  }
+}
+
+async function persistTextChange(fileId: string, nodeId: string, value: string) {
+  const response = await fetch(apiUrl(`/files/${fileId}/agent/commands`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dryRun: false,
+      commands: [{ type: "update_text", nodeId, value }]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`텍스트 저장 실패: ${response.status} ${response.statusText}`.trim());
   }
 }
 
@@ -3772,6 +3804,9 @@ export function App() {
   const [projectSearch, setProjectSearch] = useState("");
   const [recentProjectIds, setRecentProjectIds] = useState<string[]>([]);
   const [projectStatus, setProjectStatus] = useState("프로젝트 불러오는 중");
+  const [fileVersions, setFileVersions] = useState<FileVersionSummary[]>([]);
+  const [fileVersionMessage, setFileVersionMessage] = useState("검토 전");
+  const [fileVersionStatus, setFileVersionStatus] = useState("버전 기록 대기 중");
   const [tokenDtcgDraft, setTokenDtcgDraft] = useState("");
   const [tokenDtcgStatus, setTokenDtcgStatus] = useState("");
   const [encryptionEnabled, setEncryptionEnabled] = useState(false);
@@ -3831,6 +3866,23 @@ export function App() {
       : `${visibleProjects.length}개 프로젝트`
     : `${projects.length}개 프로젝트`;
 
+  const resetFileVersions = (status = "버전 기록 대기 중") => {
+    setFileVersions([]);
+    setFileVersionStatus(status);
+  };
+
+  const refreshFileVersions = async (fileId: string, status?: string) => {
+    try {
+      const versions = await listFileVersions(fileId);
+      setFileVersions(versions);
+      setFileVersionStatus(status ?? (versions.length > 0 ? `${versions.length}개 버전` : "저장된 버전 없음"));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "버전 기록을 불러오지 못했습니다";
+      setFileVersions([]);
+      setFileVersionStatus(message);
+    }
+  };
+
   useEffect(() => {
     editorRef.current = editor;
   }, [editor]);
@@ -3850,6 +3902,7 @@ export function App() {
     setTokenDtcgDraft("");
     setTokenDtcgStatus("");
     setProjectStatus(`${project.name} 불러옴`);
+    void refreshFileVersions(project.currentDocumentId);
   };
 
   useEffect(() => {
@@ -3872,6 +3925,7 @@ export function App() {
             setProjects(projectList);
             setRecentProjectIds(storedRecentProjectIds);
             setProjectStatus("저장된 프로젝트 없음");
+            resetFileVersions("프로젝트 없음");
             setEditor(null);
           }
           return;
@@ -3894,9 +3948,11 @@ export function App() {
         setTokenDtcgDraft("");
         setTokenDtcgStatus("");
         setProjectStatus(`${selectedProject.name} 불러옴`);
+        void refreshFileVersions(selectedProject.currentDocumentId);
       } catch {
         if (!cancelled) {
           setProjectStatus("로컬 서버를 시작하면 프로젝트를 불러옵니다");
+          resetFileVersions("버전 기록 대기 중");
           setEditor(null);
         }
       }
@@ -5186,8 +5242,20 @@ export function App() {
     setInlineTextEditingNodeId(null);
   };
 
-  const updateInlineText = (nodeId: string, value: string) => {
+  const updateTextNode = (nodeId: string, value: string) => {
     dispatch({ type: "update_text", nodeId, value });
+    if (!currentProject) {
+      return;
+    }
+
+    void persistTextChange(currentProject.currentDocumentId, nodeId, value).catch((error) => {
+      const message = error instanceof Error ? error.message : "텍스트를 저장하지 못했습니다";
+      setProjectStatus(message);
+    });
+  };
+
+  const updateInlineText = (nodeId: string, value: string) => {
+    updateTextNode(nodeId, value);
   };
 
   const handleInlineTextKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -6330,6 +6398,7 @@ export function App() {
         setProjects([]);
         setCurrentProject(null);
         setProjectNameDraft("");
+        resetFileVersions("프로젝트 없음");
         await projectStore.setCurrentProjectId("");
       }
       setProjectStatus(`${deletedProject.name} 프로젝트 삭제됨`);
@@ -6373,6 +6442,44 @@ export function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "프로젝트 공유 설정을 저장하지 못했습니다";
       setProjectStatus(message);
+    }
+  };
+
+  const saveCurrentFileVersion = async () => {
+    if (!currentProject) {
+      setFileVersionStatus("프로젝트 없음");
+      return;
+    }
+
+    const message = fileVersionMessage.trim() || "저장된 버전";
+    try {
+      const version = await saveFileVersion(currentProject.currentDocumentId, message);
+      setFileVersionMessage(version.message);
+      await refreshFileVersions(currentProject.currentDocumentId, `${version.message} 저장됨`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "현재 버전을 저장하지 못했습니다";
+      setFileVersionStatus(message);
+    }
+  };
+
+  const restoreCurrentFileVersion = async (version: FileVersionSummary) => {
+    if (!currentProject) {
+      setFileVersionStatus("프로젝트 없음");
+      return;
+    }
+
+    try {
+      const result = await restoreFileVersion(currentProject.currentDocumentId, version.versionId);
+      setEditor((current) => {
+        const nextState = createEditorState(result.file);
+        return current ? { ...nextState, viewport: current.viewport } : nextState;
+      });
+      setTokenDtcgDraft("");
+      setTokenDtcgStatus("");
+      await refreshFileVersions(currentProject.currentDocumentId, `${version.message} 복원됨`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "버전을 복원하지 못했습니다";
+      setFileVersionStatus(message);
     }
   };
 
@@ -7209,6 +7316,59 @@ export function App() {
                 <div className="project-status" data-testid="project-sharing-status">
                   {topFileShareLabel === "비공개" ? "비공개 프로젝트" : topFileShareLabel}
                 </div>
+                <section className="file-version-panel" data-testid="file-version-panel" aria-label="버전 기록">
+                  <div className="file-version-heading">
+                    <strong>버전 기록</strong>
+                  </div>
+                  <label>
+                    메시지
+                    <input
+                      data-testid="file-version-message"
+                      value={fileVersionMessage}
+                      placeholder="예: 검토 전"
+                      onChange={(event) => setFileVersionMessage(event.currentTarget.value)}
+                    />
+                  </label>
+                  <div className="project-actions file-version-actions">
+                    <button type="button" onClick={saveCurrentFileVersion} disabled={!currentProject}>
+                      현재 버전 저장
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => currentProject && void refreshFileVersions(currentProject.currentDocumentId)}
+                      disabled={!currentProject}
+                    >
+                      새로고침
+                    </button>
+                  </div>
+                  <div className="project-status" data-testid="file-version-status">
+                    {fileVersionStatus}
+                  </div>
+                  <ul className="file-version-list" data-testid="file-version-list">
+                    {fileVersions.length === 0 ? (
+                      <li className="file-version-empty">저장된 버전 없음</li>
+                    ) : (
+                      fileVersions.map((version) => (
+                        <li className="file-version-row" key={version.versionId}>
+                          <span className="file-version-summary">
+                            <strong>{version.message}</strong>
+                            <span>
+                              {formatFileVersionCreatedAt(version.createdAt)} · {version.nodeCount}개 객체 ·{" "}
+                              {version.source === "restore" ? "복원 전 자동 저장" : "수동 저장"}
+                            </span>
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`${version.message} 복원`}
+                            onClick={() => void restoreCurrentFileVersion(version)}
+                          >
+                            복원
+                          </button>
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                </section>
               </section>
             ) : null}
             {showAssetPanel ? (
@@ -8032,7 +8192,7 @@ export function App() {
         onImportTokensDtcg={() => void importCurrentDocumentTokensDtcg()}
         onGeometryChange={updateGeometry}
         onFillChange={(nodeId, fill) => dispatch({ type: "set_fill", nodeId, fill })}
-        onTextChange={(nodeId, value) => dispatch({ type: "update_text", nodeId, value })}
+        onTextChange={updateTextNode}
         onLayoutChange={updateLayout}
         onLayoutItemChange={updateLayoutItem}
         onConstraintsChange={updateConstraints}

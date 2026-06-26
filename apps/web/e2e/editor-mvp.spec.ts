@@ -1191,6 +1191,43 @@ test("empty text inspector field renders as a single underline with placeholder"
   await expect(textField).toHaveCSS("border-bottom-width", "1px");
 });
 
+test("file version history saves and restores a document snapshot", async ({ page }) => {
+  const { documentId } = await createProjectFromEmptyState(page);
+
+  await page.getByTestId("file-version-message").fill("검토 전");
+  await page.getByRole("button", { name: "현재 버전 저장" }).click();
+  await expect(page.getByTestId("file-version-status")).toContainText("검토 전 저장됨");
+  await expect(page.getByTestId("file-version-list")).toContainText("검토 전");
+
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await page.getByTestId("inspector-text").fill("복원 전 변경");
+  await expect(page.getByTestId("inspector-text")).toHaveValue("복원 전 변경");
+
+  await expect
+    .poll(async () => {
+      const changedResponse = await page.request.get(`http://127.0.0.1:4317/files/${documentId}`);
+      if (!changedResponse.ok()) {
+        return "request failed";
+      }
+      return (await changedResponse.json()).file.pages[0].children[0].children[0].content.value;
+    })
+    .toBe("복원 전 변경");
+
+  await page.getByRole("button", { name: "검토 전 복원" }).click();
+  await expect(page.getByTestId("file-version-status")).toContainText("검토 전 복원됨");
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await expect(page.getByTestId("inspector-text")).toHaveValue("Layo");
+
+  const restoredResponse = await page.request.get(`http://127.0.0.1:4317/files/${documentId}`);
+  expect(restoredResponse.ok()).toBeTruthy();
+  expect((await restoredResponse.json()).file.pages[0].children[0].children[0].content.value).toBe("Layo");
+
+  const versionsResponse = await page.request.get(`http://127.0.0.1:4317/files/${documentId}/versions`);
+  expect(versionsResponse.ok()).toBeTruthy();
+  const versionsPayload = await versionsResponse.json();
+  expect(versionsPayload.versions.map((version: { source: string }) => version.source)).toContain("restore");
+});
+
 test("inspector shows fill token binding from agent-applied color tokens", async ({ page }) => {
   const { documentId } = await createProjectFromEmptyState(page);
   const agentResponse = await page.request.post(`http://127.0.0.1:4317/files/${documentId}/agent/commands`, {

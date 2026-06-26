@@ -113,6 +113,35 @@ describe("FileStorage", () => {
     expect(files.map((file) => file.id)).toEqual(["sample-file"]);
   });
 
+  test("file versions save snapshots and restore the document with a recovery snapshot", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+
+    const version = await storage.saveFileVersion("sample-file", { message: "검토 전" });
+    await storage.updateText("sample-file", "text-1", "변경된 헤드라인");
+
+    const changed = await storage.readFile("sample-file");
+    expect(findTextValue(changed, "text-1")).toBe("변경된 헤드라인");
+
+    const restored = await storage.restoreFileVersion("sample-file", version.versionId);
+    const versions = await storage.listFileVersions("sample-file");
+    const savedSnapshot = await storage.readFileVersion("sample-file", version.versionId);
+
+    expect(version).toMatchObject({
+      fileId: "sample-file",
+      message: "검토 전",
+      source: "manual",
+      name: "테스트 문서"
+    });
+    expect(version.nodeCount).toBeGreaterThan(0);
+    expect(savedSnapshot.document.id).toBe("sample-file");
+    expect(findTextValue(restored.file, "text-1")).toBe("Layo");
+    expect(restored.restoredVersion.versionId).toBe(version.versionId);
+    expect(restored.recoveryVersion.source).toBe("restore");
+    expect(versions.map((item) => item.versionId)).toContain(version.versionId);
+    expect(versions.map((item) => item.source)).toContain("restore");
+  });
+
   test("creates, reads, renames, shares, and appends documents to projects", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
     const storage = new FileStorage(tempRoot);
@@ -2005,4 +2034,19 @@ async function storageWithDocument(root: string) {
     documentName: "테스트 문서"
   });
   return storage;
+}
+
+function findTextValue(document: Awaited<ReturnType<FileStorage["readFile"]>>, nodeId: string) {
+  const stack = document.pages.flatMap((page) => page.children);
+  while (stack.length > 0) {
+    const node = stack.shift();
+    if (!node) {
+      continue;
+    }
+    if (node.id === nodeId && node.content.type === "text") {
+      return node.content.value;
+    }
+    stack.push(...node.children);
+  }
+  return null;
 }
