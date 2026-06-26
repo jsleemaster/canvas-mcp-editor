@@ -533,10 +533,22 @@ interface GridViewportAddControl {
   title: string;
 }
 
+interface GridViewportRemoveControl {
+  id: string;
+  testId: string;
+  axis: "column" | "row";
+  index: number;
+  left: number;
+  top: number;
+  label: string;
+  title: string;
+}
+
 interface GridViewportOverlay {
   lines: GridViewportLine[];
   handles: GridViewportHandle[];
   addControls: GridViewportAddControl[];
+  removeControls: GridViewportRemoveControl[];
 }
 
 interface ObjectContextMenuState {
@@ -1206,6 +1218,7 @@ function createGridViewportOverlay(
   const viewportGridWidth = bottomRight.x - topLeft.x;
   const lines: GridViewportLine[] = [];
   const handles: GridViewportHandle[] = [];
+  const removeControls: GridViewportRemoveControl[] = [];
   const addControls: GridViewportAddControl[] = [
     {
       id: "add-column",
@@ -1240,6 +1253,18 @@ function createGridViewportOverlay(
       { x: gridLeft + start + columnSizes[index], y: gridTop, space: "document" },
       viewport
     );
+    if (columns > 1) {
+      removeControls.push({
+        id: `remove-column-${index + 1}`,
+        testId: `grid-column-remove-control-${index + 1}`,
+        axis: "column",
+        index,
+        left: Math.round((startPoint.x + endPoint.x) / 2 - GRID_ADD_CONTROL_SIZE / 2),
+        top: Math.round(topLeft.y - GRID_ADD_CONTROL_SIZE - GRID_ADD_CONTROL_OFFSET),
+        label: "-",
+        title: `그리드 ${index + 1}열 삭제`
+      });
+    }
     lines.push({
       id: `column-end-${index}`,
       orientation: "vertical",
@@ -1275,6 +1300,18 @@ function createGridViewportOverlay(
       { x: gridLeft, y: gridTop + start + rowSizes[index], space: "document" },
       viewport
     );
+    if (rows > 1) {
+      removeControls.push({
+        id: `remove-row-${index + 1}`,
+        testId: `grid-row-remove-control-${index + 1}`,
+        axis: "row",
+        index,
+        left: Math.round(topLeft.x - GRID_ADD_CONTROL_SIZE - GRID_ADD_CONTROL_OFFSET),
+        top: Math.round((startPoint.y + endPoint.y) / 2 - GRID_ADD_CONTROL_SIZE / 2),
+        label: "-",
+        title: `그리드 ${index + 1}행 삭제`
+      });
+    }
     lines.push({
       id: `row-end-${index}`,
       orientation: "horizontal",
@@ -1297,7 +1334,7 @@ function createGridViewportOverlay(
     }
   });
 
-  return { lines, handles, addControls };
+  return { lines, handles, addControls, removeControls };
 }
 
 function addFrameSpacingSegment(
@@ -4445,6 +4482,67 @@ export function App() {
     });
   };
 
+  const removeGridTrackFromViewportControl = (
+    control: GridViewportRemoveControl,
+    event: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    const currentEditor = editorRef.current;
+    if (!currentEditor || !selectedNode || selectedNode.id !== currentEditor.selection.nodeId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    const node = findNodeById(currentEditor.document, selectedNode.id);
+    if (
+      !node ||
+      isNodeLocked(node) ||
+      !isNodeVisible(node) ||
+      (node.kind !== "frame" && node.kind !== "component")
+    ) {
+      return;
+    }
+
+    const layout = normalizedInspectorLayout(node.layout);
+    if (layout.mode !== "grid") {
+      return;
+    }
+
+    const { columns, rows } = gridViewportTrackCountsForOverlay(layout, node);
+    if (control.axis === "column") {
+      if (columns <= 1 || control.index < 0 || control.index >= columns) {
+        return;
+      }
+
+      const tracks = resolveGridTracksForOverlay(layout.grid_column_tracks, columns);
+      dispatch({
+        type: "set_node_layout",
+        nodeId: selectedNode.id,
+        layout: {
+          ...layout,
+          grid_columns: columns - 1,
+          grid_column_tracks: tracks.filter((_, index) => index !== control.index)
+        }
+      });
+      return;
+    }
+
+    if (rows <= 1 || control.index < 0 || control.index >= rows) {
+      return;
+    }
+
+    const tracks = resolveGridTracksForOverlay(layout.grid_row_tracks, rows);
+    dispatch({
+      type: "set_node_layout",
+      nodeId: selectedNode.id,
+      layout: {
+        ...layout,
+        grid_rows: rows - 1,
+        grid_row_tracks: tracks.filter((_, index) => index !== control.index)
+      }
+    });
+  };
+
   const startGridResize = (
     handle: GridViewportHandle,
     event: React.MouseEvent<HTMLDivElement>
@@ -5969,6 +6067,23 @@ export function App() {
                       top: control.top
                     }}
                     onClick={(event) => addGridTrackFromViewportControl(control, event)}
+                  >
+                    {control.label}
+                  </button>
+                ))}
+                {gridViewportOverlay.removeControls.map((control) => (
+                  <button
+                    key={control.id}
+                    type="button"
+                    className={`grid-remove-control grid-remove-control-${control.axis}`}
+                    data-testid={control.testId}
+                    aria-label={control.title}
+                    title={control.title}
+                    style={{
+                      left: control.left,
+                      top: control.top
+                    }}
+                    onClick={(event) => removeGridTrackFromViewportControl(control, event)}
                   >
                     {control.label}
                   </button>
