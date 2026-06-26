@@ -2116,6 +2116,54 @@ test("canvas grid viewport remove controls delete specific rows and columns", as
   await expect(page.getByTestId("inspector-y")).toHaveValue("110");
 });
 
+test("canvas grid header context menu edits rows and columns", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+  await page.getByTestId("inspector-width").fill("420");
+  await page.getByTestId("inspector-height").fill("240");
+  await page.getByTestId("inspector-layout-mode").selectOption("grid");
+  await page.getByTestId("inspector-layout-direction").selectOption("horizontal");
+  await page.getByTestId("inspector-layout-grid-column-tracks").fill("120px 80px 1fr");
+  await page.getByTestId("inspector-layout-grid-row-tracks").fill("90px 40px 1fr");
+  await page.getByTestId("inspector-layout-gap").fill("0");
+  await page.getByTestId("inspector-layout-column-gap").fill("10");
+  await page.getByTestId("inspector-layout-row-gap").fill("0");
+  await page.getByTestId("inspector-layout-padding-top").fill("20");
+  await page.getByTestId("inspector-layout-padding-right").fill("20");
+  await page.getByTestId("inspector-layout-padding-bottom").fill("20");
+  await page.getByTestId("inspector-layout-padding-left").fill("20");
+
+  await page.getByTestId("grid-column-header-2").click({ button: "right" });
+  const menu = page.getByTestId("grid-track-context-menu");
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "왼쪽에 열 추가" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "오른쪽에 열 추가" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "열 복제" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "열 삭제" })).toBeVisible();
+  await menu.getByRole("menuitem", { name: "왼쪽에 열 추가" }).click();
+  await expect(page.getByTestId("inspector-layout-grid-column-tracks")).toHaveValue("120px 1fr 80px 1fr");
+
+  await page.getByTestId("grid-column-header-3").click({ button: "right" });
+  await menu.getByRole("menuitem", { name: "열 복제" }).click();
+  await expect(page.getByTestId("inspector-layout-grid-column-tracks")).toHaveValue("120px 1fr 80px 80px 1fr");
+
+  await page.getByTestId("grid-column-header-4").click({ button: "right" });
+  await menu.getByRole("menuitem", { name: "열 삭제" }).click();
+  await expect(page.getByTestId("inspector-layout-grid-column-tracks")).toHaveValue("120px 1fr 80px 1fr");
+
+  await page.getByTestId("grid-row-header-2").click({ button: "right" });
+  await expect(menu.getByRole("menuitem", { name: "행 복제" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "위에 행 추가" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "아래에 행 추가" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "행 삭제" })).toBeVisible();
+  await menu.getByRole("menuitem", { name: "행 복제" }).click();
+  await expect(page.getByTestId("inspector-layout-grid-row-tracks")).toHaveValue("90px 40px 40px 1fr");
+
+  await page.getByTestId("grid-row-header-3").click({ button: "right" });
+  await menu.getByRole("menuitem", { name: "행 삭제" }).click();
+  await expect(page.getByTestId("inspector-layout-grid-row-tracks")).toHaveValue("90px 40px 1fr");
+});
+
 test("inspector manual grid cell placement moves a child to the requested cell", async ({ page }) => {
   await createProjectFromEmptyState(page);
   await page.getByRole("button", { name: "랜딩 프레임" }).click();
