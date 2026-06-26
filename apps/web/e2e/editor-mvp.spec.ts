@@ -2585,6 +2585,58 @@ test("canvas grid empty cell context menu creates a named area", async ({ page }
   await expect(page.getByTestId("inspector-layout-grid-areas")).toHaveValue("area1:2/1/1/1");
 });
 
+test("canvas grid multi-cell context menu creates a spanned named area", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+  await page.getByTestId("inspector-width").fill("420");
+  await page.getByTestId("inspector-height").fill("240");
+  await page.getByTestId("inspector-layout-mode").selectOption("grid");
+  await page.getByTestId("inspector-layout-direction").selectOption("horizontal");
+  await page.getByTestId("inspector-layout-grid-column-tracks").fill("120px 80px 1fr");
+  await page.getByTestId("inspector-layout-grid-row-tracks").fill("90px 90px");
+  await page.getByTestId("inspector-layout-gap").fill("0");
+  await page.getByTestId("inspector-layout-padding-top").fill("20");
+  await page.getByTestId("inspector-layout-padding-right").fill("20");
+  await page.getByTestId("inspector-layout-padding-bottom").fill("20");
+  await page.getByTestId("inspector-layout-padding-left").fill("20");
+
+  await page.getByTestId("grid-cell-hit-zone-1-1").click({ modifiers: ["ControlOrMeta"] });
+  await page.getByTestId("grid-cell-hit-zone-3-2").click({ modifiers: ["ControlOrMeta"] });
+  await expect(page.getByTestId("grid-cell-selection-range")).toBeVisible();
+
+  await page.getByTestId("grid-cell-hit-zone-2-1").click({ button: "right" });
+  const menu = page.getByTestId("grid-cell-context-menu");
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "셀 병합 영역 만들기" })).toBeVisible();
+  await menu.getByRole("menuitem", { name: "셀 병합 영역 만들기" }).click();
+  await expect(page.getByTestId("inspector-layout-grid-areas")).toHaveValue("area1:1/1/3/2");
+});
+
+test("canvas grid cell context menu splits an existing named area", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+  await page.getByTestId("inspector-width").fill("420");
+  await page.getByTestId("inspector-height").fill("240");
+  await page.getByTestId("inspector-layout-mode").selectOption("grid");
+  await page.getByTestId("inspector-layout-direction").selectOption("horizontal");
+  await page.getByTestId("inspector-layout-grid-column-tracks").fill("120px 80px 1fr");
+  await page.getByTestId("inspector-layout-grid-row-tracks").fill("90px 90px");
+  await page.getByTestId("inspector-layout-gap").fill("0");
+  await page.getByTestId("inspector-layout-padding-top").fill("20");
+  await page.getByTestId("inspector-layout-padding-right").fill("20");
+  await page.getByTestId("inspector-layout-padding-bottom").fill("20");
+  await page.getByTestId("inspector-layout-padding-left").fill("20");
+  await page.getByTestId("inspector-layout-grid-areas").fill("hero:1/1/3/2");
+  await expect(page.getByTestId("inspector-layout-grid-areas")).toHaveValue("hero:1/1/3/2");
+
+  await page.getByTestId("grid-cell-hit-zone-2-1").click({ button: "right" });
+  const menu = page.getByTestId("grid-cell-context-menu");
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "병합 영역 분리" })).toBeVisible();
+  await menu.getByRole("menuitem", { name: "병합 영역 분리" }).click();
+  await expect(page.getByTestId("inspector-layout-grid-areas")).toHaveValue("");
+});
+
 test("inspector grid named areas place children and reserve occupied cells", async ({ page }) => {
   await createProjectFromEmptyState(page);
   await page.getByRole("button", { name: "랜딩 프레임" }).click();

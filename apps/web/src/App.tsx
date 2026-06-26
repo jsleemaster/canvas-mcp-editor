@@ -640,6 +640,26 @@ interface GridCellContextMenuState {
   nodeId: string;
   column: number;
   row: number;
+  range: GridCellRange;
+  areaName?: string;
+}
+
+interface GridCellCoordinate {
+  column: number;
+  row: number;
+}
+
+interface GridCellRange {
+  column: number;
+  row: number;
+  columnSpan: number;
+  rowSpan: number;
+}
+
+interface GridCellSelectionState {
+  nodeId: string;
+  anchor: GridCellCoordinate;
+  focus: GridCellCoordinate;
 }
 
 interface GridTrackDragState {
@@ -1902,6 +1922,44 @@ function gridAreaPlacementsByNameForOverlay(
     }
   }
   return placements;
+}
+
+function gridCellRangeFromCoordinates(anchor: GridCellCoordinate, focus: GridCellCoordinate): GridCellRange {
+  const startColumn = Math.min(anchor.column, focus.column);
+  const endColumn = Math.max(anchor.column, focus.column);
+  const startRow = Math.min(anchor.row, focus.row);
+  const endRow = Math.max(anchor.row, focus.row);
+  return {
+    column: startColumn,
+    row: startRow,
+    columnSpan: endColumn - startColumn + 1,
+    rowSpan: endRow - startRow + 1
+  };
+}
+
+function gridCellRangeFromSelection(selection: GridCellSelectionState): GridCellRange {
+  return gridCellRangeFromCoordinates(selection.anchor, selection.focus);
+}
+
+function isGridCellInRange(cell: GridCellCoordinate, range: GridCellRange): boolean {
+  return (
+    cell.column >= range.column &&
+    cell.column < range.column + range.columnSpan &&
+    cell.row >= range.row &&
+    cell.row < range.row + range.rowSpan
+  );
+}
+
+function gridAreaNameAtCell(areas: GridArea[], cell: GridCellCoordinate): string | undefined {
+  const column = cell.column + 1;
+  const row = cell.row + 1;
+  return areas.find(
+    (area) =>
+      column >= area.column &&
+      column < area.column + area.column_span &&
+      row >= area.row &&
+      row < area.row + area.row_span
+  )?.name;
 }
 
 function manualGridPlacementForOverlay(layoutItem: NodeLayoutItem, columns: number, rows: number): GridPlacement | null {
@@ -3425,6 +3483,7 @@ export function App() {
   const [objectContextMenu, setObjectContextMenu] = useState<ObjectContextMenuState | null>(null);
   const [gridTrackContextMenu, setGridTrackContextMenu] = useState<GridTrackContextMenuState | null>(null);
   const [gridCellContextMenu, setGridCellContextMenu] = useState<GridCellContextMenuState | null>(null);
+  const [gridCellSelection, setGridCellSelection] = useState<GridCellSelectionState | null>(null);
   const editorRef = useRef<EditorState | null>(null);
   const objectClipboardRef = useRef<EditorNodeClipboard | null>(null);
   const styleClipboardRef = useRef<EditorNodeStyle | null>(null);
@@ -3779,6 +3838,39 @@ export function App() {
       showTrackControls: selectedChild === null
     });
   }, [editor, selectedNode, selectedNodeIds, selectedParentNode]);
+  const gridCellSelectionBox = useMemo(() => {
+    if (!gridViewportOverlay || !gridCellSelection || gridViewportOverlay.nodeId !== gridCellSelection.nodeId) {
+      return null;
+    }
+
+    const range = gridCellRangeFromSelection(gridCellSelection);
+    const selectedControls = gridViewportOverlay.cellControls.filter((control) =>
+      isGridCellInRange({ column: control.column, row: control.row }, range)
+    );
+    if (!selectedControls.length) {
+      return null;
+    }
+
+    const left = Math.min(...selectedControls.map((control) => control.left));
+    const top = Math.min(...selectedControls.map((control) => control.top));
+    const right = Math.max(...selectedControls.map((control) => control.left + control.width));
+    const bottom = Math.max(...selectedControls.map((control) => control.top + control.height));
+    return {
+      left,
+      top,
+      width: Math.max(1, right - left),
+      height: Math.max(1, bottom - top)
+    };
+  }, [gridCellSelection, gridViewportOverlay]);
+  useEffect(() => {
+    if (!gridCellSelection) {
+      return;
+    }
+
+    if (!gridViewportOverlay || gridViewportOverlay.nodeId !== gridCellSelection.nodeId) {
+      setGridCellSelection(null);
+    }
+  }, [gridCellSelection, gridViewportOverlay]);
   const snapGuideOverlays = useMemo(() => {
     if (!editor || !snapGuides.length) {
       return [];
@@ -5331,6 +5423,56 @@ export function App() {
     }
 
     const node = findNodeById(editor.document, selectedNode.id);
+    const layout = node ? normalizedInspectorLayout(node.layout) : null;
+    if (
+      !node ||
+      isNodeLocked(node) ||
+      !isNodeVisible(node) ||
+      (node.kind !== "frame" && node.kind !== "component") ||
+      layout?.mode !== "grid"
+    ) {
+      return;
+    }
+
+    const { columns, rows } = gridViewportTrackCountsForOverlay(layout, node);
+    const normalizedAreas = normalizeGridAreasForOverlay(layout.grid_areas, columns, rows);
+    const clickedCell = { column: control.column, row: control.row };
+    const currentSelectionRange =
+      gridCellSelection?.nodeId === node.id ? gridCellRangeFromSelection(gridCellSelection) : null;
+    const range =
+      currentSelectionRange && isGridCellInRange(clickedCell, currentSelectionRange)
+        ? currentSelectionRange
+        : { ...clickedCell, columnSpan: 1, rowSpan: 1 };
+
+    setInlineTextEditingNodeId(null);
+    setMeasurementTargetNodeId(null);
+    setObjectContextMenu(null);
+    setGridTrackContextMenu(null);
+    setGridCellContextMenu({
+      ...objectContextMenuPosition(event.clientX, event.clientY),
+      nodeId: node.id,
+      column: control.column,
+      row: control.row,
+      range,
+      areaName: gridAreaNameAtCell(normalizedAreas, clickedCell)
+    });
+  };
+
+  const selectGridCellRangeFromCell = (
+    control: GridViewportCellControl,
+    event: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    event.stopPropagation();
+    if (!editor || !selectedNode || selectedNode.id !== editor.selection.nodeId) {
+      return;
+    }
+
+    if (!event.ctrlKey && !event.metaKey) {
+      setGridCellSelection(null);
+      return;
+    }
+
+    const node = findNodeById(editor.document, selectedNode.id);
     if (
       !node ||
       isNodeLocked(node) ||
@@ -5341,16 +5483,19 @@ export function App() {
       return;
     }
 
-    setInlineTextEditingNodeId(null);
-    setMeasurementTargetNodeId(null);
-    setObjectContextMenu(null);
-    setGridTrackContextMenu(null);
-    setGridCellContextMenu({
-      ...objectContextMenuPosition(event.clientX, event.clientY),
-      nodeId: node.id,
-      column: control.column,
-      row: control.row
-    });
+    const cell = { column: control.column, row: control.row };
+    setGridCellSelection((current) =>
+      current && current.nodeId === node.id
+        ? {
+            ...current,
+            focus: cell
+          }
+        : {
+            nodeId: node.id,
+            anchor: cell,
+            focus: cell
+          }
+    );
   };
 
   const openGridTrackContextMenuFromHeader = (
@@ -5370,6 +5515,7 @@ export function App() {
     setMeasurementTargetNodeId(null);
     setObjectContextMenu(null);
     setGridCellContextMenu(null);
+    setGridCellSelection(null);
     setGridTrackContextMenu({
       ...objectContextMenuPosition(event.clientX, event.clientY),
       nodeId: selectedNode.id,
@@ -5580,8 +5726,19 @@ export function App() {
       gridCellContextMenu.column < 0 ||
       gridCellContextMenu.column >= columns ||
       gridCellContextMenu.row < 0 ||
-      gridCellContextMenu.row >= rows
+      gridCellContextMenu.row >= rows ||
+      gridCellContextMenu.range.column < 0 ||
+      gridCellContextMenu.range.row < 0 ||
+      gridCellContextMenu.range.column >= columns ||
+      gridCellContextMenu.range.row >= rows
     ) {
+      setGridCellContextMenu(null);
+      return;
+    }
+
+    const columnSpan = Math.min(gridCellContextMenu.range.columnSpan, columns - gridCellContextMenu.range.column);
+    const rowSpan = Math.min(gridCellContextMenu.range.rowSpan, rows - gridCellContextMenu.range.row);
+    if (columnSpan <= 0 || rowSpan <= 0) {
       setGridCellContextMenu(null);
       return;
     }
@@ -5596,15 +5753,55 @@ export function App() {
           ...normalizedAreas,
           {
             name: nextGridAreaNameForOverlay(normalizedAreas),
-            column: gridCellContextMenu.column + 1,
-            row: gridCellContextMenu.row + 1,
-            column_span: 1,
-            row_span: 1
+            column: gridCellContextMenu.range.column + 1,
+            row: gridCellContextMenu.range.row + 1,
+            column_span: columnSpan,
+            row_span: rowSpan
           }
         ]
       }
     });
     setGridCellContextMenu(null);
+    setGridCellSelection(null);
+  };
+
+  const applyGridCellSplitAction = () => {
+    const currentEditor = editorRef.current;
+    if (!currentEditor || !gridCellContextMenu?.areaName) {
+      setGridCellContextMenu(null);
+      return;
+    }
+
+    const node = findNodeById(currentEditor.document, gridCellContextMenu.nodeId);
+    if (
+      !node ||
+      isNodeLocked(node) ||
+      !isNodeVisible(node) ||
+      (node.kind !== "frame" && node.kind !== "component")
+    ) {
+      setGridCellContextMenu(null);
+      return;
+    }
+
+    const layout = normalizedInspectorLayout(node.layout);
+    if (layout.mode !== "grid") {
+      setGridCellContextMenu(null);
+      return;
+    }
+
+    const { columns, rows } = gridViewportTrackCountsForOverlay(layout, node);
+    const normalizedAreas = normalizeGridAreasForOverlay(layout.grid_areas, columns, rows);
+    const nextAreas = normalizedAreas.filter((area) => area.name !== gridCellContextMenu.areaName);
+    dispatch({
+      type: "set_node_layout",
+      nodeId: node.id,
+      layout: {
+        ...layout,
+        grid_areas: nextAreas.length ? nextAreas : undefined
+      }
+    });
+    setGridCellContextMenu(null);
+    setGridCellSelection(null);
   };
 
   const startGridResize = (
@@ -7170,9 +7367,23 @@ export function App() {
                       height: control.height
                     }}
                     onMouseDown={(event) => event.stopPropagation()}
+                    onClick={(event) => selectGridCellRangeFromCell(control, event)}
                     onContextMenu={(event) => openGridCellContextMenuFromCell(control, event)}
                   />
                 ))}
+                {gridCellSelectionBox ? (
+                  <div
+                    className="grid-cell-selection-range"
+                    data-testid="grid-cell-selection-range"
+                    aria-hidden="true"
+                    style={{
+                      left: gridCellSelectionBox.left,
+                      top: gridCellSelectionBox.top,
+                      width: gridCellSelectionBox.width,
+                      height: gridCellSelectionBox.height
+                    }}
+                  />
+                ) : null}
                 {gridViewportOverlay.lines.map((line) => (
                   <div
                     key={line.id}
@@ -7782,6 +7993,11 @@ export function App() {
         >
           <ContextMenuSection label="셀">
             <ContextMenuItem label="셀 병합 영역 만들기" onClick={applyGridCellMergeAction} />
+            <ContextMenuItem
+              label="병합 영역 분리"
+              disabled={!gridCellContextMenu.areaName}
+              onClick={applyGridCellSplitAction}
+            />
           </ContextMenuSection>
         </div>
       ) : null}
