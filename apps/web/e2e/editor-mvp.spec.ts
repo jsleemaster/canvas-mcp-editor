@@ -2428,6 +2428,34 @@ test("inspector manual grid cell placement moves a child to the requested cell",
   await expect(page.getByTestId("inspector-y")).toHaveValue("20");
 });
 
+test("inspector grid justify items stretch expands child width", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+  await page.getByTestId("inspector-width").fill("320");
+  await page.getByTestId("inspector-height").fill("140");
+  await page.getByTestId("inspector-layout-mode").selectOption("grid");
+  await page.getByTestId("inspector-layout-grid-columns").fill("2");
+  await page.getByTestId("inspector-layout-grid-rows").fill("1");
+  await page.getByTestId("inspector-layout-align-items").selectOption("start");
+  await page.getByTestId("inspector-layout-justify-content").selectOption("start");
+  await page.getByTestId("inspector-layout-grid-justify-items").selectOption("stretch");
+  await page.getByTestId("inspector-layout-gap").fill("0");
+  await page.getByTestId("inspector-layout-row-gap").fill("0");
+  await page.getByTestId("inspector-layout-column-gap").fill("0");
+  await page.getByTestId("inspector-layout-padding-top").fill("10");
+  await page.getByTestId("inspector-layout-padding-right").fill("10");
+  await page.getByTestId("inspector-layout-padding-bottom").fill("10");
+  await page.getByTestId("inspector-layout-padding-left").fill("10");
+
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await page.getByTestId("inspector-width").fill("40");
+  await page.getByTestId("inspector-height").fill("40");
+
+  await expect(page.getByTestId("inspector-x")).toHaveValue("10");
+  await expect(page.getByTestId("inspector-y")).toHaveValue("10");
+  await expect(page.getByTestId("inspector-width")).toHaveValue("150");
+});
+
 test("inspector grid item span stretches a child across multiple cells", async ({ page }) => {
   await createProjectFromEmptyState(page);
   await page.getByRole("button", { name: "랜딩 프레임" }).click();

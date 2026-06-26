@@ -38,6 +38,7 @@ const nodeLayoutSchema = z.object({
   wrap: z.enum(["nowrap", "wrap"]).optional(),
   align_items: z.enum(["start", "center", "end", "stretch"]).default("start"),
   justify_content: z.enum(["start", "center", "end", "space_between", "space_around", "space_evenly"]).default("start"),
+  justify_items: z.enum(["start", "center", "end", "stretch"]).optional(),
   align_content: z.enum(["start", "center", "end", "space_between", "space_around", "space_evenly"]).optional(),
   width_sizing: z.enum(["fixed", "fit"]).optional(),
   height_sizing: z.enum(["fixed", "fit"]).optional(),

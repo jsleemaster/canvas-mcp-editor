@@ -317,6 +317,7 @@ const DEFAULT_NODE_LAYOUT: NodeLayout = {
   wrap: "nowrap",
   align_items: "start",
   justify_content: "start",
+  justify_items: "start",
   align_content: "start",
   gap: 8,
   grid_columns: 2,
@@ -3141,6 +3142,25 @@ function Inspector({
             <option value="space_evenly">균등</option>
           </select>
         </label>
+        {layout.mode === "grid" ? (
+          <label className="stacked-field">
+            그리드 가로 정렬
+            <select
+              data-testid="inspector-layout-grid-justify-items"
+              value={layout.justify_items ?? "start"}
+              onChange={(event) =>
+                updateLayout({
+                  justify_items: event.currentTarget.value as NodeLayout["justify_items"]
+                })
+              }
+            >
+              <option value="start">시작</option>
+              <option value="center">가운데</option>
+              <option value="end">끝</option>
+              <option value="stretch">늘림</option>
+            </select>
+          </label>
+        ) : null}
         <div className="field-grid">
           <label>
             간격

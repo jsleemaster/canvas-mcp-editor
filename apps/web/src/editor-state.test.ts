@@ -567,6 +567,36 @@ describe("editor state commands", () => {
     expect(findNodeById(relaid.document, "grid-rectangle-3")?.transform).toMatchObject({ x: 188, y: 126 });
   });
 
+  test("grid layout justify_items stretch expands children horizontally within cells", () => {
+    const document = sampleDocument();
+    const frame = findNodeById(document, "frame-1") as any;
+    frame.size = { width: 320, height: 140 };
+    frame.layout = {
+      mode: "grid",
+      direction: "horizontal",
+      grid_columns: 2,
+      grid_rows: 1,
+      align_items: "start",
+      justify_content: "start",
+      justify_items: "stretch",
+      gap: 0,
+      row_gap: 0,
+      column_gap: 0,
+      padding: { top: 10, right: 10, bottom: 10, left: 10 }
+    };
+    const text = findNodeById(document, "text-1") as any;
+    text.size = { width: 40, height: 40 };
+
+    const relaid = executeEditorCommand(createEditorState(document), {
+      type: "update_node_geometry",
+      nodeId: "text-1",
+      patch: { height: 40 }
+    });
+
+    expect(findNodeById(relaid.document, "text-1")?.transform).toMatchObject({ x: 10, y: 10 });
+    expect(findNodeById(relaid.document, "text-1")?.size).toEqual({ width: 150, height: 40 });
+  });
+
   test("grid layout respects manual child row and column placement", () => {
     const document = sampleDocument();
     const frame = findNodeById(document, "frame-1") as any;
