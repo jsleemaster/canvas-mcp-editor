@@ -13,7 +13,8 @@ import type {
   NodeConstraints,
   NodeExportPreset,
   NodeLayout,
-  NodeLayoutItem
+  NodeLayoutItem,
+  TextWritingMode
 } from "./storage";
 
 export interface AgentNodeSummary {
@@ -89,6 +90,7 @@ export type AgentCommand =
       tokenId: string;
     }
   | { type: "update_text"; nodeId: string; value: string }
+  | { type: "set_text_writing_mode"; nodeId: string; writingMode: TextWritingMode }
   | {
       type: "create_rectangle";
       parentId: string;
@@ -113,6 +115,7 @@ export type AgentCommand =
       fill?: string;
       fontSize?: number;
       fontFamily?: string;
+      writingMode?: TextWritingMode;
     }
   | { type: "create_component"; nodeId: string; componentId: string; name: string }
   | { type: "set_export_presets"; nodeId: string; presets: NodeExportPreset[] }
@@ -162,6 +165,12 @@ export interface AgentBatchResult {
   validation: DocumentValidation;
   changeSummary: ChangeSummary;
   audit: AgentBatchAudit;
+}
+
+const TEXT_WRITING_MODES = new Set<TextWritingMode>(["horizontal_tb", "vertical_rl", "vertical_lr"]);
+
+function normalizeTextWritingMode(value: TextWritingMode | undefined): TextWritingMode {
+  return value && TEXT_WRITING_MODES.has(value) ? value : "horizontal_tb";
 }
 
 export function inspectCanvas(document: DesignFile): CanvasInspection {
@@ -675,6 +684,14 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
       node.content = { ...node.content, value: command.value };
       return node.id;
     }
+    case "set_text_writing_mode": {
+      const node = requireNode(document, command.nodeId);
+      if (node.content.type !== "text") {
+        throw new Error(`node is not text: ${command.nodeId}`);
+      }
+      node.content = { ...node.content, writing_mode: normalizeTextWritingMode(command.writingMode) };
+      return node.id;
+    }
     case "create_rectangle": {
       const node: DesignNode = {
         id: command.id,
@@ -695,6 +712,15 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
       return node.id;
     }
     case "create_text": {
+      const content: DesignNode["content"] = {
+        type: "text",
+        value: command.value ?? "새 텍스트",
+        font_size: command.fontSize ?? 24,
+        font_family: command.fontFamily ?? "Inter"
+      };
+      if (command.writingMode) {
+        content.writing_mode = normalizeTextWritingMode(command.writingMode);
+      }
       const node: DesignNode = {
         id: command.id,
         kind: "text",
@@ -707,12 +733,7 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
           stroke_width: 0,
           opacity: 1
         },
-        content: {
-          type: "text",
-          value: command.value ?? "새 텍스트",
-          font_size: command.fontSize ?? 24,
-          font_family: command.fontFamily ?? "Inter"
-        },
+        content,
         children: []
       };
       requireParent(document, command.parentId).children.push(node);

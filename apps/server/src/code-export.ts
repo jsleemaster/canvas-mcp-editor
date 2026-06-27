@@ -6,7 +6,8 @@ import type {
   DesignNode,
   NodeConstraints,
   NodeLayout,
-  NodeLayoutItem
+  NodeLayoutItem,
+  TextWritingMode
 } from "./storage";
 
 export interface CodeExportOptions {
@@ -54,7 +55,7 @@ export interface CodeStructureNode {
   annotations: CodeHandoffAnnotation[];
   content:
     | { type: "empty" }
-    | { type: "text"; value: string; fontSize: number; fontFamily: string }
+    | { type: "text"; value: string; fontSize: number; fontFamily: string; writingMode?: TextWritingMode }
     | { type: "image"; assetId: string; fitMode: "fill" | "fit" };
   componentRef?: {
     definitionId: string;
@@ -491,10 +492,12 @@ function styleAnnotationFor(node: DesignNode, tokenMap: Map<string, DesignToken>
 
 function contentAnnotationFor(node: DesignNode): CodeHandoffAnnotation | null {
   if (node.content.type === "text") {
+    const writingMode = node.content.writing_mode ?? "horizontal_tb";
     return {
       id: `${node.id}-content`,
       label: "콘텐츠",
       value: `"${node.content.value}" · ${formatPx(node.content.font_size)} ${node.content.font_family}`,
+      detail: writingMode !== "horizontal_tb" ? `writing mode ${writingMode}` : undefined,
       kind: "content",
       sourceNodeIds: [node.id]
     };
@@ -611,12 +614,16 @@ function isNodeExportVisible(node: DesignNode): boolean {
 
 function contentFor(node: DesignNode): CodeStructureNode["content"] {
   if (node.content.type === "text") {
-    return {
+    const content: CodeStructureNode["content"] = {
       type: "text",
       value: node.content.value,
       fontSize: node.content.font_size,
       fontFamily: node.content.font_family
     };
+    if (node.content.writing_mode && node.content.writing_mode !== "horizontal_tb") {
+      content.writingMode = node.content.writing_mode;
+    }
+    return content;
   }
 
   if (node.content.type === "image") {
@@ -745,6 +752,9 @@ function nodeCss(node: DesignNode, tokenMap: Map<string, DesignToken>): string[]
     lines.push(`  color: ${cssFillValue(node, tokenMap)};`);
     lines.push(`  font-family: ${fontFamily(node.content.font_family)};`);
     lines.push(`  font-size: ${formatPx(node.content.font_size)};`);
+    if (node.content.writing_mode && node.content.writing_mode !== "horizontal_tb") {
+      lines.push(`  writing-mode: ${cssTextWritingMode(node.content.writing_mode)};`);
+    }
     lines.push("  line-height: 1.25;");
     lines.push("  white-space: pre-wrap;");
   } else {
@@ -893,6 +903,18 @@ function formatNumber(value: number): string {
 
 function fontFamily(value: string): string {
   return `${value}, Arial, sans-serif`;
+}
+
+function cssTextWritingMode(value: TextWritingMode): string {
+  switch (value) {
+    case "vertical_rl":
+      return "vertical-rl";
+    case "vertical_lr":
+      return "vertical-lr";
+    case "horizontal_tb":
+    default:
+      return "horizontal-tb";
+  }
 }
 
 function escapeAttribute(value: string): string {

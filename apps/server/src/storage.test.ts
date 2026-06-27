@@ -2346,8 +2346,58 @@ describe("FileStorage", () => {
     expect(gridBaselineFrame.layout).toMatchObject({ mode: "grid", align_items: "baseline" });
     expect(baselineTitle?.transform).toMatchObject({ x: 20, y: 20 });
     expect(baselineCaption?.transform).toMatchObject({ x: 150, y: 29 });
-    expect(baselineLabel?.transform).toMatchObject({ x: 20, y: 113 });
-    expect(baselineSubtitle?.transform).toMatchObject({ x: 150, y: 100 });
+  expect(baselineLabel?.transform).toMatchObject({ x: 20, y: 113 });
+  expect(baselineSubtitle?.transform).toMatchObject({ x: 150, y: 100 });
+
+  const verticalBaselineLayout = await storage.applyAgentCommands("sample-file", {
+    dryRun: true,
+    commands: [
+      { type: "update_geometry", nodeId: "frame-1", width: 260, height: 120 },
+      { type: "update_geometry", nodeId: "text-1", width: 40, height: 96 },
+      { type: "set_text_writing_mode", nodeId: "text-1", writingMode: "vertical_rl" },
+      {
+        type: "create_text",
+        parentId: "frame-1",
+        id: "vertical-caption-1",
+        name: "세로쓰기 캡션",
+        value: "Caption",
+        x: 0,
+        y: 0,
+        width: 80,
+        height: 24,
+        fill: "#374151",
+        fontSize: 16,
+        fontFamily: "Inter"
+      },
+      {
+        type: "set_layout",
+        nodeId: "frame-1",
+        layout: {
+          mode: "auto",
+          direction: "horizontal",
+          align_items: "baseline",
+          justify_content: "start",
+          gap: 10,
+          padding: { top: 20, right: 20, bottom: 20, left: 20 }
+        }
+      }
+    ] as any
+  });
+
+  const verticalBaselineFrame = verticalBaselineLayout.preview.pages[0].children[0];
+  expect(verticalBaselineFrame.children.find((node) => node.id === "text-1")?.content).toMatchObject({
+    type: "text",
+    writing_mode: "vertical_rl"
+  });
+  expect(verticalBaselineFrame.children.find((node) => node.id === "text-1")?.transform).toMatchObject({
+    x: 20,
+    y: 20
+  });
+  expect(verticalBaselineFrame.children.find((node) => node.id === "vertical-caption-1")?.transform).toMatchObject({
+    x: 70,
+    y: 27
+  });
+  expect(verticalBaselineLayout.audit.commandTypes).toContain("set_text_writing_mode");
 
     const manualGridLayout = await storage.applyAgentCommands("sample-file", {
       dryRun: true,

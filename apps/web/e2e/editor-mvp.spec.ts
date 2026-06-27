@@ -2222,6 +2222,27 @@ test("empty text inspector field renders as a single underline with placeholder"
   await expect(textField).toHaveCSS("border-bottom-width", "1px");
 });
 
+test("text inspector persists vertical writing mode into dev handoff", async ({ page }) => {
+  const { documentId } = await createProjectFromEmptyState(page);
+
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  const writingMode = page.getByTestId("inspector-text-writing-mode");
+  await expect(writingMode).toHaveValue("horizontal_tb");
+
+  await writingMode.selectOption("vertical_rl");
+  await expect(writingMode).toHaveValue("vertical_rl");
+
+  await page.getByTestId("inspector-tab-dev").click();
+  await expect(page.getByTestId("dev-panel-css")).toContainText("writing-mode: vertical-rl;");
+  await expect(page.getByTestId("dev-panel-structure")).toContainText('"writingMode": "vertical_rl"');
+
+  const fileResponse = await page.request.get(`http://127.0.0.1:4317/files/${documentId}`);
+  expect(fileResponse.ok()).toBeTruthy();
+  const filePayload = await fileResponse.json();
+  const textNode = filePayload.file.pages[0].children[0].children.find((node: { id: string }) => node.id === "text-1");
+  expect(textNode.content.writing_mode).toBe("vertical_rl");
+});
+
 test("file version history saves and restores a document snapshot", async ({ page }) => {
   const { documentId } = await createProjectFromEmptyState(page);
 

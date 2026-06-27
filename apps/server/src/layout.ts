@@ -1,8 +1,22 @@
-import type { DesignFile, DesignNode, GridArea, GridTrack, NodeConstraints, NodeLayout, NodeLayoutItem } from "./storage.js";
+import type {
+  DesignFile,
+  DesignNode,
+  GridArea,
+  GridTrack,
+  NodeConstraints,
+  NodeLayout,
+  NodeLayoutItem,
+  TextWritingMode
+} from "./storage.js";
 
 const MIN_NODE_SIZE = 1;
 const DEFAULT_CONSTRAINTS: NodeConstraints = { horizontal: "left", vertical: "top" };
 const DEFAULT_LAYOUT_ITEM: NodeLayoutItem = { position: "static", margin: { top: 0, right: 0, bottom: 0, left: 0 } };
+const VERTICAL_TEXT_WRITING_MODES = new Set<TextWritingMode>(["vertical_rl", "vertical_lr"]);
+
+function isVerticalTextWritingMode(mode: TextWritingMode | undefined): boolean {
+  return mode ? VERTICAL_TEXT_WRITING_MODES.has(mode) : false;
+}
 
 export function relayoutDesignFile(document: DesignFile): void {
   for (const page of document.pages) {
@@ -1125,6 +1139,9 @@ function crossAxisLineOffset(
 
 function nodeBaselineOffset(node: DesignNode): number {
   if (node.content.type === "text") {
+    if (isVerticalTextWritingMode(node.content.writing_mode)) {
+      return Math.max(0, Math.min(node.size.height, Math.round(node.size.width / 2)));
+    }
     return Math.max(0, Math.min(node.size.height, Math.round(node.content.font_size * 0.8)));
   }
   return node.size.height;

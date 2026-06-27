@@ -1411,10 +1411,15 @@ export function createMcpServer(storage = new FileStorage()) {
         height: z.number().default(44),
         fill: z.string().default("#111827"),
         fontSize: z.number().default(24),
-        fontFamily: z.string().default("Inter")
+        fontFamily: z.string().default("Inter"),
+        writingMode: z.enum(["horizontal_tb", "vertical_rl", "vertical_lr"]).optional()
       }
     },
-    async ({ fileId, parentId, id, name, value, x, y, width, height, fill, fontSize, fontFamily }) => {
+    async ({ fileId, parentId, id, name, value, x, y, width, height, fill, fontSize, fontFamily, writingMode }) => {
+      const content: DesignNode["content"] = { type: "text", value, font_size: fontSize, font_family: fontFamily };
+      if (writingMode) {
+        content.writing_mode = writingMode;
+      }
       const node: DesignNode = {
         id,
         kind: "text",
@@ -1422,7 +1427,7 @@ export function createMcpServer(storage = new FileStorage()) {
         transform: { x, y, rotation: 0 },
         size: { width, height },
         style: { fill, stroke: null, stroke_width: 0, opacity: 1 },
-        content: { type: "text", value, font_size: fontSize, font_family: fontFamily },
+        content,
         children: []
       };
 

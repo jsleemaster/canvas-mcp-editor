@@ -78,6 +78,7 @@ export interface NodeConstraints {
 }
 
 export type ImageFitMode = "fill" | "fit";
+export type TextWritingMode = "horizontal_tb" | "vertical_rl" | "vertical_lr";
 export type ExportPresetFormat = "png" | "jpeg" | "webp" | "svg" | "pdf";
 
 export interface NodeExportPreset {
@@ -109,7 +110,7 @@ export interface RendererNode {
   };
   content:
     | { type: "empty" }
-    | { type: "text"; value: string; font_size: number; font_family: string }
+    | { type: "text"; value: string; font_size: number; font_family: string; writing_mode?: TextWritingMode }
     | {
         type: "image";
         asset_id: string;
