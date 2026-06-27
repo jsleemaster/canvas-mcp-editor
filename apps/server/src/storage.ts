@@ -1821,6 +1821,7 @@ export class FileStorage {
     }
 
     node.style = { ...node.style, fill, fill_token: null, fill_style: null };
+    syncComponentInstanceStyleOverride(document, nodeId, "fill", fill);
     relayoutDesignFile(document);
     await this.writeFile(fileId, document);
     await this.recordFileEditForAutoVersion(fileId, document);
@@ -3538,6 +3539,36 @@ function syncComponentInstanceTextOverride(document: DesignFile, nodeId: string,
   };
 }
 
+function syncComponentInstanceStyleOverride(
+  document: DesignFile,
+  nodeId: string,
+  field: "fill",
+  value: string
+): void {
+  const owner = findComponentInstanceOwner(document, nodeId);
+  if (!owner?.instance.component_instance) {
+    return;
+  }
+
+  const sourceValue = findComponentSourceStyleValue(document, owner.instance, owner.sourceNodeId, field);
+  if (sourceValue === null) {
+    return;
+  }
+
+  const existingOverrides = owner.instance.component_instance.overrides ?? [];
+  const nextOverrides = existingOverrides.filter(
+    (override) => !(override.node_id === owner.sourceNodeId && override.field === field)
+  );
+  if (value !== sourceValue) {
+    nextOverrides.push({ node_id: owner.sourceNodeId, field, value });
+  }
+
+  owner.instance.component_instance = {
+    ...owner.instance.component_instance,
+    overrides: nextOverrides
+  };
+}
+
 function findComponentInstanceOwner(
   document: DesignFile,
   nodeId: string
@@ -3609,6 +3640,19 @@ function findComponentSourceTextValue(
   return textNode?.content.type === "text" ? textNode.content.value : null;
 }
 
+function findComponentSourceStyleValue(
+  document: DesignFile,
+  instance: DesignNode,
+  sourceNodeId: string,
+  field: "fill"
+): string | null {
+  const sourceNode = componentSourceNodeForInstance(document, instance);
+  if (!sourceNode) {
+    return null;
+  }
+  return findInNode(sourceNode, sourceNodeId)?.style[field] ?? null;
+}
+
 function componentSourceNodeForVariant(
   definition: ComponentDefinition,
   variantId: string | null | undefined
@@ -3667,22 +3711,23 @@ function materializeComponentInstanceNode(
   if (options.exportPresets !== undefined) {
     node.export_presets = structuredClone(options.exportPresets);
   }
-  applyComponentInstanceTextOverrides(node, sourceNode.id);
+  applyComponentInstanceOverrides(node, sourceNode.id);
   return node;
 }
 
-function applyComponentInstanceTextOverrides(instance: DesignNode, sourceRootNodeId: string): void {
+function applyComponentInstanceOverrides(instance: DesignNode, sourceRootNodeId: string): void {
   const overrides = instance.component_instance?.overrides ?? [];
   for (const override of overrides) {
-    if (override.field !== "text") {
-      continue;
-    }
     const targetNodeId = override.node_id === sourceRootNodeId ? instance.id : `${instance.id}__${override.node_id}`;
     const target = findInNode(instance, targetNodeId);
-    if (target?.content.type !== "text") {
+    if (!target) {
       continue;
     }
-    target.content = { ...target.content, value: override.value };
+    if (override.field === "text" && target.content.type === "text") {
+      target.content = { ...target.content, value: override.value };
+    } else if (override.field === "fill") {
+      target.style = { ...target.style, fill: override.value, fill_token: null, fill_style: null };
+    }
   }
 }
 

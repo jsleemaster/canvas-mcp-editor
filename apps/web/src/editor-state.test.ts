@@ -3682,6 +3682,60 @@ describe("editor state commands", () => {
     expect(findNodeById(redone.document, "instance-1__badge-1")).toMatchObject({ kind: "rectangle" });
   });
 
+  test("variant source tree switches preserve compatible fill overrides", () => {
+    const document = sampleDocument();
+    const primarySource = structuredClone(document.pages[0].children[0]);
+    primarySource.children[0].style = { ...primarySource.children[0].style, fill: "#111827" };
+    const secondarySource = structuredClone(document.pages[0].children[0]);
+    secondarySource.children[0].style = { ...secondarySource.children[0].style, fill: "#475569" };
+    document.components = [
+      {
+        id: "component-1",
+        name: "Card",
+        source_node: structuredClone(document.pages[0].children[0]),
+        variants: [
+          {
+            id: "variant-primary",
+            name: "Primary",
+            properties: [{ name: "variant", value: "primary" }],
+            source_node: primarySource
+          },
+          {
+            id: "variant-secondary",
+            name: "Secondary",
+            properties: [{ name: "variant", value: "secondary" }],
+            source_node: secondarySource
+          }
+        ]
+      } as any
+    ];
+
+    const instance = executeEditorCommand(createEditorState(document), {
+      type: "create_component_instance",
+      parentId: "page-1",
+      definitionId: "component-1",
+      instanceId: "instance-1",
+      x: 520,
+      y: 140
+    });
+    const filled = executeEditorCommand(instance, {
+      type: "set_fill",
+      nodeId: "instance-1__text-1",
+      fill: "#f97316"
+    });
+    const switched = executeEditorCommand(filled, {
+      type: "set_component_instance_variant",
+      nodeId: "instance-1",
+      variantId: "variant-secondary"
+    });
+
+    expect(findNodeById(switched.document, "instance-1__text-1")?.style.fill).toBe("#f97316");
+    expect(findNodeById(switched.document, "instance-1")?.component_instance).toMatchObject({
+      variant_id: "variant-secondary",
+      overrides: [{ node_id: "text-1", field: "fill", value: "#f97316" }]
+    });
+  });
+
   test("sets component definition variants and resets invalid instance selections with undo and redo", () => {
     const document = sampleDocument();
     document.components = [
