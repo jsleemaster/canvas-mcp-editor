@@ -512,12 +512,12 @@ test("right inspector authors component variants on selected main components", a
   await page.getByRole("button", { name: "랜딩 프레임" }).click();
 
   await expect(page.getByTestId("inspector-component-definition-variants")).toBeVisible();
-  await page.getByTestId("inspector-component-definition-variant-property-name-default").fill("surface");
-  await page.getByTestId("inspector-component-definition-variant-property-value-default").fill("flat");
+  await page.getByTestId("inspector-component-definition-variant-property-name-default-0").fill("surface");
+  await page.getByTestId("inspector-component-definition-variant-property-value-default-0").fill("flat");
   await page.getByTestId("inspector-component-variant-add").click();
   await page.getByTestId("inspector-component-definition-variant-name-variant-2").fill("Elevated");
-  await page.getByTestId("inspector-component-definition-variant-property-name-variant-2").fill("surface");
-  await page.getByTestId("inspector-component-definition-variant-property-value-variant-2").fill("elevated");
+  await page.getByTestId("inspector-component-definition-variant-property-name-variant-2-0").fill("surface");
+  await page.getByTestId("inspector-component-definition-variant-property-value-variant-2-0").fill("elevated");
   await expect(page.getByTestId("project-status")).toContainText("컴포넌트 변형 저장됨");
 
   const instance = await page.request.post(`http://127.0.0.1:4317/files/${documentId}/component-instances`, {
@@ -540,6 +540,65 @@ test("right inspector authors component variants on selected main components", a
     "elevated"
   ]);
   await page.getByTestId("inspector-component-variant-surface").selectOption("elevated");
+  await expect(page.getByTestId("inspector-component-variant-surface")).toHaveValue("elevated");
+});
+
+test("right inspector authors multi-property component variant combinations", async ({ page }) => {
+  const { documentId } = await createProjectFromEmptyState(page);
+
+  const component = await page.request.post(`http://127.0.0.1:4317/files/${documentId}/components`, {
+    data: { nodeId: "frame-1", componentId: "component-card", name: "Card" }
+  });
+  expect(component.ok()).toBeTruthy();
+
+  await page.reload();
+  await openFilePanel(page);
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+  await expect(page.getByTestId("inspector-component-definition-variants")).toBeVisible();
+
+  await page.getByTestId("inspector-component-definition-variant-property-name-default-0").fill("surface");
+  await page.getByTestId("inspector-component-definition-variant-property-value-default-0").fill("flat");
+  await page.getByTestId("inspector-component-variant-property-add").click();
+  await page.getByTestId("inspector-component-definition-variant-property-name-default-1").fill("size");
+  await page.getByTestId("inspector-component-definition-variant-property-value-default-1").fill("regular");
+
+  await page.getByTestId("inspector-component-variant-add").click();
+  await page.getByTestId("inspector-component-definition-variant-name-variant-2").fill("Elevated Large");
+  await expect(page.getByTestId("inspector-component-definition-variant-property-name-variant-2-0")).toHaveValue(
+    "surface"
+  );
+  await expect(page.getByTestId("inspector-component-definition-variant-property-name-variant-2-1")).toHaveValue(
+    "size"
+  );
+  await page.getByTestId("inspector-component-definition-variant-property-value-variant-2-0").fill("elevated");
+  await page.getByTestId("inspector-component-definition-variant-property-value-variant-2-1").fill("large");
+  await expect(page.getByTestId("project-status")).toContainText("컴포넌트 변형 저장됨");
+
+  const instance = await page.request.post(`http://127.0.0.1:4317/files/${documentId}/component-instances`, {
+    data: {
+      parentId: "page-1",
+      definitionId: "component-card",
+      instanceId: "instance-card",
+      x: 520,
+      y: 140
+    }
+  });
+  expect(instance.ok()).toBeTruthy();
+
+  await page.reload();
+  await openFilePanel(page);
+  await page.getByRole("button", { name: "Card 인스턴스" }).click();
+  await expect(page.getByTestId("inspector-component-variant-surface").locator("option")).toHaveText([
+    "flat",
+    "elevated"
+  ]);
+  await expect(page.getByTestId("inspector-component-variant-size").locator("option")).toHaveText([
+    "regular",
+    "large"
+  ]);
+
+  await page.getByTestId("inspector-component-variant-surface").selectOption("elevated");
+  await expect(page.getByTestId("inspector-component-variant-size")).toHaveValue("large");
   await expect(page.getByTestId("inspector-component-variant-surface")).toHaveValue("elevated");
 });
 
