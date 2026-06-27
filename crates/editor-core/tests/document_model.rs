@@ -590,6 +590,47 @@ fn color_token_metadata_round_trips_through_json() {
 }
 
 #[test]
+fn token_sets_round_trip_through_json() {
+    let raw = r##"
+    {
+      "id": "token-set-file",
+      "name": "Token Set File",
+      "version": 1,
+      "components": [],
+      "token_sets": [
+        { "id": "base", "name": "base", "enabled": true },
+        { "id": "dark", "name": "dark", "enabled": false }
+      ],
+      "tokens": [
+        {
+          "id": "color-base-brand-primary",
+          "name": "Brand / Primary",
+          "type": "color",
+          "value": "#2563eb",
+          "set_id": "base"
+        },
+        {
+          "id": "color-dark-brand-primary",
+          "name": "Brand / Primary",
+          "type": "color",
+          "value": "#93c5fd",
+          "set_id": "dark"
+        }
+      ],
+      "pages": []
+    }
+    "##;
+
+    let parsed: DesignFile = serde_json::from_str(raw).unwrap();
+    let json = serde_json::to_string(&parsed).unwrap();
+
+    assert!(json.contains("\"token_sets\""));
+    assert!(json.contains("\"id\":\"dark\""));
+    assert!(json.contains("\"enabled\":false"));
+    assert!(json.contains("\"set_id\":\"base\""));
+}
+
+#[test]
 fn typography_token_round_trips_through_json() {
     let raw = r##"
     {

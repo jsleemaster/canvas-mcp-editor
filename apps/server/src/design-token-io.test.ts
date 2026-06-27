@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   exportDesignTokensToDtcg,
+  importDesignTokenDocumentFromDtcg,
   importDesignTokensFromDtcg
 } from "./design-token-io";
 import { FileStorage } from "./storage";
@@ -237,6 +238,77 @@ describe("DTCG color token import/export", () => {
               fontSize: 32,
               lineHeight: 40
             }
+          }
+        }
+      }
+    });
+  });
+
+  test("imports and exports ordered token sets with active set metadata", () => {
+    const imported = importDesignTokenDocumentFromDtcg({
+      $metadata: {
+        tokenSetOrder: ["base", "dark"],
+        activeThemes: [],
+        activeTokenSets: ["base"]
+      },
+      base: {
+        Brand: {
+          Primary: {
+            $type: "color",
+            $value: "#2563eb"
+          }
+        }
+      },
+      dark: {
+        Brand: {
+          Primary: {
+            $type: "color",
+            $value: "#93c5fd"
+          }
+        }
+      }
+    });
+
+    expect(imported.tokenSets).toEqual([
+      { id: "base", name: "base", enabled: true },
+      { id: "dark", name: "dark", enabled: false }
+    ]);
+    expect(imported.tokens).toEqual([
+      {
+        id: "color-base-brand-primary",
+        name: "Brand / Primary",
+        type: "color",
+        value: "#2563eb",
+        set_id: "base"
+      },
+      {
+        id: "color-dark-brand-primary",
+        name: "Brand / Primary",
+        type: "color",
+        value: "#93c5fd",
+        set_id: "dark"
+      }
+    ]);
+
+    expect(exportDesignTokensToDtcg(imported.tokens, imported.tokenSets)).toMatchObject({
+      $metadata: {
+        tokenSetOrder: ["base", "dark"],
+        activeThemes: [],
+        activeTokenSets: ["base"]
+      },
+      base: {
+        Brand: {
+          Primary: {
+            $type: "color",
+            $value: "#2563eb"
+          }
+        }
+      },
+      dark: {
+        Brand: {
+          Primary: {
+            $type: "color",
+            $value: "#93c5fd"
           }
         }
       }

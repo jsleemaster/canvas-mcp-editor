@@ -23,7 +23,7 @@ import {
 import { applyAgentCommandsToCollaboration } from "./collaboration-agent.js";
 import {
   exportDesignTokensToDtcg,
-  importDesignTokensFromDtcg
+  importDesignTokenDocumentFromDtcg
 } from "./design-token-io.js";
 import { createZipArchive, readZipArchive, type ZipArchiveEntry } from "./file-archive.js";
 import {
@@ -223,6 +223,13 @@ export interface DesignToken {
   name: string;
   type: "color" | "spacing" | "typography";
   value: string;
+  set_id?: string | null;
+}
+
+export interface DesignTokenSet {
+  id: string;
+  name: string;
+  enabled: boolean;
 }
 
 export interface DesignFile {
@@ -230,6 +237,7 @@ export interface DesignFile {
   name: string;
   version?: number;
   tokens?: DesignToken[];
+  token_sets?: DesignTokenSet[];
   components?: ComponentDefinition[];
   code_mappings?: CodeComponentMapping[];
   pages: Array<{ id: string; name: string; children: DesignNode[] }>;
@@ -1727,19 +1735,24 @@ export class FileStorage {
 
   async exportTokensDtcg(fileId: string): Promise<Record<string, unknown>> {
     const document = await this.readFile(fileId);
-    return exportDesignTokensToDtcg(document.tokens ?? []);
+    return exportDesignTokensToDtcg(document.tokens ?? [], document.token_sets ?? []);
   }
 
   async importTokensDtcg(
     fileId: string,
     tokensDocument: unknown
-  ): Promise<{ file: DesignFile; tokens: DesignToken[] }> {
+  ): Promise<{ file: DesignFile; tokens: DesignToken[]; tokenSets: DesignTokenSet[] }> {
     const document = await this.readFile(fileId);
-    const tokens = importDesignTokensFromDtcg(tokensDocument);
-    document.tokens = tokens;
+    const imported = importDesignTokenDocumentFromDtcg(tokensDocument);
+    document.tokens = imported.tokens;
+    if (imported.tokenSets.length) {
+      document.token_sets = imported.tokenSets;
+    } else {
+      delete document.token_sets;
+    }
     await this.writeFile(fileId, document);
     await this.recordFileEditForAutoVersion(fileId, document);
-    return { file: document, tokens };
+    return { file: document, tokens: imported.tokens, tokenSets: imported.tokenSets };
   }
 
   async updateNodeGeometry(fileId: string, nodeId: string, patch: GeometryPatch): Promise<DesignNode> {

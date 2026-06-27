@@ -1290,6 +1290,68 @@ describe("FileStorage", () => {
     expect(JSON.stringify(persisted)).not.toContain("color-brand-primary");
   });
 
+  test("agent commands toggle token sets and rematerialize active color bindings", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+
+    await storage.importTokensDtcg("sample-file", {
+      $metadata: {
+        tokenSetOrder: ["base", "dark"],
+        activeTokenSets: ["base", "dark"]
+      },
+      base: {
+        Brand: {
+          Primary: {
+            $type: "color",
+            $value: "#2563eb"
+          }
+        }
+      },
+      dark: {
+        Brand: {
+          Primary: {
+            $type: "color",
+            $value: "#93c5fd"
+          }
+        }
+      }
+    });
+
+    const bound = await storage.applyAgentCommands("sample-file", {
+      dryRun: false,
+      commands: [{ type: "set_fill_token", nodeId: "text-1", tokenId: "color-base-brand-primary" }] as any
+    });
+    const activeText = bound.preview.pages[0].children[0].children[0] as any;
+
+    expect(bound.preview.token_sets).toEqual([
+      { id: "base", name: "base", enabled: true },
+      { id: "dark", name: "dark", enabled: true }
+    ]);
+    expect(activeText.style).toMatchObject({
+      fill: "#93c5fd",
+      fill_token: "color-base-brand-primary"
+    });
+
+    const disabled = await storage.applyAgentCommands("sample-file", {
+      dryRun: false,
+      commands: [{ type: "set_token_set_enabled", tokenSetId: "dark", enabled: false }] as any
+    });
+    const disabledText = disabled.preview.pages[0].children[0].children[0] as any;
+    const persisted = await storage.readFile("sample-file");
+
+    expect(disabled.preview.token_sets).toEqual([
+      { id: "base", name: "base", enabled: true },
+      { id: "dark", name: "dark", enabled: false }
+    ]);
+    expect(disabledText.style).toMatchObject({
+      fill: "#2563eb",
+      fill_token: "color-base-brand-primary"
+    });
+    expect(persisted.token_sets?.find((set) => set.id === "dark")?.enabled).toBe(false);
+    expect(disabled.validation.issueCount).toBe(0);
+    expect(disabled.audit.commandTypes).toEqual(["set_token_set_enabled"]);
+  });
+
   test("agent commands create spacing tokens and bind layout gaps and padding", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
     const storage = await storageWithDocument(tempRoot);

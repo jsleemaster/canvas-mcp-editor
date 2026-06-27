@@ -180,12 +180,20 @@ export interface DesignToken {
   name: string;
   type: "color" | "spacing" | "typography";
   value: string;
+  set_id?: string | null;
+}
+
+export interface DesignTokenSet {
+  id: string;
+  name: string;
+  enabled: boolean;
 }
 
 export interface RendererDocument {
   id: string;
   name: string;
   tokens?: DesignToken[];
+  token_sets?: DesignTokenSet[];
   components?: ComponentDefinition[];
   code_mappings?: CodeComponentMapping[];
   pages: Array<{ id: string; name: string; children: RendererNode[] }>;

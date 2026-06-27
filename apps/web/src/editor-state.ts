@@ -1,6 +1,7 @@
 import type {
   ComponentVariant,
   DesignToken,
+  DesignTokenSet,
   GridArea,
   GridTrack,
   ImageFitMode,
@@ -109,6 +110,11 @@ export type EditorCommand =
       type: "set_fill_token";
       nodeId: string;
       tokenId: string;
+    }
+  | {
+      type: "set_token_set_enabled";
+      tokenSetId: string;
+      enabled: boolean;
     }
   | {
       type: "set_node_style";
@@ -334,11 +340,13 @@ export function findNodeById(document: RendererDocument, nodeId: string): Render
 }
 
 function findColorToken(document: RendererDocument, tokenId: string): DesignToken | null {
-  return (document.tokens ?? []).find((token) => token.id === tokenId && token.type === "color") ?? null;
+  const token = activeDesignTokenReferenceMap(document).get(tokenId);
+  return token?.type === "color" ? token : null;
 }
 
 function findTypographyToken(document: RendererDocument, tokenId: string): DesignToken | null {
-  return (document.tokens ?? []).find((token) => token.id === tokenId && token.type === "typography") ?? null;
+  const token = activeDesignTokenReferenceMap(document).get(tokenId);
+  return token?.type === "typography" ? token : null;
 }
 
 function parseTypographyToken(token: DesignToken): { fontFamily: string; fontSize: number; lineHeight?: number } | null {
@@ -356,6 +364,96 @@ function parseTypographyToken(token: DesignToken): { fontFamily: string; fontSiz
     return { fontFamily, fontSize, ...(lineHeight !== undefined ? { lineHeight } : {}) };
   } catch {
     return null;
+  }
+}
+
+function activeDesignTokenReferenceMap(document: RendererDocument): Map<string, DesignToken> {
+  const tokens = document.tokens ?? [];
+  const tokenSets = document.token_sets ?? [];
+  if (!tokenSets.length) {
+    return new Map(tokens.map((token) => [token.id, token]));
+  }
+
+  const activeTokens = resolveActiveDesignTokens(tokens, tokenSets);
+  const activeTokenByKey = new Map(activeTokens.map((token) => [tokenResolutionKey(token), token]));
+  const tokenMap = new Map<string, DesignToken>();
+  for (const token of tokens) {
+    const activeToken = activeTokenByKey.get(tokenResolutionKey(token));
+    if (activeToken) {
+      tokenMap.set(token.id, activeToken);
+    }
+  }
+  for (const token of activeTokens) {
+    tokenMap.set(token.id, token);
+  }
+  return tokenMap;
+}
+
+export function resolveActiveDesignTokens(tokens: DesignToken[], tokenSets: DesignTokenSet[] = []): DesignToken[] {
+  if (!tokenSets.length) {
+    return [...tokens];
+  }
+
+  const enabledSetIds = new Set(tokenSets.filter((tokenSet) => tokenSet.enabled).map((tokenSet) => tokenSet.id));
+  const winners = new Map<string, DesignToken>();
+  const keyOrder: string[] = [];
+  const remember = (token: DesignToken) => {
+    const key = tokenResolutionKey(token);
+    if (!winners.has(key)) {
+      keyOrder.push(key);
+    }
+    winners.set(key, token);
+  };
+
+  for (const token of tokens.filter((token) => !token.set_id)) {
+    remember(token);
+  }
+  for (const tokenSet of tokenSets) {
+    if (!enabledSetIds.has(tokenSet.id)) {
+      continue;
+    }
+    for (const token of tokens.filter((candidate) => candidate.set_id === tokenSet.id)) {
+      remember(token);
+    }
+  }
+
+  return keyOrder.map((key) => winners.get(key)).filter((token): token is DesignToken => Boolean(token));
+}
+
+function tokenResolutionKey(token: DesignToken): string {
+  return `${token.type}\u0000${token.name.trim().toLowerCase()}`;
+}
+
+function materializeTokenBindings(document: RendererDocument): void {
+  const tokenMap = activeDesignTokenReferenceMap(document);
+  for (const page of document.pages) {
+    for (const node of page.children) {
+      materializeNodeTokenBindings(node, tokenMap);
+    }
+  }
+  relayoutDocument(document);
+}
+
+function materializeNodeTokenBindings(node: RendererNode, tokenMap: Map<string, DesignToken>): void {
+  if (node.style.fill_token) {
+    const token = tokenMap.get(node.style.fill_token);
+    if (token?.type === "color") {
+      node.style = { ...node.style, fill: token.value };
+    }
+  }
+  if (node.content.type === "text" && node.content.typography_token) {
+    const token = tokenMap.get(node.content.typography_token);
+    const typography = token?.type === "typography" ? parseTypographyToken(token) : null;
+    if (typography) {
+      node.content = {
+        ...node.content,
+        font_family: typography.fontFamily,
+        font_size: typography.fontSize
+      };
+    }
+  }
+  for (const child of node.children) {
+    materializeNodeTokenBindings(child, tokenMap);
   }
 }
 
@@ -1312,11 +1410,11 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       }
 
       const previousStyle = { ...node.style };
-      if (previousStyle.fill === token.value && previousStyle.fill_token === token.id) {
+      if (previousStyle.fill === token.value && previousStyle.fill_token === command.tokenId) {
         return { document, inverse: null };
       }
 
-      node.style = { ...node.style, fill: token.value, fill_token: token.id };
+      node.style = { ...node.style, fill: token.value, fill_token: command.tokenId };
       relayoutDocument(next);
 
       return {
@@ -1325,6 +1423,28 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
           type: "set_node_style",
           nodeId: command.nodeId,
           style: previousStyle
+        }
+      };
+    }
+    case "set_token_set_enabled": {
+      const tokenSet = (next.token_sets ?? []).find((candidate) => candidate.id === command.tokenSetId);
+      if (!tokenSet) {
+        return { document, inverse: null };
+      }
+      const previousEnabled = tokenSet.enabled;
+      if (previousEnabled === command.enabled) {
+        return { document, inverse: null };
+      }
+
+      tokenSet.enabled = command.enabled;
+      materializeTokenBindings(next);
+
+      return {
+        document: next,
+        inverse: {
+          type: "set_token_set_enabled",
+          tokenSetId: command.tokenSetId,
+          enabled: previousEnabled
         }
       };
     }
@@ -1410,7 +1530,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         ...node.content,
         font_family: typography.fontFamily,
         font_size: typography.fontSize,
-        typography_token: token.id
+        typography_token: command.tokenId
       };
       relayoutDocument(next);
 

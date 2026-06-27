@@ -204,6 +204,62 @@ describe("code export", () => {
     expect((button?.structure.children[0].content as any).typographyToken).toBe("typography-heading-lg");
   });
 
+  test("resolves active token set overrides and excludes disabled set variables", () => {
+    const fixture = tossFixture() as any;
+    fixture.token_sets = [
+      { id: "base", name: "base", enabled: true },
+      { id: "dark", name: "dark", enabled: true },
+      { id: "draft", name: "draft", enabled: false }
+    ];
+    fixture.tokens = [
+      {
+        id: "color-base-brand-primary",
+        name: "Brand / Primary",
+        type: "color",
+        value: "#2563eb",
+        set_id: "base"
+      },
+      {
+        id: "color-dark-brand-primary",
+        name: "Brand / Primary",
+        type: "color",
+        value: "#93c5fd",
+        set_id: "dark"
+      },
+      {
+        id: "color-draft-brand-primary",
+        name: "Brand / Primary",
+        type: "color",
+        value: "#f97316",
+        set_id: "draft"
+      }
+    ];
+    fixture.pages[0].children[0].style.fill_token = "color-base-brand-primary";
+
+    const result = exportDesignToCode(fixture);
+    const button = result.elements.find((element) => element.id === "tds-button-primary");
+
+    expect(result.implementationSpec.tokens.tokenSets).toEqual(fixture.token_sets);
+    expect(result.implementationSpec.tokens.colors).toEqual([
+      {
+        id: "color-dark-brand-primary",
+        name: "Brand / Primary",
+        type: "color",
+        value: "#93c5fd",
+        set_id: "dark"
+      }
+    ]);
+    expect(result.css).toContain("--layo-token-color-dark-brand-primary: #93c5fd;");
+    expect(result.css).not.toContain("--layo-token-color-draft-brand-primary");
+    expect(result.css).toContain(
+      "background-color: var(--layo-token-color-dark-brand-primary, #93c5fd);"
+    );
+    expect(button?.structure.style).toMatchObject({
+      fill: "#93c5fd",
+      fillToken: "color-base-brand-primary"
+    });
+  });
+
   test("exports component definitions and instance references for agents", () => {
     const result = exportDesignToCode(componentFixture());
 

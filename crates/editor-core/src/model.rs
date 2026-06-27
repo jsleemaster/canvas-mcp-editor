@@ -8,6 +8,8 @@ pub struct DesignFile {
     pub id: String,
     pub name: String,
     pub version: u32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub token_sets: Vec<DesignTokenSet>,
     #[serde(default)]
     pub tokens: Vec<DesignToken>,
     #[serde(default)]
@@ -25,6 +27,16 @@ pub struct DesignToken {
     #[serde(rename = "type")]
     pub token_type: DesignTokenType,
     pub value: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub set_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct DesignTokenSet {
+    pub id: String,
+    pub name: String,
+    pub enabled: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
@@ -560,6 +572,7 @@ impl DesignFile {
             id: "sample-file".to_string(),
             name: "샘플 파일".to_string(),
             version: 1,
+            token_sets: vec![],
             tokens: vec![],
             components: vec![],
             code_mappings: vec![],

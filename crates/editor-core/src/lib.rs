@@ -11,7 +11,7 @@ pub use model::{
     CodeComponentMappingPropType, CodeComponentMappingSourceField,
     CodeComponentMappingVariantProp, ComponentDefinition, ComponentInstance,
     ComponentOverride, ComponentProperty, ComponentVariant, DesignFile, DesignToken,
-    DesignTokenType, ExportPresetFormat, GridArea, GridTrack, GridTrackType,
+    DesignTokenSet, DesignTokenType, ExportPresetFormat, GridArea, GridTrack, GridTrackType,
     HorizontalConstraint, LayoutAlignContent, LayoutAlignItems, LayoutDirection,
     LayoutItemPosition, LayoutItemSizing, LayoutJustifyContent, LayoutJustifyItems,
     LayoutMode, LayoutPadding, LayoutSelfAlignment, LayoutSizing, LayoutSpacingTokens,
