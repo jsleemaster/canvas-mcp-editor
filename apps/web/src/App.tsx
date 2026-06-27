@@ -3533,6 +3533,77 @@ function InspectorTokenControls({
           테마 추가
         </button>
       </div>
+      {themesByGroup.length && tokenSets.length ? (
+        <div className="token-theme-matrix" data-testid="token-theme-matrix">
+          <div className="token-theme-matrix-heading">
+            <strong>테마 매트릭스</strong>
+            <span>테마별 토큰 세트 구성</span>
+          </div>
+          {themesByGroup.map((group) => (
+            <div
+              key={group.name}
+              className="token-theme-matrix-group"
+              data-testid={`token-theme-matrix-group-${group.name}`}
+            >
+              <div className="token-theme-matrix-group-label">{group.name}</div>
+              <div className="token-theme-matrix-scroll">
+                <table className="token-theme-matrix-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">테마</th>
+                      {tokenSets.map((tokenSet) => (
+                        <th key={tokenSet.id} scope="col">
+                          {tokenSet.name}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.themes.map((theme) => (
+                      <tr key={theme.id} data-testid={`token-theme-matrix-row-${theme.id}`}>
+                        <th scope="row">{theme.name}</th>
+                        {tokenSets.map((tokenSet) => {
+                          const includedIndex = (theme.token_set_ids ?? []).indexOf(tokenSet.id);
+                          const included = includedIndex >= 0;
+                          return (
+                            <td key={tokenSet.id}>
+                              <label className="token-theme-matrix-cell">
+                                <input
+                                  data-testid={`token-theme-matrix-cell-${theme.id}-${tokenSet.id}`}
+                                  type="checkbox"
+                                  checked={included}
+                                  disabled={!canEdit}
+                                  aria-label={`${theme.name} ${tokenSet.name} 토큰 세트`}
+                                  onChange={(event) =>
+                                    updateTokenThemeSetMembership(theme, tokenSet.id, event.currentTarget.checked)
+                                  }
+                                />
+                                {included ? (
+                                  <span
+                                    className="token-theme-matrix-priority"
+                                    data-testid={`token-theme-matrix-priority-${theme.id}-${tokenSet.id}`}
+                                    aria-label={`${includedIndex + 1}번째 우선순위`}
+                                  >
+                                    {includedIndex + 1}
+                                  </span>
+                                ) : (
+                                  <span className="token-theme-matrix-empty" aria-hidden="true">
+                                    -
+                                  </span>
+                                )}
+                              </label>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {themesByGroup.length ? (
         <div className="token-theme-list" data-testid="token-theme-list">
           {themesByGroup.map((group) => (

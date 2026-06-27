@@ -3510,6 +3510,91 @@ test("right inspector reorders token themes and theme token set priority", async
     });
 });
 
+test("right inspector edits token theme membership through a matrix", async ({ page }) => {
+  const { documentId } = await createProjectFromEmptyState(page);
+  const importedTokenJson = JSON.stringify(
+    {
+      $metadata: {
+        tokenSetOrder: ["base", "light", "dark"],
+        activeThemes: ["theme-review"]
+      },
+      $themes: [
+        { id: "theme-review", name: "Review", group: "mode", selectedTokenSets: ["base", "light"] },
+        { id: "theme-alt", name: "Alt", group: "preview", selectedTokenSets: ["base"] }
+      ],
+      base: {
+        Surface: {
+          Canvas: {
+            $type: "color",
+            $value: "#f8fafc"
+          }
+        }
+      },
+      light: {
+        Surface: {
+          Canvas: {
+            $type: "color",
+            $value: "#ffffff"
+          }
+        }
+      },
+      dark: {
+        Surface: {
+          Canvas: {
+            $type: "color",
+            $value: "#0f172a"
+          }
+        }
+      }
+    },
+    null,
+    2
+  );
+
+  await page.getByTestId("dtcg-token-json").fill(importedTokenJson);
+  await page.getByRole("button", { name: "토큰 가져오기" }).click();
+  await expect(page.getByTestId("dtcg-token-status")).toContainText("3개 토큰 가져옴");
+
+  const agentResponse = await page.request.post(`http://127.0.0.1:4317/files/${documentId}/agent/commands`, {
+    data: {
+      dryRun: false,
+      commands: [{ type: "set_fill_token", nodeId: "text-1", tokenId: "color-base-surface-canvas" }]
+    }
+  });
+  expect(agentResponse.ok()).toBeTruthy();
+
+  await page.reload();
+  await openFilePanel(page);
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await expect(page.getByTestId("inspector-fill")).toHaveValue("#ffffff");
+
+  await expect(page.getByTestId("token-theme-matrix")).toBeVisible();
+  await expect(page.getByTestId("token-theme-matrix-group-mode")).toContainText("mode");
+  await expect(page.getByTestId("token-theme-matrix-row-theme-review")).toContainText("Review");
+  await expect(page.getByTestId("token-theme-matrix-priority-theme-review-base")).toHaveText("1");
+  await expect(page.getByTestId("token-theme-matrix-priority-theme-review-light")).toHaveText("2");
+  await expect(page.getByTestId("token-theme-matrix-cell-theme-review-dark")).not.toBeChecked();
+
+  await page.getByTestId("token-theme-matrix-cell-theme-review-dark").check();
+  await expect(page.getByTestId("inspector-fill")).toHaveValue("#0f172a");
+
+  await expect
+    .poll(async () => {
+      const fileResponse = await page.request.get(`http://127.0.0.1:4317/files/${documentId}`);
+      expect(fileResponse.ok()).toBeTruthy();
+      const file = (await fileResponse.json()).file;
+      const reviewTheme = file.token_themes.find((theme: { id: string }) => theme.id === "theme-review");
+      return {
+        reviewSets: reviewTheme.token_set_ids,
+        fill: file.pages[0].children[0].children[0].style.fill
+      };
+    })
+    .toEqual({
+      reviewSets: ["base", "light", "dark"],
+      fill: "#0f172a"
+    });
+});
+
 test("right inspector binds imported spacing tokens to layout gap and padding", async ({ page }) => {
   const { documentId } = await createProjectFromEmptyState(page);
   const importedTokenJson = JSON.stringify(
