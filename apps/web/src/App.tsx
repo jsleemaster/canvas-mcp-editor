@@ -19,6 +19,7 @@ import {
   type GridTrack,
   type ImageFitMode,
   type ComponentDefinition,
+  type ComponentVariant,
   type NodeConstraints,
   type NodeExportPreset,
   type NodeLayout,
@@ -1191,6 +1192,18 @@ async function persistComponentInstanceVariant(fileId: string, nodeId: string, v
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ variantId })
+  });
+
+  if (!response.ok) {
+    throw new Error(`컴포넌트 변형 저장 실패: ${response.status} ${response.statusText}`.trim());
+  }
+}
+
+async function persistComponentVariants(fileId: string, componentId: string, variants: ComponentVariant[]) {
+  const response = await fetch(apiUrl(`/files/${fileId}/components/${componentId}/variants`), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ variants })
   });
 
   if (!response.ok) {
@@ -3894,6 +3907,53 @@ function componentVariantControls(component: ComponentDefinition, variantId?: st
   });
 }
 
+function firstVariantProperty(variant: ComponentVariant) {
+  return variant.properties[0] ?? { name: "", value: "" };
+}
+
+function updateComponentVariantAt(
+  variants: ComponentVariant[],
+  variantId: string,
+  patch: Partial<ComponentVariant>
+): ComponentVariant[] {
+  return variants.map((variant) =>
+    variant.id === variantId
+      ? {
+          ...variant,
+          ...patch,
+          properties: patch.properties ?? variant.properties
+        }
+      : variant
+  );
+}
+
+function updateComponentVariantFirstProperty(
+  variants: ComponentVariant[],
+  variantId: string,
+  patch: Partial<{ name: string; value: string }>
+): ComponentVariant[] {
+  return variants.map((variant) => {
+    if (variant.id !== variantId) {
+      return variant;
+    }
+
+    const currentProperty = firstVariantProperty(variant);
+    return {
+      ...variant,
+      properties: [{ ...currentProperty, ...patch }, ...variant.properties.slice(1)]
+    };
+  });
+}
+
+function nextComponentVariantId(variants: ComponentVariant[]) {
+  const existingIds = new Set(variants.map((variant) => variant.id));
+  let index = variants.length + 1;
+  while (existingIds.has(`variant-${index}`)) {
+    index += 1;
+  }
+  return `variant-${index}`;
+}
+
 function variantIdForControlValue(
   component: ComponentDefinition,
   currentVariantId: string | null | undefined,
@@ -3929,6 +3989,7 @@ function Inspector({
   selectedNode,
   selectedNodes,
   componentDefinition,
+  selectedComponentDefinition,
   pageName,
   pageExportNodes,
   pageExportReviewItems,
@@ -3946,6 +4007,7 @@ function Inspector({
   onLayoutItemChange,
   onConstraintsChange,
   onComponentVariantChange,
+  onComponentDefinitionVariantsChange,
   onAlign,
   onDistribute,
   zoomLabel,
@@ -3980,6 +4042,7 @@ function Inspector({
   selectedNode: RendererNode | null;
   selectedNodes: RendererNode[];
   componentDefinition: ComponentDefinition | null;
+  selectedComponentDefinition: ComponentDefinition | null;
   pageName: string;
   pageExportNodes: RendererNode[];
   pageExportReviewItems: ExportPresetReviewItem[];
@@ -3997,6 +4060,7 @@ function Inspector({
   onLayoutItemChange: (nodeId: string, layoutItem: NodeLayoutItem) => void;
   onConstraintsChange: (nodeId: string, constraints: NodeConstraints) => void;
   onComponentVariantChange: (nodeId: string, variantId: string) => void;
+  onComponentDefinitionVariantsChange: (componentId: string, variants: ComponentVariant[]) => void;
   onAlign: (mode: AlignmentMode) => void;
   onDistribute: (mode: DistributionMode) => void;
   zoomLabel: string;
@@ -4170,6 +4234,27 @@ function Inspector({
     selectedNode.component_instance && componentDefinition
       ? componentVariantControls(componentDefinition, selectedNode.component_instance.variant_id ?? null)
       : [];
+  const componentDefinitionVariants = selectedComponentDefinition?.variants ?? [];
+  const updateComponentDefinitionVariants = (variants: ComponentVariant[]) => {
+    if (selectedComponentDefinition) {
+      onComponentDefinitionVariantsChange(selectedComponentDefinition.id, variants);
+    }
+  };
+  const addComponentDefinitionVariant = () => {
+    if (!selectedComponentDefinition) {
+      return;
+    }
+    const variantId = nextComponentVariantId(componentDefinitionVariants);
+    const propertyName = componentDefinitionVariants.map(firstVariantProperty).find((property) => property.name)?.name ?? "";
+    updateComponentDefinitionVariants([
+      ...componentDefinitionVariants,
+      {
+        id: variantId,
+        name: `Variant ${componentDefinitionVariants.length + 1}`,
+        properties: [{ name: propertyName, value: "" }]
+      }
+    ]);
+  };
   const updateLayout = (patch: Partial<NodeLayout>) => {
     onLayoutChange(selectedNode.id, {
       ...layout,
@@ -4367,6 +4452,79 @@ function Inspector({
         <PrototypePanel />
       ) : (
         <>
+      {selectedComponentDefinition ? (
+        <section
+          className="inspector-section"
+          data-testid="inspector-component-definition-variants"
+          aria-label="컴포넌트 변형 작성"
+        >
+          <div className="inspector-section-heading">
+            <h3>변형 작성</h3>
+            <button
+              type="button"
+              className="inspector-compact-button"
+              data-testid="inspector-component-variant-add"
+              onClick={addComponentDefinitionVariant}
+            >
+              변형 추가
+            </button>
+          </div>
+          <div className="component-variant-editor-list">
+            {componentDefinitionVariants.map((variant) => {
+              const property = firstVariantProperty(variant);
+              const variantTestId = safeTestId(variant.id);
+              return (
+                <div className="component-variant-editor-row" key={variant.id}>
+                  <label className="stacked-field">
+                    변형 이름
+                    <input
+                      data-testid={`inspector-component-definition-variant-name-${variantTestId}`}
+                      value={variant.name}
+                      onChange={(event) =>
+                        updateComponentDefinitionVariants(
+                          updateComponentVariantAt(componentDefinitionVariants, variant.id, {
+                            name: event.currentTarget.value
+                          })
+                        )
+                      }
+                    />
+                  </label>
+                  <div className="field-grid">
+                    <label>
+                      속성
+                      <input
+                        data-testid={`inspector-component-definition-variant-property-name-${variantTestId}`}
+                        value={property.name}
+                        onChange={(event) =>
+                          updateComponentDefinitionVariants(
+                            updateComponentVariantFirstProperty(componentDefinitionVariants, variant.id, {
+                              name: event.currentTarget.value
+                            })
+                          )
+                        }
+                      />
+                    </label>
+                    <label>
+                      값
+                      <input
+                        data-testid={`inspector-component-definition-variant-property-value-${variantTestId}`}
+                        value={property.value}
+                        onChange={(event) =>
+                          updateComponentDefinitionVariants(
+                            updateComponentVariantFirstProperty(componentDefinitionVariants, variant.id, {
+                              value: event.currentTarget.value
+                            })
+                          )
+                        }
+                      />
+                    </label>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
       {variantControls.length > 0 && componentDefinition ? (
         <section className="inspector-section" data-testid="inspector-component-variants" aria-label="컴포넌트 변형">
           <h3>변형</h3>
@@ -5300,6 +5458,7 @@ export function App() {
   } | null>(null);
   const isSpacePanningRef = useRef(false);
   const collabSessionRef = useRef<CollabDocumentSession | null>(null);
+  const componentVariantSaveRef = useRef(Promise.resolve());
   const publishedCursorRef = useRef<PublishedCursor | null>(null);
   const remotePresenceSignatureRef = useRef(new Map<string, string>());
   const remotePresenceSeenAtRef = useRef(new Map<string, number>());
@@ -6981,6 +7140,27 @@ export function App() {
       return;
     }
     void persistComponentInstanceVariant(currentProject.currentDocumentId, nodeId, variantId)
+      .then(() => {
+        setProjectStatus("컴포넌트 변형 저장됨");
+        setCodeExportRevision((current) => current + 1);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "컴포넌트 변형 저장 실패";
+        setProjectStatus(message);
+      });
+  };
+
+  const updateComponentDefinitionVariants = (componentId: string, variants: ComponentVariant[]) => {
+    dispatch({ type: "set_component_variants", componentId, variants });
+    if (!currentProject) {
+      return;
+    }
+
+    const fileId = currentProject.currentDocumentId;
+    componentVariantSaveRef.current = componentVariantSaveRef.current
+      .catch(() => undefined)
+      .then(() => persistComponentVariants(fileId, componentId, variants));
+    void componentVariantSaveRef.current
       .then(() => {
         setProjectStatus("컴포넌트 변형 저장됨");
         setCodeExportRevision((current) => current + 1);
@@ -10867,6 +11047,7 @@ export function App() {
         selectedNode={selectedNode}
         selectedNodes={selectedNodes}
         componentDefinition={selectedComponentInstanceDefinition}
+        selectedComponentDefinition={selectedComponent ?? null}
         pageName={activePage?.name ?? currentDocumentName}
         pageExportNodes={nodes}
         pageExportReviewItems={pageExportReviewItems}
@@ -10913,6 +11094,7 @@ export function App() {
         onLayoutItemChange={updateLayoutItem}
         onConstraintsChange={updateConstraints}
         onComponentVariantChange={updateComponentInstanceVariant}
+        onComponentDefinitionVariantsChange={updateComponentDefinitionVariants}
         onAlign={(mode) =>
           updateViewportFromInteraction((current) =>
             current.selection.nodeIds.length === 1

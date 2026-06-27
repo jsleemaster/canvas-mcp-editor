@@ -1569,6 +1569,32 @@ button:disabled {
   border-top: var(--editor-border-hairline) solid var(--editor-color-border-soft);
 }
 
+.inspector-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--editor-space-sm);
+  min-width: 0;
+}
+
+.inspector-compact-button {
+  min-width: 0;
+  min-height: var(--editor-space-xl);
+  padding: 0 var(--editor-space-sm);
+  white-space: nowrap;
+}
+
+.component-variant-editor-list {
+  display: grid;
+  gap: var(--editor-space-sm);
+}
+
+.component-variant-editor-row {
+  display: grid;
+  gap: var(--editor-space-xs);
+  min-width: 0;
+}
+
 .comment-target,
 .comment-summary {
   display: grid;

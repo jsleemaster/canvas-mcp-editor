@@ -1,4 +1,5 @@
 import type {
+  ComponentVariant,
   DesignToken,
   GridArea,
   GridTrack,
@@ -226,6 +227,12 @@ export type EditorCommand =
       type: "set_component_instance_variant";
       nodeId: string;
       variantId: string | null;
+    }
+  | {
+      type: "set_component_variants";
+      componentId: string;
+      variants: ComponentVariant[];
+      instanceVariantIds?: Record<string, string | null>;
     }
   | {
       type: "detach_instance";
@@ -1921,6 +1928,55 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
           variantId: previousVariantId
         },
         selectedNodeId: command.nodeId
+      };
+    }
+    case "set_component_variants": {
+      const component = (next.components ?? []).find((candidate) => candidate.id === command.componentId);
+      if (!component || command.variants.length === 0) {
+        return { document, inverse: null };
+      }
+
+      const previousVariants = structuredClone(component.variants);
+      const nextVariants = structuredClone(command.variants);
+      const validVariantIds = new Set(nextVariants.map((variant) => variant.id));
+      const fallbackVariantId = nextVariants[0]?.id ?? null;
+      const previousInstanceVariantIds: Record<string, string | null> = {};
+
+      component.variants = nextVariants;
+      forEachNode(next, (node) => {
+        if (node.component_instance?.definition_id !== command.componentId) {
+          return;
+        }
+
+        const previousVariantId = node.component_instance.variant_id ?? null;
+        const explicitVariantId = command.instanceVariantIds?.[node.id];
+        const nextVariantId =
+          explicitVariantId !== undefined
+            ? explicitVariantId
+            : previousVariantId && validVariantIds.has(previousVariantId)
+              ? previousVariantId
+              : fallbackVariantId;
+
+        if (previousVariantId === nextVariantId) {
+          return;
+        }
+
+        previousInstanceVariantIds[node.id] = previousVariantId;
+        node.component_instance = {
+          ...node.component_instance,
+          variant_id: nextVariantId
+        };
+      });
+
+      return {
+        document: next,
+        inverse: {
+          type: "set_component_variants",
+          componentId: command.componentId,
+          variants: previousVariants,
+          instanceVariantIds: previousInstanceVariantIds
+        },
+        selectedNodeId: component.source_node.id
       };
     }
     case "detach_instance": {
@@ -4212,6 +4268,21 @@ function findParentChildren(
 
   const node = findNodeById(document, parentId);
   return node ? { children: node.children } : null;
+}
+
+function forEachNode(document: RendererDocument, visitor: (node: RendererNode) => void): void {
+  for (const page of document.pages) {
+    for (const node of page.children) {
+      visitNodeTree(node, visitor);
+    }
+  }
+}
+
+function visitNodeTree(node: RendererNode, visitor: (node: RendererNode) => void): void {
+  visitor(node);
+  for (const child of node.children) {
+    visitNodeTree(child, visitor);
+  }
 }
 
 function isParentNodeLocked(document: RendererDocument, parentId: string): boolean {
