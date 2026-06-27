@@ -1801,6 +1801,55 @@ describe("FileStorage", () => {
     expect(findNode(persisted, "instance-1__badge-1")).toMatchObject({ kind: "rectangle", name: "배지" });
   });
 
+  test("component instance fill overrides persist after switching variants", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+
+    const component = await storage.createComponent("sample-file", "frame-1", {
+      componentId: "component-1",
+      name: "Card"
+    });
+    const primarySource = structuredClone(component.source_node);
+    primarySource.children[0].style = { ...primarySource.children[0].style, fill: "#111827" };
+    const secondarySource = structuredClone(component.source_node);
+    secondarySource.children[0].style = { ...secondarySource.children[0].style, fill: "#475569" };
+    await storage.setComponentVariants(
+      "sample-file",
+      "component-1",
+      [
+        {
+          id: "variant-primary",
+          name: "Primary",
+          properties: [{ name: "variant", value: "primary" }],
+          source_node: primarySource
+        },
+        {
+          id: "variant-secondary",
+          name: "Secondary",
+          properties: [{ name: "variant", value: "secondary" }],
+          source_node: secondarySource
+        }
+      ] as any
+    );
+
+    await storage.createComponentInstance("sample-file", {
+      parentId: "page-1",
+      definitionId: "component-1",
+      instanceId: "instance-1",
+      x: 520,
+      y: 140
+    });
+    await storage.setNodeFill("sample-file", "instance-1__text-1", "#f97316");
+    const switched = await storage.setComponentInstanceVariant("sample-file", "instance-1", "variant-secondary");
+    const persisted = await storage.readFile("sample-file");
+
+    expect(findNode(persisted, "instance-1__text-1")?.style.fill).toBe("#f97316");
+    expect(switched.component_instance).toMatchObject({
+      variant_id: "variant-secondary",
+      overrides: [{ node_id: "text-1", field: "fill", value: "#f97316" }]
+    });
+  });
+
   test("inspects and searches canvas nodes for agent workflows", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
     const storage = await storageWithDocument(tempRoot);
