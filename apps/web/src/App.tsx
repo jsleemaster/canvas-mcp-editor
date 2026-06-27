@@ -762,7 +762,24 @@ interface ComponentVariantAreaOverlay {
   width: number;
   height: number;
   label: string;
+  sourceHandles: ComponentVariantSourceHandle[];
   gapHandles: ComponentVariantAreaGapHandle[];
+}
+
+interface ComponentVariantSourceHandle {
+  id: string;
+  testId: string;
+  componentId: string;
+  variantId: string;
+  index: number;
+  axis: ComponentVariantArea["layout"];
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  coordinate: number;
+  cursor: "grab";
+  title: string;
 }
 
 interface ComponentVariantAreaGapHandle {
@@ -783,6 +800,15 @@ interface ComponentVariantAreaGapSession {
   axis: "horizontal" | "vertical";
   startClientPoint: { x: number; y: number };
   startArea: ComponentVariantArea;
+  viewportScale: number;
+}
+
+interface ComponentVariantSourceReorderSession {
+  componentId: string;
+  variantId: string;
+  axis: ComponentVariantArea["layout"];
+  startClientPoint: { x: number; y: number };
+  startCoordinate: number;
   viewportScale: number;
 }
 
@@ -978,6 +1004,7 @@ const GRID_ADD_CONTROL_OFFSET = 8;
 const GRID_HEADER_CONTROL_OFFSET = GRID_ADD_CONTROL_SIZE * 2 + GRID_ADD_CONTROL_OFFSET * 2;
 const GRID_AREA_BOUNDARY_HANDLE_SIZE = 14;
 const COMPONENT_VARIANT_AREA_GAP_HANDLE_SIZE = 14;
+const COMPONENT_VARIANT_SOURCE_REORDER_HANDLE_SIZE = 18;
 const GRID_MIN_TRACK_SIZE = 1;
 const IMPORTED_IMAGE_MIN_DIMENSION = 96;
 const IMPORTED_IMAGE_MAX_DIMENSION = 480;
@@ -1706,6 +1733,21 @@ function viewportBounds(bounds: SelectionBounds, viewport: EditorState["viewport
   };
 }
 
+function componentVariantSourceEntries(component: ComponentDefinition) {
+  return component.variants
+    .map((variant, index) => {
+      const source = variant.source_node ?? (index === 0 ? component.source_node : null);
+      return source ? { variant, index, source } : null;
+    })
+    .filter((entry): entry is { variant: ComponentVariant; index: number; source: RendererNode } => Boolean(entry));
+}
+
+function componentVariantSourceCoordinate(source: RendererNode, axis: ComponentVariantArea["layout"]) {
+  return axis === "horizontal"
+    ? source.transform.x + source.size.width / 2
+    : source.transform.y + source.size.height / 2;
+}
+
 function createComponentVariantAreaOverlay(
   component: ComponentDefinition,
   viewport: EditorState["viewport"]
@@ -1715,12 +1757,11 @@ function createComponentVariantAreaOverlay(
     return null;
   }
 
-  const sources = component.variants
-    .map((variant, index) => variant.source_node ?? (index === 0 ? component.source_node : null))
-    .filter((source): source is RendererNode => Boolean(source));
-  if (sources.length < 2) {
+  const sourceEntries = componentVariantSourceEntries(component);
+  if (sourceEntries.length < 2) {
     return null;
   }
+  const sources = sourceEntries.map((entry) => entry.source);
 
   const left = component.source_node.transform.x - area.padding.left;
   const top = component.source_node.transform.y - area.padding.top;
@@ -1735,6 +1776,31 @@ function createComponentVariantAreaOverlay(
     },
     viewport
   );
+  const sourceHandles: ComponentVariantSourceHandle[] = sourceEntries.map(({ variant, index, source }) => {
+    const handlePoint = documentPointToViewport(
+      {
+        x: source.transform.x + source.size.width / 2,
+        y: source.transform.y,
+        space: "document"
+      },
+      viewport
+    );
+    return {
+      id: `source-reorder-${variant.id}`,
+      testId: `component-variant-source-reorder-handle-${safeTestId(variant.id)}`,
+      componentId: component.id,
+      variantId: variant.id,
+      index,
+      axis: area.layout,
+      left: Math.round(handlePoint.x - COMPONENT_VARIANT_SOURCE_REORDER_HANDLE_SIZE / 2),
+      top: Math.round(handlePoint.y - COMPONENT_VARIANT_SOURCE_REORDER_HANDLE_SIZE / 2),
+      width: COMPONENT_VARIANT_SOURCE_REORDER_HANDLE_SIZE,
+      height: COMPONENT_VARIANT_SOURCE_REORDER_HANDLE_SIZE,
+      coordinate: componentVariantSourceCoordinate(source, area.layout),
+      cursor: "grab",
+      title: "컴포넌트 변형 순서 변경"
+    };
+  });
   const gapHandles: ComponentVariantAreaGapHandle[] = [];
   const firstSource = sources[0];
   const secondSource = sources[1];
@@ -1783,6 +1849,7 @@ function createComponentVariantAreaOverlay(
   return {
     ...bounds,
     label: `${sources.length} variants`,
+    sourceHandles,
     gapHandles
   };
 }
@@ -7051,6 +7118,8 @@ export function App() {
   const [gridCellSelection, setGridCellSelection] = useState<GridCellSelectionState | null>(null);
   const [componentVariantAreaGapSession, setComponentVariantAreaGapSession] =
     useState<ComponentVariantAreaGapSession | null>(null);
+  const [componentVariantSourceReorderSession, setComponentVariantSourceReorderSession] =
+    useState<ComponentVariantSourceReorderSession | null>(null);
   const editorRef = useRef<EditorState | null>(null);
   const objectClipboardRef = useRef<EditorNodeClipboard | null>(null);
   const styleClipboardRef = useRef<EditorNodeStyle | null>(null);
@@ -7060,6 +7129,7 @@ export function App() {
   const gridAreaBoundarySessionRef = useRef<GridAreaBoundarySession | null>(null);
   const gridAreaBoundaryClientPointRef = useRef<{ x: number; y: number } | null>(null);
   const componentVariantAreaGapClientPointRef = useRef<{ x: number; y: number } | null>(null);
+  const componentVariantSourceReorderClientPointRef = useRef<{ x: number; y: number } | null>(null);
   const gridTrackDragRef = useRef<GridTrackDragState | null>(null);
   const areaSelectionRef = useRef<AreaSelectionSession | null>(null);
   const dragSessionRef = useRef<NodeDragSession | null>(null);
@@ -8851,6 +8921,113 @@ export function App() {
         setProjectStatus(message);
       });
   };
+
+  const startComponentVariantSourceReorder = (
+    handle: ComponentVariantSourceHandle,
+    event: React.MouseEvent<HTMLDivElement>
+  ) => {
+    if (event.button !== 0) {
+      return;
+    }
+    const currentEditor = editorRef.current;
+    const component = currentEditor?.document.components?.find((candidate) => candidate.id === handle.componentId);
+    if (!currentEditor || !component?.variant_area) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    setInlineTextEditingNodeId(null);
+    setMeasurementTargetNodeId(null);
+    setObjectContextMenu(null);
+    setGridCellContextMenu(null);
+    setGridTrackContextMenu(null);
+    setGridCellSelection(null);
+    componentVariantSourceReorderClientPointRef.current = { x: event.clientX, y: event.clientY };
+    setComponentVariantSourceReorderSession({
+      componentId: handle.componentId,
+      variantId: handle.variantId,
+      axis: handle.axis,
+      startClientPoint: { x: event.clientX, y: event.clientY },
+      startCoordinate: handle.coordinate,
+      viewportScale: currentEditor.viewport.scale
+    });
+    document.body.style.cursor = "grabbing";
+  };
+
+  useEffect(() => {
+    if (!componentVariantSourceReorderSession) {
+      return;
+    }
+
+    const handlePointerMove = (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      componentVariantSourceReorderClientPointRef.current = { x: event.clientX, y: event.clientY };
+    };
+    const stopComponentVariantSourceReorder = (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const currentEditor = editorRef.current;
+      const component = currentEditor?.document.components?.find(
+        (candidate) => candidate.id === componentVariantSourceReorderSession.componentId
+      );
+      const area = component?.variant_area;
+      if (component && area) {
+        const lastPoint =
+          componentVariantSourceReorderClientPointRef.current ??
+          componentVariantSourceReorderSession.startClientPoint;
+        const clientDelta =
+          componentVariantSourceReorderSession.axis === "horizontal"
+            ? lastPoint.x - componentVariantSourceReorderSession.startClientPoint.x
+            : lastPoint.y - componentVariantSourceReorderSession.startClientPoint.y;
+        const movedCoordinate =
+          componentVariantSourceReorderSession.startCoordinate +
+          clientDelta / componentVariantSourceReorderSession.viewportScale;
+        const sourceCoordinates = new Map(
+          componentVariantSourceEntries(component).map((entry) => [
+            entry.variant.id,
+            componentVariantSourceCoordinate(entry.source, area.layout)
+          ])
+        );
+        const orderedVariants = component.variants
+          .map((variant, index) => ({
+            variant,
+            index,
+            coordinate:
+              variant.id === componentVariantSourceReorderSession.variantId
+                ? movedCoordinate
+                : sourceCoordinates.get(variant.id) ?? index
+          }))
+          .sort((a, b) => (a.coordinate === b.coordinate ? a.index - b.index : a.coordinate - b.coordinate))
+          .map((entry) => entry.variant);
+        const currentOrder = component.variants.map((variant) => variant.id).join("\u0000");
+        const nextOrder = orderedVariants.map((variant) => variant.id).join("\u0000");
+        if (currentOrder !== nextOrder) {
+          updateComponentDefinitionVariants(component.id, orderedVariants);
+        }
+      }
+      componentVariantSourceReorderClientPointRef.current = null;
+      setComponentVariantSourceReorderSession(null);
+      document.body.style.cursor = "";
+    };
+    const cancelComponentVariantSourceReorder = () => {
+      componentVariantSourceReorderClientPointRef.current = null;
+      setComponentVariantSourceReorderSession(null);
+      document.body.style.cursor = "";
+    };
+
+    window.addEventListener("mousemove", handlePointerMove, { capture: true });
+    window.addEventListener("mouseup", stopComponentVariantSourceReorder, { capture: true, once: true });
+    window.addEventListener("blur", cancelComponentVariantSourceReorder, { once: true });
+    return () => {
+      window.removeEventListener("mousemove", handlePointerMove, { capture: true });
+      window.removeEventListener("mouseup", stopComponentVariantSourceReorder, { capture: true });
+      window.removeEventListener("blur", cancelComponentVariantSourceReorder);
+      componentVariantSourceReorderClientPointRef.current = null;
+      document.body.style.cursor = "";
+    };
+  }, [componentVariantSourceReorderSession]);
 
   const startComponentVariantAreaGapResize = (
     handle: ComponentVariantAreaGapHandle,
@@ -12960,6 +13137,23 @@ export function App() {
                 }}
               >
                 <span>{componentVariantAreaOverlay.label}</span>
+                {componentVariantAreaOverlay.sourceHandles.map((handle) => (
+                  <div
+                    key={handle.id}
+                    className="component-variant-source-reorder-handle"
+                    data-testid={handle.testId}
+                    aria-label={handle.title}
+                    title={handle.title}
+                    style={{
+                      left: handle.left - componentVariantAreaOverlay.left,
+                      top: handle.top - componentVariantAreaOverlay.top,
+                      width: handle.width,
+                      height: handle.height,
+                      cursor: handle.cursor
+                    }}
+                    onMouseDown={(event) => startComponentVariantSourceReorder(handle, event)}
+                  />
+                ))}
                 {componentVariantAreaOverlay.gapHandles.map((handle) => (
                   <div
                     key={handle.id}

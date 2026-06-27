@@ -828,6 +828,34 @@ button:disabled {
   height: calc(var(--editor-border-hairline) * 2);
 }
 
+.component-variant-source-reorder-handle {
+  position: absolute;
+  z-index: 3;
+  pointer-events: auto;
+  box-sizing: border-box;
+  border: var(--editor-border-hairline) solid var(--editor-color-selection);
+  border-radius: var(--editor-radius-xs);
+  background: var(--editor-color-panel);
+  box-shadow: 0 0 0 var(--editor-border-hairline) var(--editor-color-stage);
+}
+
+.component-variant-source-reorder-handle::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-top: calc(var(--editor-border-hairline) * 2) solid var(--editor-color-selection);
+  border-bottom: calc(var(--editor-border-hairline) * 2) solid var(--editor-color-selection);
+}
+
+.component-variant-source-reorder-handle:hover,
+.component-variant-source-reorder-handle:focus-visible {
+  background: color-mix(in srgb, var(--editor-color-selection) 12%, var(--editor-color-panel));
+}
+
+.component-variant-source-reorder-handle:active {
+  cursor: grabbing;
+}
+
 .grid-viewport-overlay {
   position: absolute;
   inset: 0;

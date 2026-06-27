@@ -2950,6 +2950,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       }
 
       const previousVariants = structuredClone(component.variants);
+      const previousArea = structuredClone(component.variant_area ?? null);
       const nextVariants = structuredClone(command.variants);
       const validVariantIds = new Set(nextVariants.map((variant) => variant.id));
       const fallbackVariantId = nextVariants[0]?.id ?? null;
@@ -2959,6 +2960,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       if (nextVariants.length > 1 && !component.variant_area) {
         component.variant_area = defaultComponentVariantArea();
       }
+      reflowComponentVariantArea(next, component, previousArea);
       forEachNode(next, (node) => {
         if (node.component_instance?.definition_id !== command.componentId) {
           return;

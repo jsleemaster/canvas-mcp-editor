@@ -4110,6 +4110,66 @@ describe("editor state commands", () => {
     expect(findNodeById(reflowed.document, "rectangle-1")?.transform).toMatchObject({ x: 136, y: 420 });
   });
 
+  test("reflows variant source nodes and canvas nodes when variants are reordered", () => {
+    const document = sampleDocumentWithTopLevelRectangle();
+    const frame = document.pages[0].children[0];
+    const rectangle = document.pages[0].children[1];
+    frame.kind = "component";
+    frame.name = "Button / Primary";
+    rectangle.kind = "component";
+    rectangle.name = "Button / Secondary";
+    rectangle.size = { width: 180, height: 64 };
+    document.components = [
+      {
+        id: "component-primary",
+        name: "Button / Primary",
+        source_node: structuredClone(frame),
+        variants: [{ id: "default", name: "Default", properties: [] }]
+      },
+      {
+        id: "component-secondary",
+        name: "Button / Secondary",
+        source_node: structuredClone(rectangle),
+        variants: [{ id: "default", name: "Default", properties: [] }]
+      }
+    ];
+
+    const combined = executeEditorCommand(
+      setMultiSelection(createEditorState(document), ["frame-1", "rectangle-1"], "frame-1"),
+      {
+        type: "combine_components_as_variants",
+        componentId: "component-primary",
+        nodeIds: ["frame-1", "rectangle-1"],
+        propertyName: "variant"
+      }
+    );
+    const combinedComponent = combined.document.components?.[0] as any;
+
+    const reordered = executeEditorCommand(combined, {
+      type: "set_component_variants",
+      componentId: "component-primary",
+      variants: [combinedComponent.variants[1], combinedComponent.variants[0]]
+    } as any);
+
+    const component = reordered.document.components?.[0] as any;
+    expect(component.variants.map((variant: any) => variant.name)).toEqual(["Secondary", "Primary"]);
+    expect(component.source_node.id).toBe("rectangle-1");
+    expect(component.source_node.transform).toMatchObject({ x: 120, y: 80 });
+    expect(component.variants[0].source_node.transform).toMatchObject({ x: 120, y: 80 });
+    expect(component.variants[1].source_node.transform).toMatchObject({ x: 332, y: 80 });
+    expect(findNodeById(reordered.document, "rectangle-1")?.transform).toMatchObject({ x: 120, y: 80 });
+    expect(findNodeById(reordered.document, "frame-1")?.transform).toMatchObject({ x: 332, y: 80 });
+    expect(reordered.selection.nodeId).toBe("rectangle-1");
+
+    const undone = undo(reordered);
+    expect(undone.document.components?.[0].variants.map((variant) => variant.name)).toEqual([
+      "Primary",
+      "Secondary"
+    ]);
+    expect(findNodeById(undone.document, "frame-1")?.transform).toMatchObject({ x: 120, y: 80 });
+    expect(findNodeById(undone.document, "rectangle-1")?.transform).toMatchObject({ x: 572, y: 80 });
+  });
+
   test("sets component variant area layout with undo and redo", () => {
     const document = sampleDocument();
     document.components = [
