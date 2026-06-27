@@ -18,6 +18,7 @@ import {
   type GridArea,
   type GridTrack,
   type ImageFitMode,
+  type ComponentDefinition,
   type NodeConstraints,
   type NodeExportPreset,
   type NodeLayout,
@@ -1182,6 +1183,18 @@ async function persistNodeExportPresets(fileId: string, nodeId: string, presets:
 
   if (!response.ok) {
     throw new Error(`export preset 저장 실패: ${response.status} ${response.statusText}`.trim());
+  }
+}
+
+async function persistComponentInstanceVariant(fileId: string, nodeId: string, variantId: string) {
+  const response = await fetch(apiUrl(`/files/${fileId}/nodes/${nodeId}/component-variant`), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ variantId })
+  });
+
+  if (!response.ok) {
+    throw new Error(`컴포넌트 변형 저장 실패: ${response.status} ${response.statusText}`.trim());
   }
 }
 
@@ -3834,10 +3847,88 @@ function PrototypePanel() {
   );
 }
 
+type ComponentVariantControl = {
+  name: string;
+  selectedValue: string;
+  values: string[];
+};
+
+function safeTestId(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "property";
+}
+
+function selectedComponentVariant(component: ComponentDefinition, variantId?: string | null) {
+  return component.variants.find((variant) => variant.id === variantId) ?? component.variants[0] ?? null;
+}
+
+function componentVariantControls(component: ComponentDefinition, variantId?: string | null): ComponentVariantControl[] {
+  const propertyNames = Array.from(
+    new Set(component.variants.flatMap((variant) => variant.properties.map((property) => property.name)))
+  );
+  const selectedVariant = selectedComponentVariant(component, variantId);
+
+  return propertyNames.flatMap((name) => {
+    const values = Array.from(
+      new Set(
+        component.variants
+          .flatMap((variant) => variant.properties)
+          .filter((property) => property.name === name)
+          .map((property) => property.value)
+      )
+    );
+    if (values.length === 0) {
+      return [];
+    }
+    return [
+      {
+        name,
+        selectedValue:
+          selectedVariant?.properties.find((property) => property.name === name)?.value ?? values[0] ?? "",
+        values
+      }
+    ];
+  });
+}
+
+function variantIdForControlValue(
+  component: ComponentDefinition,
+  currentVariantId: string | null | undefined,
+  propertyName: string,
+  value: string
+) {
+  const selectedVariant = selectedComponentVariant(component, currentVariantId);
+  const expectedValues = new Map(selectedVariant?.properties.map((property) => [property.name, property.value]) ?? []);
+  expectedValues.set(propertyName, value);
+  const propertyNames = Array.from(
+    new Set(component.variants.flatMap((variant) => variant.properties.map((property) => property.name)))
+  );
+  const exactVariant = component.variants.find((variant) =>
+    propertyNames.every((name) => {
+      const expectedValue = expectedValues.get(name);
+      return (
+        expectedValue === undefined ||
+        variant.properties.some((property) => property.name === name && property.value === expectedValue)
+      );
+    })
+  );
+  return (
+    exactVariant ??
+    component.variants.find((variant) =>
+      variant.properties.some((property) => property.name === propertyName && property.value === value)
+    ) ??
+    selectedVariant
+  )?.id;
+}
+
 function Inspector({
   activeTab,
   selectedNode,
   selectedNodes,
+  componentDefinition,
   pageName,
   pageExportNodes,
   pageExportReviewItems,
@@ -3854,6 +3945,7 @@ function Inspector({
   onLayoutChange,
   onLayoutItemChange,
   onConstraintsChange,
+  onComponentVariantChange,
   onAlign,
   onDistribute,
   zoomLabel,
@@ -3887,6 +3979,7 @@ function Inspector({
   activeTab: InspectorTab;
   selectedNode: RendererNode | null;
   selectedNodes: RendererNode[];
+  componentDefinition: ComponentDefinition | null;
   pageName: string;
   pageExportNodes: RendererNode[];
   pageExportReviewItems: ExportPresetReviewItem[];
@@ -3903,6 +3996,7 @@ function Inspector({
   onLayoutChange: (nodeId: string, layout: NodeLayout) => void;
   onLayoutItemChange: (nodeId: string, layoutItem: NodeLayoutItem) => void;
   onConstraintsChange: (nodeId: string, constraints: NodeConstraints) => void;
+  onComponentVariantChange: (nodeId: string, variantId: string) => void;
   onAlign: (mode: AlignmentMode) => void;
   onDistribute: (mode: DistributionMode) => void;
   zoomLabel: string;
@@ -4072,6 +4166,10 @@ function Inspector({
     ? documentTokens.find((token) => token.id === selectedNode.style.fill_token && token.type === "color") ?? null
     : null;
   const spacingTokens = documentTokens.filter((token) => token.type === "spacing");
+  const variantControls =
+    selectedNode.component_instance && componentDefinition
+      ? componentVariantControls(componentDefinition, selectedNode.component_instance.variant_id ?? null)
+      : [];
   const updateLayout = (patch: Partial<NodeLayout>) => {
     onLayoutChange(selectedNode.id, {
       ...layout,
@@ -4269,6 +4367,37 @@ function Inspector({
         <PrototypePanel />
       ) : (
         <>
+      {variantControls.length > 0 && componentDefinition ? (
+        <section className="inspector-section" data-testid="inspector-component-variants" aria-label="컴포넌트 변형">
+          <h3>변형</h3>
+          {variantControls.map((control) => (
+            <label className="stacked-field" key={control.name}>
+              {control.name}
+              <select
+                data-testid={`inspector-component-variant-${safeTestId(control.name)}`}
+                value={control.selectedValue}
+                onChange={(event) => {
+                  const variantId = variantIdForControlValue(
+                    componentDefinition,
+                    selectedNode.component_instance?.variant_id ?? null,
+                    control.name,
+                    event.currentTarget.value
+                  );
+                  if (variantId) {
+                    onComponentVariantChange(selectedNode.id, variantId);
+                  }
+                }}
+              >
+                {control.values.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </section>
+      ) : null}
       <InspectorAlignmentControls
         canAlign={canAlign}
         canDistribute={canDistribute}
@@ -5135,6 +5264,7 @@ export function App() {
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("design");
   const [codeExportPayload, setCodeExportPayload] = useState<CodeExportPayload | null>(null);
   const [codeExportStatus, setCodeExportStatus] = useState("코드 내보내기 대기 중");
+  const [codeExportRevision, setCodeExportRevision] = useState(0);
   const [encryptionEnabled, setEncryptionEnabled] = useState(false);
   const [encryptionPassphrase, setEncryptionPassphrase] = useState("");
   const [teamPanelMode, setTeamPanelMode] = useState<TeamPanelMode>("local");
@@ -5343,7 +5473,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [currentProject?.currentDocumentId, inspectorTab]);
+  }, [codeExportRevision, currentProject?.currentDocumentId, inspectorTab]);
 
   useEffect(() => {
     editorRef.current = editor;
@@ -5803,6 +5933,9 @@ export function App() {
   const selectedComponent = selectedNode
     ? components.find((component) => component.source_node.id === selectedNode.id)
     : undefined;
+  const selectedComponentInstanceDefinition = selectedNode?.component_instance
+    ? components.find((component) => component.id === selectedNode.component_instance?.definition_id) ?? null
+    : null;
   const localSessionId = collabSession?.getLocalPresence().sessionId ?? null;
   const currentDocumentName = editor?.document.name ?? "문서 없음";
   const currentProjectName = currentProject?.name ?? "프로젝트 없음";
@@ -6840,6 +6973,22 @@ export function App() {
     activeSession.transact("editor-command", () => nextState.document);
     publishEditorPresence(nextState);
     setEditor(nextState);
+  };
+
+  const updateComponentInstanceVariant = (nodeId: string, variantId: string) => {
+    dispatch({ type: "set_component_instance_variant", nodeId, variantId });
+    if (!currentProject) {
+      return;
+    }
+    void persistComponentInstanceVariant(currentProject.currentDocumentId, nodeId, variantId)
+      .then(() => {
+        setProjectStatus("컴포넌트 변형 저장됨");
+        setCodeExportRevision((current) => current + 1);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "컴포넌트 변형 저장 실패";
+        setProjectStatus(message);
+      });
   };
 
   const dispatchPreservingSelection = (
@@ -10717,6 +10866,7 @@ export function App() {
         activeTab={inspectorTab}
         selectedNode={selectedNode}
         selectedNodes={selectedNodes}
+        componentDefinition={selectedComponentInstanceDefinition}
         pageName={activePage?.name ?? currentDocumentName}
         pageExportNodes={nodes}
         pageExportReviewItems={pageExportReviewItems}
@@ -10762,6 +10912,7 @@ export function App() {
         onLayoutChange={updateLayout}
         onLayoutItemChange={updateLayoutItem}
         onConstraintsChange={updateConstraints}
+        onComponentVariantChange={updateComponentInstanceVariant}
         onAlign={(mode) =>
           updateViewportFromInteraction((current) =>
             current.selection.nodeIds.length === 1

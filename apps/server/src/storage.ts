@@ -174,6 +174,7 @@ export interface ComponentDefinition {
 
 export interface ComponentInstance {
   definition_id: string;
+  variant_id?: string | null;
   overrides: Array<{ node_id: string; field: string; value: string }>;
   detached: boolean;
 }
@@ -1985,11 +1986,70 @@ export class FileStorage {
     node.transform = { ...node.transform, x: input.x, y: input.y };
     node.component_instance = {
       definition_id: input.definitionId,
+      variant_id: definition.variants[0]?.id ?? null,
       overrides: [],
       detached: false
     };
     parent.children.push(node);
     relayoutDesignFile(document);
+    await this.writeFile(fileId, document);
+    await this.recordFileEditForAutoVersion(fileId, document);
+    return node;
+  }
+
+  async setComponentVariants(
+    fileId: string,
+    componentId: string,
+    variants: Array<{ id: string; name: string; properties: Array<{ name: string; value: string }> }>
+  ): Promise<ComponentDefinition> {
+    const document = await this.readFile(fileId);
+    const component = (document.components ?? []).find((candidate) => candidate.id === componentId);
+    if (!component) {
+      throw new Error(`component not found: ${componentId}`);
+    }
+
+    const normalizedVariants = variants.map(normalizeComponentVariant);
+    if (normalizedVariants.length === 0) {
+      throw new Error("component variants must not be empty");
+    }
+
+    component.variants = normalizedVariants;
+    const validVariantIds = new Set(normalizedVariants.map((variant) => variant.id));
+    const fallbackVariantId = normalizedVariants[0]?.id ?? null;
+    forEachNode(document, (node) => {
+      if (node.component_instance?.definition_id !== componentId) {
+        return;
+      }
+      if (!node.component_instance.variant_id || !validVariantIds.has(node.component_instance.variant_id)) {
+        node.component_instance.variant_id = fallbackVariantId;
+      }
+    });
+    await this.writeFile(fileId, document);
+    await this.recordFileEditForAutoVersion(fileId, document);
+    return component;
+  }
+
+  async setComponentInstanceVariant(fileId: string, nodeId: string, variantId: string): Promise<DesignNode> {
+    const document = await this.readFile(fileId);
+    const node = findNodeById(document, nodeId);
+    if (!node) {
+      throw new Error(`node not found: ${nodeId}`);
+    }
+    if (!node.component_instance) {
+      throw new Error(`node is not component instance: ${nodeId}`);
+    }
+
+    const component = (document.components ?? []).find(
+      (candidate) => candidate.id === node.component_instance?.definition_id
+    );
+    if (!component) {
+      throw new Error(`component not found: ${node.component_instance.definition_id}`);
+    }
+    if (!component.variants.some((variant) => variant.id === variantId)) {
+      throw new Error(`component variant not found: ${variantId}`);
+    }
+
+    node.component_instance.variant_id = variantId;
     await this.writeFile(fileId, document);
     await this.recordFileEditForAutoVersion(fileId, document);
     return node;
@@ -3185,6 +3245,43 @@ function countDocumentNodes(document: DesignFile) {
 
 function countNodes(nodes: DesignNode[]): number {
   return nodes.reduce((total, node) => total + 1 + countNodes(node.children), 0);
+}
+
+function forEachNode(document: DesignFile, callback: (node: DesignNode) => void): void {
+  const visit = (node: DesignNode) => {
+    callback(node);
+    for (const child of node.children) {
+      visit(child);
+    }
+  };
+
+  for (const page of document.pages) {
+    for (const child of page.children) {
+      visit(child);
+    }
+  }
+}
+
+function normalizeComponentVariant(input: {
+  id: string;
+  name: string;
+  properties: Array<{ name: string; value: string }>;
+}): { id: string; name: string; properties: Array<{ name: string; value: string }> } {
+  const id = input.id.trim();
+  if (!id) {
+    throw new Error("component variant id is required");
+  }
+  const name = input.name.trim() || id;
+  return {
+    id,
+    name,
+    properties: Array.isArray(input.properties)
+      ? input.properties.map((property) => ({
+          name: property.name.trim(),
+          value: property.value.trim()
+        }))
+      : []
+  };
 }
 
 async function readProjectIfPresent(projectPath: string): Promise<ProjectManifest | null> {

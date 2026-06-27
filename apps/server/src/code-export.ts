@@ -58,6 +58,7 @@ export interface CodeStructureNode {
     | { type: "image"; assetId: string; fitMode: "fill" | "fit" };
   componentRef?: {
     definitionId: string;
+    variantId?: string;
     detached: boolean;
     overrides: Array<{ nodeId: string; field: string; value: string }>;
   };
@@ -164,18 +165,17 @@ export function exportDesignToCode(
   const tokenMap = new Map([...colorTokens, ...spacingTokens].map((token) => [token.id, token]));
   const componentById = new Map((document.components ?? []).map((component) => [component.id, component]));
   const mappingByComponentId = new Map(
-    (document.code_mappings ?? []).map((mapping) => [
-      mapping.component_id,
-      mappingArtifactFor(mapping, componentById.get(mapping.component_id))
-    ])
+    (document.code_mappings ?? []).map((mapping) => [mapping.component_id, mapping])
   );
   const componentIdBySourceNodeId = new Map(
     (document.components ?? []).map((component) => [component.source_node.id, component.id])
   );
-  const elements = roots.map((root) => exportElement(root, tokenMap, mappingByComponentId, componentIdBySourceNodeId));
+  const elements = roots.map((root) =>
+    exportElement(root, tokenMap, mappingByComponentId, componentById, componentIdBySourceNodeId)
+  );
   const moduleBasePath = options.moduleBasePath ?? ".";
   const components = (document.components ?? []).map((component) =>
-    exportComponent(component, tokenMap, mappingByComponentId, componentIdBySourceNodeId)
+    exportComponent(component, tokenMap, mappingByComponentId, componentById, componentIdBySourceNodeId)
   );
 
   return {
@@ -211,13 +211,14 @@ export function exportDesignToCode(
 function exportElement(
   root: DesignNode,
   tokenMap: Map<string, DesignToken>,
-  mappingByComponentId: Map<string, CodeComponentMappingArtifact>,
+  mappingByComponentId: Map<string, CodeComponentMapping>,
+  componentById: Map<string, ComponentDefinition>,
   componentIdBySourceNodeId: Map<string, string>
 ): ElementCodeArtifact {
   const className = classNameFor(root.id);
   const css = nodeCss(root, tokenMap).join("\n");
   const html = renderNode(root, 0);
-  const structure = structureFor(root, tokenMap, mappingByComponentId, componentIdBySourceNodeId);
+  const structure = structureFor(root, tokenMap, mappingByComponentId, componentById, componentIdBySourceNodeId);
   const implementation = implementationFor(root, undefined, structure.repoMapping);
 
   return {
@@ -250,15 +251,17 @@ function exportElement(
 function exportComponent(
   component: ComponentDefinition,
   tokenMap: Map<string, DesignToken>,
-  mappingByComponentId: Map<string, CodeComponentMappingArtifact>,
+  mappingByComponentId: Map<string, CodeComponentMapping>,
+  componentById: Map<string, ComponentDefinition>,
   componentIdBySourceNodeId: Map<string, string>
 ): ComponentImplementationArtifact {
-  const repoMapping = mappingByComponentId.get(component.id);
+  const mapping = mappingByComponentId.get(component.id);
+  const repoMapping = mapping ? mappingArtifactFor(mapping, component) : undefined;
   return {
     id: component.id,
     name: component.name,
     sourceNodeId: component.source_node.id,
-    structure: structureFor(component.source_node, tokenMap, mappingByComponentId, componentIdBySourceNodeId),
+    structure: structureFor(component.source_node, tokenMap, mappingByComponentId, componentById, componentIdBySourceNodeId),
     implementation: implementationFor(component.source_node, component.name, repoMapping),
     ...(repoMapping ? { repoMapping } : {}),
     variants: component.variants.map((variant) => ({
@@ -274,14 +277,23 @@ function exportComponent(
 
 function repoMappingForNode(
   node: DesignNode,
-  mappingByComponentId: Map<string, CodeComponentMappingArtifact>,
+  mappingByComponentId: Map<string, CodeComponentMapping>,
+  componentById: Map<string, ComponentDefinition>,
   componentIdBySourceNodeId: Map<string, string>
 ): CodeComponentMappingArtifact | undefined {
   const componentId = node.component_instance?.definition_id ?? componentIdBySourceNodeId.get(node.id);
-  return componentId ? mappingByComponentId.get(componentId) : undefined;
+  const mapping = componentId ? mappingByComponentId.get(componentId) : undefined;
+  if (!mapping || !componentId) {
+    return undefined;
+  }
+  return mappingArtifactFor(mapping, componentById.get(componentId), node.component_instance?.variant_id ?? undefined);
 }
 
-function mappingArtifactFor(mapping: CodeComponentMapping, component?: ComponentDefinition): CodeComponentMappingArtifact {
+function mappingArtifactFor(
+  mapping: CodeComponentMapping,
+  component?: ComponentDefinition,
+  variantId?: string | null
+): CodeComponentMappingArtifact {
   const props = mapping.props.map((prop) => ({
     name: prop.name,
     type: prop.type,
@@ -289,9 +301,9 @@ function mappingArtifactFor(mapping: CodeComponentMapping, component?: Component
     sourceField: prop.source_field,
     defaultValue: prop.default_value
   }));
-  const variantValueByProperty = new Map(
-    (component?.variants[0]?.properties ?? []).map((property) => [property.name, property.value])
-  );
+  const variant =
+    component?.variants.find((candidate) => candidate.id === variantId) ?? component?.variants[0] ?? null;
+  const variantValueByProperty = new Map((variant?.properties ?? []).map((property) => [property.name, property.value]));
   const variantProps = (mapping.variant_props ?? []).map((prop) => ({
     name: prop.name,
     type: prop.type,
@@ -339,10 +351,11 @@ function usageForMapping(
 function structureFor(
   node: DesignNode,
   tokenMap: Map<string, DesignToken>,
-  mappingByComponentId: Map<string, CodeComponentMappingArtifact>,
+  mappingByComponentId: Map<string, CodeComponentMapping>,
+  componentById: Map<string, ComponentDefinition>,
   componentIdBySourceNodeId: Map<string, string>
 ): CodeStructureNode {
-  const repoMapping = repoMappingForNode(node, mappingByComponentId, componentIdBySourceNodeId);
+  const repoMapping = repoMappingForNode(node, mappingByComponentId, componentById, componentIdBySourceNodeId);
   const base: CodeStructureNode = {
     id: node.id,
     name: node.name,
@@ -366,7 +379,7 @@ function structureFor(
     content: contentFor(node),
     children: node.children
       .filter(isNodeExportVisible)
-      .map((child) => structureFor(child, tokenMap, mappingByComponentId, componentIdBySourceNodeId))
+      .map((child) => structureFor(child, tokenMap, mappingByComponentId, componentById, componentIdBySourceNodeId))
   };
 
   if (repoMapping) {
@@ -376,6 +389,7 @@ function structureFor(
   if (node.component_instance) {
     base.componentRef = {
       definitionId: node.component_instance.definition_id,
+      ...(node.component_instance.variant_id ? { variantId: node.component_instance.variant_id } : {}),
       detached: node.component_instance.detached,
       overrides: node.component_instance.overrides.map((override) => ({
         nodeId: override.node_id,

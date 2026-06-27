@@ -43,6 +43,15 @@ fn component_document_round_trips_through_json() {
             .definition_id,
         "component-1"
     );
+    assert_eq!(
+        parsed.pages[0].children[1]
+            .component_instance
+            .as_ref()
+            .unwrap()
+            .variant_id
+            .as_deref(),
+        Some("default")
+    );
 }
 
 #[test]

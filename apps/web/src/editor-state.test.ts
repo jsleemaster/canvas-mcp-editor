@@ -2839,4 +2839,51 @@ describe("editor state commands", () => {
       component_instance: null
     });
   });
+
+  test("sets a component instance variant with undo and redo", () => {
+    const document = sampleDocument();
+    document.components = [
+      {
+        id: "component-1",
+        name: "Card",
+        source_node: structuredClone(document.pages[0].children[0]),
+        variants: [
+          { id: "variant-default", name: "Default", properties: [{ name: "surface", value: "flat" }] },
+          { id: "variant-elevated", name: "Elevated", properties: [{ name: "surface", value: "elevated" }] }
+        ]
+      }
+    ];
+    const instance = structuredClone(document.pages[0].children[0]);
+    instance.id = "instance-1";
+    instance.name = "Card 인스턴스";
+    instance.kind = "component_instance";
+    instance.component_instance = {
+      definition_id: "component-1",
+      variant_id: "variant-default",
+      detached: false,
+      overrides: []
+    } as any;
+    document.pages[0].children.push(instance);
+
+    const selected = setSelection(createEditorState(document), "instance-1");
+    const elevated = executeEditorCommand(selected, {
+      type: "set_component_instance_variant",
+      nodeId: "instance-1",
+      variantId: "variant-elevated"
+    } as any);
+
+    expect((findNodeById(elevated.document, "instance-1")?.component_instance as any)?.variant_id).toBe(
+      "variant-elevated"
+    );
+
+    const undone = undo(elevated);
+    expect((findNodeById(undone.document, "instance-1")?.component_instance as any)?.variant_id).toBe(
+      "variant-default"
+    );
+
+    const redone = redo(undone);
+    expect((findNodeById(redone.document, "instance-1")?.component_instance as any)?.variant_id).toBe(
+      "variant-elevated"
+    );
+  });
 });
