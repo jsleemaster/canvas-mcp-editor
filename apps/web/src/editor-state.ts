@@ -9,7 +9,8 @@ import type {
   NodeLayout,
   NodeLayoutItem,
   RendererDocument,
-  RendererNode
+  RendererNode,
+  TextWritingMode
 } from "@layo/renderer";
 
 export interface EditorSelection {
@@ -118,6 +119,11 @@ export type EditorCommand =
       type: "update_text";
       nodeId: string;
       value: string;
+    }
+  | {
+      type: "set_text_writing_mode";
+      nodeId: string;
+      writingMode: TextWritingMode;
     }
   | {
       type: "replace_image_asset";
@@ -289,6 +295,11 @@ const DEFAULT_SNAP_THRESHOLD = 6;
 const DEFAULT_CONSTRAINTS: NodeConstraints = { horizontal: "left", vertical: "top" };
 const DEFAULT_LAYOUT_ITEM: NodeLayoutItem = { position: "static", margin: { top: 0, right: 0, bottom: 0, left: 0 } };
 const PASTE_OFFSET = 24;
+const VERTICAL_TEXT_WRITING_MODES = new Set<TextWritingMode>(["vertical_rl", "vertical_lr"]);
+
+function isVerticalTextWritingMode(mode: TextWritingMode | undefined): boolean {
+  return mode ? VERTICAL_TEXT_WRITING_MODES.has(mode) : false;
+}
 
 export function createEditorState(document: RendererDocument): EditorState {
   return {
@@ -1050,7 +1061,8 @@ export function createTextNode(sequence: number): RendererNode {
       type: "text",
       value: "새 텍스트",
       font_size: 24,
-      font_family: "Inter"
+      font_family: "Inter",
+      writing_mode: "horizontal_tb"
     },
     children: []
   };
@@ -1328,6 +1340,30 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       relayoutDocument(next);
 
       return { document: next, inverse };
+    }
+    case "set_text_writing_mode": {
+      const node = findNodeById(next, command.nodeId);
+      if (!node || isNodeLocked(node) || node.content.type !== "text") {
+        return { document, inverse: null };
+      }
+
+      const previousWritingMode = node.content.writing_mode ?? "horizontal_tb";
+      if (previousWritingMode === command.writingMode) {
+        return { document, inverse: null };
+      }
+
+      node.content = { ...node.content, writing_mode: command.writingMode };
+      relayoutDocument(next);
+
+      return {
+        document: next,
+        inverse: {
+          type: "set_text_writing_mode",
+          nodeId: command.nodeId,
+          writingMode: previousWritingMode
+        },
+        selectedNodeId: command.nodeId
+      };
     }
     case "replace_image_asset": {
       const node = findNodeById(next, command.nodeId);
@@ -3712,6 +3748,9 @@ function crossAxisLineOffset(
 
 function nodeBaselineOffset(node: RendererNode): number {
   if (node.content.type === "text") {
+    if (isVerticalTextWritingMode(node.content.writing_mode)) {
+      return Math.max(0, Math.min(node.size.height, Math.round(node.size.width / 2)));
+    }
     return Math.max(0, Math.min(node.size.height, Math.round(node.content.font_size * 0.8)));
   }
   return node.size.height;

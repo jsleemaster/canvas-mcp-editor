@@ -379,6 +379,55 @@ fn export_preset_metadata_round_trips_through_json() {
 }
 
 #[test]
+fn text_writing_mode_round_trips_through_json() {
+    let raw = r##"
+    {
+      "id": "writing-mode-file",
+      "name": "Writing Mode File",
+      "version": 1,
+      "components": [],
+      "pages": [
+        {
+          "id": "page-1",
+          "name": "Page 1",
+          "children": [
+            {
+              "id": "vertical-text",
+              "kind": "text",
+              "name": "Vertical Text",
+              "transform": { "x": 0, "y": 0, "rotation": 0 },
+              "size": { "width": 48, "height": 120 },
+              "style": { "fill": "#111827", "stroke": null, "stroke_width": 0, "opacity": 1 },
+              "content": {
+                "type": "text",
+                "value": "縦書き",
+                "font_size": 28,
+                "font_family": "Inter",
+                "writing_mode": "vertical_rl"
+              },
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+    "##;
+
+    let parsed: DesignFile = serde_json::from_str(raw).unwrap();
+    let text = &parsed.pages[0].children[0];
+
+    match &text.content {
+        editor_core::NodeContent::Text { writing_mode, .. } => {
+            assert_eq!(writing_mode.as_deref(), Some("vertical_rl"));
+        }
+        _ => panic!("expected text content"),
+    }
+
+    let json = serde_json::to_string(&parsed).unwrap();
+    assert!(json.contains("\"writing_mode\":\"vertical_rl\""));
+}
+
+#[test]
 fn spacing_tokens_round_trip_through_json() {
     let raw = r##"
     {

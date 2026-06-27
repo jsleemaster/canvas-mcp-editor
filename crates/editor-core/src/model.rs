@@ -537,6 +537,8 @@ pub enum NodeContent {
         value: String,
         font_size: f64,
         font_family: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        writing_mode: Option<String>,
     },
     Image {
         asset_id: String,
@@ -604,6 +606,7 @@ impl DesignFile {
                             value: "Layo".to_string(),
                             font_size: 28.0,
                             font_family: "Inter".to_string(),
+                            writing_mode: None,
                         },
                     }],
                     transform: Transform {

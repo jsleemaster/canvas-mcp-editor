@@ -25,7 +25,8 @@ import {
   type NodeLayout,
   type NodeLayoutItem,
   type RendererDocument,
-  type RendererNode
+  type RendererNode,
+  type TextWritingMode
 } from "@layo/renderer";
 import {
   createSharedKeyEncryptionConfig,
@@ -1223,6 +1224,21 @@ async function persistTextChange(fileId: string, nodeId: string, value: string) 
 
   if (!response.ok) {
     throw new Error(`텍스트 저장 실패: ${response.status} ${response.statusText}`.trim());
+  }
+}
+
+async function persistTextWritingMode(fileId: string, nodeId: string, writingMode: TextWritingMode) {
+  const response = await fetch(apiUrl(`/files/${fileId}/agent/commands`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dryRun: false,
+      commands: [{ type: "set_text_writing_mode", nodeId, writingMode }]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`텍스트 쓰기 방향 저장 실패: ${response.status} ${response.statusText}`.trim());
   }
 }
 
@@ -4117,6 +4133,7 @@ function Inspector({
   onGeometryChange,
   onFillChange,
   onTextChange,
+  onTextWritingModeChange,
   onLayoutChange,
   onLayoutItemChange,
   onConstraintsChange,
@@ -4170,6 +4187,7 @@ function Inspector({
   onGeometryChange: (nodeId: string, patch: GeometryPatch) => void;
   onFillChange: (nodeId: string, fill: string) => void;
   onTextChange: (nodeId: string, value: string) => void;
+  onTextWritingModeChange: (nodeId: string, writingMode: TextWritingMode) => void;
   onLayoutChange: (nodeId: string, layout: NodeLayout) => void;
   onLayoutItemChange: (nodeId: string, layoutItem: NodeLayoutItem) => void;
   onConstraintsChange: (nodeId: string, constraints: NodeConstraints) => void;
@@ -4814,16 +4832,32 @@ function Inspector({
       ) : null}
       {tokenControls}
       {selectedNode.content.type === "text" ? (
-        <label className="stacked-field">
-          텍스트
-          <textarea
-            className="inspector-text-field"
-            data-testid="inspector-text"
-            placeholder="텍스트 입력"
-            value={selectedNode.content.value}
-            onChange={(event) => onTextChange(selectedNode.id, event.currentTarget.value)}
-          />
-        </label>
+        <>
+          <label className="stacked-field">
+            텍스트
+            <textarea
+              className="inspector-text-field"
+              data-testid="inspector-text"
+              placeholder="텍스트 입력"
+              value={selectedNode.content.value}
+              onChange={(event) => onTextChange(selectedNode.id, event.currentTarget.value)}
+            />
+          </label>
+          <label className="stacked-field">
+            쓰기 방향
+            <select
+              data-testid="inspector-text-writing-mode"
+              value={selectedNode.content.writing_mode ?? "horizontal_tb"}
+              onChange={(event) =>
+                onTextWritingModeChange(selectedNode.id, event.currentTarget.value as TextWritingMode)
+              }
+            >
+              <option value="horizontal_tb">가로</option>
+              <option value="vertical_rl">세로 오른쪽-왼쪽</option>
+              <option value="vertical_lr">세로 왼쪽-오른쪽</option>
+            </select>
+          </label>
+        </>
       ) : null}
       <section className="inspector-section comment-panel" data-testid="comment-panel" aria-label="코멘트">
         <h3>코멘트</h3>
@@ -7423,6 +7457,22 @@ export function App() {
       const message = error instanceof Error ? error.message : "텍스트를 저장하지 못했습니다";
       setProjectStatus(message);
     });
+  };
+
+  const updateTextWritingMode = (nodeId: string, writingMode: TextWritingMode) => {
+    dispatch({ type: "set_text_writing_mode", nodeId, writingMode });
+    if (!currentProject) {
+      return;
+    }
+
+    void persistTextWritingMode(currentProject.currentDocumentId, nodeId, writingMode)
+      .then(() => {
+        setCodeExportRevision((current) => current + 1);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "텍스트 쓰기 방향을 저장하지 못했습니다";
+        setProjectStatus(message);
+      });
   };
 
   const updateInlineText = (nodeId: string, value: string) => {
@@ -11288,6 +11338,7 @@ export function App() {
         onGeometryChange={updateGeometry}
         onFillChange={(nodeId, fill) => dispatch({ type: "set_fill", nodeId, fill })}
         onTextChange={updateTextNode}
+        onTextWritingModeChange={updateTextWritingMode}
         onLayoutChange={updateLayout}
         onLayoutItemChange={updateLayoutItem}
         onConstraintsChange={updateConstraints}

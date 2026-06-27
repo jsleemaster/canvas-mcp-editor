@@ -494,6 +494,28 @@ describe("code export", () => {
     });
   });
 
+  test("exports text writing mode for vertical text handoff", () => {
+    const fixture = tossFixture();
+    const text = fixture.pages[0].children[0].children[0];
+    if (text.content.type !== "text") {
+      throw new Error("Expected text fixture");
+    }
+    text.content = { ...text.content, writing_mode: "vertical_rl" } as any;
+
+    const result = exportDesignToCode(fixture);
+    const button = result.elements.find((element) => element.id === "tds-button-primary");
+    const label = button?.structure.children[0];
+
+    expect(label?.content).toEqual({
+      type: "text",
+      value: "송금하기",
+      fontSize: 18,
+      fontFamily: "Arial",
+      writingMode: "vertical_rl"
+    });
+    expect(result.css).toContain("writing-mode: vertical-rl;");
+  });
+
   test("exports separate element modules that can be imported directly", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "canvas-code-export-"));
     const result = exportDesignToCode(tossFixture(), { moduleBasePath: "./elements" });
