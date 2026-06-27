@@ -4049,6 +4049,65 @@ describe("editor state commands", () => {
       gap: 32,
       padding: { top: 0, right: 0, bottom: 0, left: 0 }
     });
+    expect((combined.document.components?.[0].variants[1] as any).source_node.transform).toMatchObject({
+      x: 120 + 420 + 32,
+      y: 80
+    });
+    expect(findNodeById(combined.document, "rectangle-1")?.transform).toMatchObject({ x: 572, y: 80 });
+
+    const undone = undo(combined);
+    expect(findNodeById(undone.document, "rectangle-1")?.transform).toMatchObject({ x: 180, y: 140 });
+  });
+
+  test("reflows variant source nodes and canvas nodes when variant area layout changes", () => {
+    const document = sampleDocumentWithTopLevelRectangle();
+    const frame = document.pages[0].children[0];
+    const rectangle = document.pages[0].children[1];
+    frame.kind = "component";
+    frame.name = "Button / Primary";
+    rectangle.kind = "component";
+    rectangle.name = "Button / Secondary";
+    rectangle.size = { width: 180, height: 64 };
+    document.components = [
+      {
+        id: "component-primary",
+        name: "Button / Primary",
+        source_node: structuredClone(frame),
+        variants: [{ id: "default", name: "Default", properties: [] }]
+      },
+      {
+        id: "component-secondary",
+        name: "Button / Secondary",
+        source_node: structuredClone(rectangle),
+        variants: [{ id: "default", name: "Default", properties: [] }]
+      }
+    ];
+
+    const combined = executeEditorCommand(
+      setMultiSelection(createEditorState(document), ["frame-1", "rectangle-1"], "frame-1"),
+      {
+        type: "combine_components_as_variants",
+        componentId: "component-primary",
+        nodeIds: ["frame-1", "rectangle-1"],
+        propertyName: "variant"
+      }
+    );
+    const reflowed = executeEditorCommand(combined, {
+      type: "set_component_variant_area",
+      componentId: "component-primary",
+      area: {
+        layout: "vertical",
+        gap: 48,
+        padding: { top: 12, right: 16, bottom: 12, left: 16 }
+      }
+    } as any);
+
+    const component = reflowed.document.components?.[0] as any;
+    expect(component.source_node.transform).toMatchObject({ x: 136, y: 92 });
+    expect(component.variants[0].source_node.transform).toMatchObject({ x: 136, y: 92 });
+    expect(component.variants[1].source_node.transform).toMatchObject({ x: 136, y: 92 + 280 + 48 });
+    expect(findNodeById(reflowed.document, "frame-1")?.transform).toMatchObject({ x: 136, y: 92 });
+    expect(findNodeById(reflowed.document, "rectangle-1")?.transform).toMatchObject({ x: 136, y: 420 });
   });
 
   test("sets component variant area layout with undo and redo", () => {

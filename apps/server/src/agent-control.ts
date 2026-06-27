@@ -1001,6 +1001,45 @@ function normalizeComponentVariantArea(area: ComponentVariantArea | null | undef
   };
 }
 
+function reflowComponentVariantArea(
+  document: DesignFile,
+  component: ComponentDefinition,
+  previousArea: ComponentVariantArea | null | undefined
+): void {
+  const area = component.variant_area;
+  if (!area) {
+    return;
+  }
+
+  const sources = component.variants
+    .map((variant, index) => variant.source_node ?? (index === 0 ? component.source_node : null))
+    .filter((source): source is DesignNode => Boolean(source));
+  if (!sources.length) {
+    return;
+  }
+
+  const originX = component.source_node.transform.x - (previousArea?.padding.left ?? 0);
+  const originY = component.source_node.transform.y - (previousArea?.padding.top ?? 0);
+  let cursorX = originX + area.padding.left;
+  let cursorY = originY + area.padding.top;
+
+  for (const source of sources) {
+    source.transform = { ...source.transform, x: cursorX, y: cursorY };
+    const canvasNode = findNodeById(document, source.id);
+    if (canvasNode) {
+      canvasNode.transform = { ...canvasNode.transform, x: cursorX, y: cursorY };
+    }
+
+    if (area.layout === "vertical") {
+      cursorY += source.size.height + area.gap;
+    } else {
+      cursorX += source.size.width + area.gap;
+    }
+  }
+
+  component.source_node = structuredClone(sources[0]);
+}
+
 function applyAgentCommand(document: DesignFile, command: AgentCommand): string {
   switch (command.type) {
     case "update_geometry": {
@@ -1334,6 +1373,7 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
           };
         })
       };
+      reflowComponentVariantArea(document, combinedComponent, null);
 
       document.components = components.map((component) =>
         component.id === command.componentId ? combinedComponent : component
@@ -1345,7 +1385,9 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
       if (!component) {
         throw new Error(`component not found: ${command.componentId}`);
       }
+      const previousArea = structuredClone(component.variant_area ?? null);
       component.variant_area = normalizeComponentVariantArea(command.area);
+      reflowComponentVariantArea(document, component, previousArea);
       return component.source_node.id;
     }
     case "set_export_presets": {

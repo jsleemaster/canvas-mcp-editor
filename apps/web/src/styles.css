@@ -772,6 +772,31 @@ button:disabled {
   transform: translate(0, -50%);
 }
 
+.component-variant-area-outline {
+  position: absolute;
+  z-index: 5;
+  box-sizing: border-box;
+  border: var(--editor-border-hairline) dashed var(--editor-color-selection);
+  background: color-mix(in srgb, var(--editor-color-selection) 6%, transparent);
+  pointer-events: none;
+}
+
+.component-variant-area-outline span {
+  position: absolute;
+  left: var(--editor-space-xs);
+  top: calc(-1 * (var(--editor-space-lg) + var(--editor-space-xxs)));
+  border: var(--editor-border-hairline) solid var(--editor-color-selection);
+  border-radius: var(--editor-radius-xs);
+  background: var(--editor-color-panel);
+  color: var(--editor-color-selection);
+  padding: var(--editor-space-xxs) var(--editor-space-xs);
+  font-size: var(--editor-text-small-size);
+  font-weight: var(--editor-text-control-weight);
+  line-height: var(--editor-text-small-line);
+  letter-spacing: var(--editor-letter-spacing);
+  white-space: nowrap;
+}
+
 .grid-viewport-overlay {
   position: absolute;
   inset: 0;

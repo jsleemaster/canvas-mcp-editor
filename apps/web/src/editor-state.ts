@@ -365,6 +365,7 @@ export type EditorCommand =
       components: ComponentDefinition[];
       nextCommand: EditorCommand;
       selectedNodeId: string | null;
+      nodeSnapshots?: RendererNode[];
     }
   | {
       type: "detach_instance";
@@ -493,6 +494,45 @@ function normalizeComponentVariantArea(area: ComponentVariantArea | null | undef
       left: Math.max(0, Number.isFinite(area.padding?.left) ? area.padding.left : 0)
     }
   };
+}
+
+function reflowComponentVariantArea(
+  document: RendererDocument,
+  component: ComponentDefinition,
+  previousArea: ComponentVariantArea | null | undefined
+): void {
+  const area = component.variant_area;
+  if (!area) {
+    return;
+  }
+
+  const sources = component.variants
+    .map((variant, index) => variant.source_node ?? (index === 0 ? component.source_node : null))
+    .filter((source): source is RendererNode => Boolean(source));
+  if (!sources.length) {
+    return;
+  }
+
+  const originX = component.source_node.transform.x - (previousArea?.padding.left ?? 0);
+  const originY = component.source_node.transform.y - (previousArea?.padding.top ?? 0);
+  let cursorX = originX + area.padding.left;
+  let cursorY = originY + area.padding.top;
+
+  for (const source of sources) {
+    source.transform = { ...source.transform, x: cursorX, y: cursorY };
+    const canvasNode = findNodeById(document, source.id);
+    if (canvasNode) {
+      canvasNode.transform = { ...canvasNode.transform, x: cursorX, y: cursorY };
+    }
+
+    if (area.layout === "vertical") {
+      cursorY += source.size.height + area.gap;
+    } else {
+      cursorX += source.size.width + area.gap;
+    }
+  }
+
+  component.source_node = structuredClone(sources[0]);
 }
 
 function isVerticalTextWritingMode(mode: TextWritingMode | undefined): boolean {
@@ -2974,6 +3014,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
 
       const previousArea = structuredClone(component.variant_area ?? null);
       component.variant_area = normalizeComponentVariantArea(command.area);
+      reflowComponentVariantArea(next, component, previousArea);
 
       return {
         document: next,
@@ -3009,6 +3050,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       }
 
       const previousComponents = structuredClone(components);
+      const previousNodeSnapshots = selectedComponents.map(({ node }) => structuredClone(node));
       const propertyName = normalizeVariantPropertyName(command.propertyName);
       const baseName = combinedComponentName(selectedComponents.map(({ node }) => node.name), baseComponent.name);
       const combinedVariants = selectedComponents.map(({ node }) => {
@@ -3021,15 +3063,18 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         };
       });
 
+      const combinedComponent = {
+        ...baseComponent,
+        name: baseName,
+        source_node: structuredClone(selectedComponents.find(({ component }) => component.id === command.componentId)?.node ?? baseComponent.source_node),
+        variant_area: defaultComponentVariantArea(),
+        variants: combinedVariants
+      };
+      reflowComponentVariantArea(next, combinedComponent, null);
+
       next.components = components
         .filter((component) => !selectedComponents.some((selected) => selected.component.id === component.id))
-        .concat({
-          ...baseComponent,
-          name: baseName,
-          source_node: structuredClone(selectedComponents.find(({ component }) => component.id === command.componentId)?.node ?? baseComponent.source_node),
-          variant_area: defaultComponentVariantArea(),
-          variants: combinedVariants
-        });
+        .concat(combinedComponent);
 
       return {
         document: next,
@@ -3037,13 +3082,17 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
           type: "restore_component_snapshot",
           components: previousComponents,
           nextCommand: command,
-          selectedNodeId: baseComponent.source_node.id
+          selectedNodeId: baseComponent.source_node.id,
+          nodeSnapshots: previousNodeSnapshots
         },
         selectedNodeId: baseComponent.source_node.id
       };
     }
     case "restore_component_snapshot": {
       next.components = structuredClone(command.components);
+      for (const node of command.nodeSnapshots ?? []) {
+        replaceNodeById(next, node.id, structuredClone(node));
+      }
       return {
         document: next,
         inverse: command.nextCommand,
