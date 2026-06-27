@@ -756,6 +756,14 @@ interface SelectionChromeOverlay {
   }>;
 }
 
+interface ComponentVariantAreaOverlay {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  label: string;
+}
+
 interface InlineTextEditorOverlay {
   nodeId: string;
   value: string;
@@ -1672,6 +1680,42 @@ function viewportBounds(bounds: SelectionBounds, viewport: EditorState["viewport
     top: Math.round(topLeft.y),
     width: Math.round(bounds.width * viewport.scale),
     height: Math.round(bounds.height * viewport.scale)
+  };
+}
+
+function createComponentVariantAreaOverlay(
+  component: ComponentDefinition,
+  viewport: EditorState["viewport"]
+): ComponentVariantAreaOverlay | null {
+  const area = component.variant_area;
+  if (!area || component.variants.length < 2) {
+    return null;
+  }
+
+  const sources = component.variants
+    .map((variant, index) => variant.source_node ?? (index === 0 ? component.source_node : null))
+    .filter((source): source is RendererNode => Boolean(source));
+  if (sources.length < 2) {
+    return null;
+  }
+
+  const left = component.source_node.transform.x - area.padding.left;
+  const top = component.source_node.transform.y - area.padding.top;
+  const right = Math.max(...sources.map((source) => source.transform.x + source.size.width)) + area.padding.right;
+  const bottom = Math.max(...sources.map((source) => source.transform.y + source.size.height)) + area.padding.bottom;
+  const bounds = viewportBounds(
+    {
+      x: left,
+      y: top,
+      width: Math.max(1, right - left),
+      height: Math.max(1, bottom - top)
+    },
+    viewport
+  );
+
+  return {
+    ...bounds,
+    label: `${sources.length} variants`
   };
 }
 
@@ -7589,6 +7633,13 @@ export function App() {
   const selectedComponent = selectedNode
     ? components.find((component) => component.source_node.id === selectedNode.id)
     : undefined;
+  const componentVariantAreaOverlay = useMemo(
+    () =>
+      editor && selectedComponent
+        ? createComponentVariantAreaOverlay(selectedComponent, editor.viewport)
+        : null,
+    [editor, selectedComponent]
+  );
   const selectedComponentInstanceDefinition = selectedNode?.component_instance
     ? components.find((component) => component.id === selectedNode.component_instance?.definition_id) ?? null
     : null;
@@ -12744,6 +12795,21 @@ export function App() {
                     </div>
                   </>
                 ) : null}
+              </div>
+            ) : null}
+            {componentVariantAreaOverlay ? (
+              <div
+                className="component-variant-area-outline"
+                data-testid="component-variant-area-outline"
+                aria-hidden="true"
+                style={{
+                  left: componentVariantAreaOverlay.left,
+                  top: componentVariantAreaOverlay.top,
+                  width: componentVariantAreaOverlay.width,
+                  height: componentVariantAreaOverlay.height
+                }}
+              >
+                <span>{componentVariantAreaOverlay.label}</span>
               </div>
             ) : null}
             {selectionChromeOverlay ? (

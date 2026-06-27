@@ -1801,6 +1801,164 @@ describe("FileStorage", () => {
     expect(findNode(persisted, "instance-1__badge-1")).toMatchObject({ kind: "rectangle", name: "배지" });
   });
 
+  test("component variant area reflows stored source nodes and canvas nodes", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+    await storage.applyAgentCommands("sample-file", {
+      dryRun: false,
+      commands: [
+        {
+          type: "create_rectangle",
+          parentId: "page-1",
+          id: "button-secondary",
+          name: "Button / Secondary",
+          x: 340,
+          y: 120,
+          width: 180,
+          height: 64,
+          fill: "#0f766e"
+        },
+        {
+          type: "create_component",
+          nodeId: "frame-1",
+          componentId: "component-primary",
+          name: "Button / Primary"
+        },
+        {
+          type: "create_component",
+          nodeId: "button-secondary",
+          componentId: "component-secondary",
+          name: "Button / Secondary"
+        },
+        {
+          type: "combine_components_as_variants",
+          componentId: "component-primary",
+          nodeIds: ["frame-1", "button-secondary"],
+          propertyName: "variant"
+        },
+        {
+          type: "set_component_variant_area",
+          componentId: "component-primary",
+          area: {
+            layout: "vertical",
+            gap: 48,
+            padding: { top: 12, right: 16, bottom: 12, left: 16 }
+          }
+        }
+      ]
+    });
+
+    const persisted = await storage.readFile("sample-file");
+    const component = persisted.components?.find((candidate) => candidate.id === "component-primary") as any;
+
+    expect(component.source_node.transform).toMatchObject({ x: 136, y: 92 });
+    expect(component.variants[0].source_node.transform).toMatchObject({ x: 136, y: 92 });
+    expect(component.variants[1].source_node.transform).toMatchObject({ x: 136, y: 420 });
+    expect(findNode(persisted, "frame-1")?.transform).toMatchObject({ x: 136, y: 92 });
+    expect(findNode(persisted, "button-secondary")?.transform).toMatchObject({ x: 136, y: 420 });
+  });
+
+  test("combine component variants reflows stored source nodes horizontally", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+    await storage.applyAgentCommands("sample-file", {
+      dryRun: false,
+      commands: [
+        {
+          type: "create_rectangle",
+          parentId: "page-1",
+          id: "button-secondary",
+          name: "Button / Secondary",
+          x: 340,
+          y: 120,
+          width: 180,
+          height: 64,
+          fill: "#0f766e"
+        },
+        {
+          type: "create_component",
+          nodeId: "frame-1",
+          componentId: "component-primary",
+          name: "Button / Primary"
+        },
+        {
+          type: "create_component",
+          nodeId: "button-secondary",
+          componentId: "component-secondary",
+          name: "Button / Secondary"
+        },
+        {
+          type: "combine_components_as_variants",
+          componentId: "component-primary",
+          nodeIds: ["frame-1", "button-secondary"],
+          propertyName: "variant"
+        }
+      ]
+    });
+
+    const persisted = await storage.readFile("sample-file");
+    const component = persisted.components?.find((candidate) => candidate.id === "component-primary") as any;
+    expect(component.variants[0].source_node.transform).toMatchObject({ x: 120, y: 80 });
+    expect(component.variants[1].source_node.transform).toMatchObject({ x: 572, y: 80 });
+    expect(findNode(persisted, "button-secondary")?.transform).toMatchObject({ x: 572, y: 80 });
+  });
+
+  test("setComponentVariantArea reflows persisted source nodes and canvas nodes", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+    await storage.applyAgentCommands("sample-file", {
+      dryRun: false,
+      commands: [
+        {
+          type: "create_rectangle",
+          parentId: "page-1",
+          id: "button-secondary",
+          name: "Button / Secondary",
+          x: 340,
+          y: 120,
+          width: 180,
+          height: 64,
+          fill: "#0f766e"
+        },
+        {
+          type: "create_component",
+          nodeId: "frame-1",
+          componentId: "component-primary",
+          name: "Button / Primary"
+        }
+      ]
+    });
+    const secondary = findNode(await storage.readFile("sample-file"), "button-secondary");
+    await storage.setComponentVariants("sample-file", "component-primary", [
+      {
+        id: "variant-primary",
+        name: "Primary",
+        properties: [{ name: "variant", value: "Primary" }],
+        source_node: structuredClone(findNode(await storage.readFile("sample-file"), "frame-1"))
+      },
+      {
+        id: "variant-secondary",
+        name: "Secondary",
+        properties: [{ name: "variant", value: "Secondary" }],
+        source_node: structuredClone(secondary)
+      }
+    ] as any);
+
+    await storage.setComponentVariantArea("sample-file", "component-primary", {
+      layout: "vertical",
+      gap: 48,
+      padding: { top: 12, right: 16, bottom: 12, left: 16 }
+    });
+
+    const persisted = await storage.readFile("sample-file");
+    const component = persisted.components?.find((candidate) => candidate.id === "component-primary") as any;
+    expect(component.source_node.transform).toMatchObject({ x: 136, y: 92 });
+    expect(component.variants[0].source_node.transform).toMatchObject({ x: 136, y: 92 });
+    expect(component.variants[1].source_node.transform).toMatchObject({ x: 136, y: 420 });
+    expect(findNode(persisted, "frame-1")?.transform).toMatchObject({ x: 136, y: 92 });
+    expect(findNode(persisted, "button-secondary")?.transform).toMatchObject({ x: 136, y: 420 });
+  });
+
   test("component instance fill overrides persist after switching variants", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
     const storage = await storageWithDocument(tempRoot);

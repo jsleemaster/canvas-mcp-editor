@@ -822,8 +822,27 @@ test("combines selected components as variants from the context menu", async ({ 
   await expect(
     page.getByTestId("inspector-component-variant-matrix-cell-variant-button-secondary-variant")
   ).toHaveValue("Secondary");
+  await expect(page.getByTestId("component-variant-area-outline")).toBeVisible();
 
-  await page.mouse.click(stageBox.x + 172, stageBox.y + 132, { button: "right" });
+  await page.getByTestId("inspector-component-variant-area-layout").selectOption("vertical");
+  await page.getByTestId("inspector-component-variant-area-gap").fill("48");
+  await page.getByTestId("inspector-component-variant-area-padding-top").fill("12");
+  await page.getByTestId("inspector-component-variant-area-padding-right").fill("16");
+  await page.getByTestId("inspector-component-variant-area-padding-bottom").fill("12");
+  await page.getByTestId("inspector-component-variant-area-padding-left").fill("16");
+  await expect(page.getByTestId("project-status")).toContainText("컴포넌트 변형 영역 저장됨");
+
+  const areaOutlineBox = await page.getByTestId("component-variant-area-outline").boundingBox();
+  expect(areaOutlineBox).not.toBeNull();
+  expect(areaOutlineBox!.height).toBeGreaterThan(190);
+  expect(areaOutlineBox!.width).toBeLessThan(240);
+
+  await page.getByRole("button", { name: "Button / Secondary" }).click();
+  await expect(page.getByTestId("inspector-x")).toHaveValue("176");
+  await expect(page.getByTestId("inspector-y")).toHaveValue("244");
+  await page.getByRole("button", { name: "Button / Primary" }).click();
+
+  await page.mouse.click(stageBox.x + 190, stageBox.y + 148, { button: "right" });
   await expect(menu).toBeVisible();
   await menu.getByRole("menuitem", { name: "인스턴스 만들기" }).click();
   await expect(page.getByRole("button", { name: "Button 인스턴스" })).toBeVisible();
