@@ -520,6 +520,45 @@ test("inspector dev panel downloads the selected layer as pdf", async ({ page })
   await expect(page.getByTestId("dev-panel-asset-status")).toContainText("헤드라인 PDF 다운로드됨");
 });
 
+test("inspector dev panel downloads selected frame artifacts with nested child layers", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+  await page.getByTestId("inspector-tab-dev").click();
+
+  const svgDownloadPromise = page.waitForEvent("download");
+  await page.getByTestId("dev-panel-download-svg").click();
+  const svgDownload = await svgDownloadPromise;
+  expect(svgDownload.suggestedFilename()).toBe("frame-1.svg");
+  const svgPath = await svgDownload.path();
+  if (!svgPath) {
+    throw new Error("nested svg download path missing");
+  }
+  const svg = await readFile(svgPath, "utf8");
+  expect(svg).toContain('data-node-id="frame-1"');
+  expect(svg).toContain('data-node-id="text-1"');
+  expect(svg).toContain('data-node-name="헤드라인"');
+  expect(svg).toContain('transform="translate(32 40)"');
+  expect(svg).toContain(">Layo</text>");
+
+  const pdfDownloadPromise = page.waitForEvent("download");
+  await page.getByTestId("dev-panel-download-pdf").click();
+  const pdfDownload = await pdfDownloadPromise;
+  expect(pdfDownload.suggestedFilename()).toBe("frame-1.pdf");
+  const pdfPath = await pdfDownload.path();
+  if (!pdfPath) {
+    throw new Error("nested pdf download path missing");
+  }
+  const pdf = await readFile(pdfPath);
+  const pdfText = pdf.toString("utf8");
+  expect(pdf.subarray(0, 5).toString("ascii")).toBe("%PDF-");
+  expect(pdfText).toContain("/Title (랜딩 프레임)");
+  expect(pdfText).toContain("/Subject (frame-1)");
+  expect(pdfText).toContain("(Layo) Tj");
+  expect(pdfText).toContain("32 212 Td");
+  expect(pdfText.trimEnd().endsWith("%%EOF")).toBe(true);
+});
+
 test("inspector dev panel saves and batch-downloads selected layer export presets", async ({ page }) => {
   const { documentId } = await createProjectFromEmptyState(page);
 
