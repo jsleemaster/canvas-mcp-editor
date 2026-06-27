@@ -441,6 +441,104 @@ describe("MCP AI editing workflow", () => {
     });
   });
 
+  test("lets an MCP client apply file version retention", async () => {
+    const client = await connectMcpClient();
+
+    await client.callTool({
+      name: "create_project",
+      arguments: {
+        projectId: "retention-history-project",
+        name: "정리 히스토리 프로젝트",
+        documentId: "retention-history-file",
+        documentName: "정리 히스토리 문서"
+      }
+    });
+
+    const deletedCandidate = parseToolJson(
+      await client.callTool({
+        name: "save_file_version",
+        arguments: { fileId: "retention-history-file", message: "삭제할 고정 버전" }
+      })
+    );
+    await client.callTool({
+      name: "pin_file_version",
+      arguments: {
+        fileId: "retention-history-file",
+        versionId: deletedCandidate.version.versionId,
+        pinned: true
+      }
+    });
+
+    const deleted = parseToolJson(
+      await client.callTool({
+        name: "delete_file_version",
+        arguments: {
+          fileId: "retention-history-file",
+          versionId: deletedCandidate.version.versionId
+        }
+      })
+    );
+    expect(deleted.version).toMatchObject({
+      versionId: deletedCandidate.version.versionId,
+      pinned: true,
+      deleted: true
+    });
+
+    const protectedVersion = parseToolJson(
+      await client.callTool({
+        name: "save_file_version",
+        arguments: { fileId: "retention-history-file", message: "릴리즈 기준" }
+      })
+    );
+    await client.callTool({
+      name: "pin_file_version",
+      arguments: {
+        fileId: "retention-history-file",
+        versionId: protectedVersion.version.versionId,
+        pinned: true
+      }
+    });
+    const oldVersion = parseToolJson(
+      await client.callTool({
+        name: "save_file_version",
+        arguments: { fileId: "retention-history-file", message: "오래된 작업" }
+      })
+    );
+    await client.callTool({
+      name: "update_text",
+      arguments: { fileId: "retention-history-file", nodeId: "text-1", value: "최신 작업" }
+    });
+    const newestVersion = parseToolJson(
+      await client.callTool({
+        name: "save_file_version",
+        arguments: { fileId: "retention-history-file", message: "최신 작업" }
+      })
+    );
+
+    const pruned = parseToolJson(
+      await client.callTool({
+        name: "prune_file_versions",
+        arguments: { fileId: "retention-history-file", keepUnpinned: 1 }
+      })
+    );
+    expect(pruned.result.deletedVersions).toEqual([
+      expect.objectContaining({ versionId: oldVersion.version.versionId, pinned: false })
+    ]);
+
+    const listed = parseToolJson(
+      await client.callTool({
+        name: "list_file_versions",
+        arguments: { fileId: "retention-history-file" }
+      })
+    );
+    expect(listed.versions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ versionId: protectedVersion.version.versionId, pinned: true }),
+        expect.objectContaining({ versionId: newestVersion.version.versionId, pinned: false })
+      ])
+    );
+  });
+
   test("lets an MCP client create, list, and resolve selected-node comments", async () => {
     const client = await connectMcpClient();
     const target = { userId: "사용자", displayName: "민지", role: "editor" } as const;

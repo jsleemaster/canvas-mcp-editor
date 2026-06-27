@@ -23,6 +23,17 @@ export interface RestoreFileVersionResult {
   recoveryVersion: FileVersionSummary;
 }
 
+export interface DeleteFileVersionResult extends FileVersionSummary {
+  deleted: true;
+}
+
+export interface PruneFileVersionsResult {
+  fileId: string;
+  keepUnpinned: number;
+  deletedVersions: DeleteFileVersionResult[];
+  keptVersions: FileVersionSummary[];
+}
+
 export type CommentMentionTargetRole = "owner" | "editor" | "viewer";
 
 export interface CommentMentionTarget {
@@ -229,6 +240,32 @@ export async function setFileVersionPinned(
   });
   const payload = await readDocumentJson(response);
   return (payload as { version: FileVersionSummary }).version;
+}
+
+export async function deleteFileVersion(
+  fileId: string,
+  versionId: string,
+  fetcher: typeof fetch = fetch
+): Promise<DeleteFileVersionResult> {
+  const response = await fetcher(apiUrl(`/files/${fileId}/versions/${versionId}`), {
+    method: "DELETE"
+  });
+  const payload = await readDocumentJson(response);
+  return (payload as { version: DeleteFileVersionResult }).version;
+}
+
+export async function pruneFileVersions(
+  fileId: string,
+  keepUnpinned: number,
+  fetcher: typeof fetch = fetch
+): Promise<PruneFileVersionsResult> {
+  const response = await fetcher(apiUrl(`/files/${fileId}/versions/prune`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ keepUnpinned })
+  });
+  const payload = await readDocumentJson(response);
+  return (payload as { result: PruneFileVersionsResult }).result;
 }
 
 export async function listCommentThreads(

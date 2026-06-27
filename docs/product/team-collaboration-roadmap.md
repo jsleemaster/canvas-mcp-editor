@@ -57,8 +57,9 @@ deployment details in `docs/deployment/collaboration.md`.
   events in comment sidecars and exposes recent project/file activity through
   storage, HTTP, MCP, web API helpers, and the file panel.
 - File history supports manual and automatic saved versions, restore recovery
-  snapshots, current-file diff preview, and pinned recovery checkpoints through
-  storage, HTTP, MCP, web API helpers, and the file panel.
+  snapshots, current-file diff preview, pinned recovery checkpoints, manual
+  saved-version delete, and explicit unpinned retention cleanup through storage,
+  HTTP, MCP, web API helpers, and the file panel.
 
 ## Phase 1: Local Team Creation
 
@@ -154,7 +155,6 @@ Exit criteria:
   state, local project/file unread summary, local viewer-targeted mention
   notification counts, browser polling fallback, process-local SSE event
   delivery, and retained local activity feed foundation.
-- Retention/delete policy for saved file versions and recovery checkpoints.
 - Branch, review, and merge flows for design changes.
 - Document-level permission policies beyond relay connection roles.
 - Shared team libraries for components, variables, assets, and code-export

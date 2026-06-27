@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   addCommentReply,
   createCommentThread,
+  deleteFileVersion,
   listCommentActivity,
   listCommentNotifications,
   listCommentThreads,
@@ -12,6 +13,7 @@ import {
   readFileVersion,
   resolveCommentThread,
   restoreFileVersion,
+  pruneFileVersions,
   saveFileVersion,
   setFileVersionPinned,
   subscribeToCommentEvents,
@@ -270,6 +272,54 @@ describe("parseDocumentPayload", () => {
 });
 
 describe("file version API helpers", () => {
+  test("file version retention deletes and prunes versions", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetcher = async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), init });
+      const pathname = new URL(String(url), "http://127.0.0.1:4317").pathname;
+
+      if (pathname === "/files/sample-file/versions/version-1" && init?.method === "DELETE") {
+        return jsonResponse({
+          version: {
+            versionId: "version-1",
+            fileId: "sample-file",
+            message: "릴리즈 기준",
+            pinned: true,
+            deleted: true
+          }
+        });
+      }
+      if (pathname === "/files/sample-file/versions/prune" && init?.method === "POST") {
+        expect(init.headers).toEqual({ "Content-Type": "application/json" });
+        expect(JSON.parse(String(init.body))).toEqual({ keepUnpinned: 1 });
+        return jsonResponse({
+          result: {
+            fileId: "sample-file",
+            keepUnpinned: 1,
+            deletedVersions: [{ versionId: "version-2", message: "오래된 작업", pinned: false, deleted: true }],
+            keptVersions: [{ versionId: "version-1", message: "릴리즈 기준", pinned: true }]
+          }
+        });
+      }
+      return new Response("not found", { status: 404 });
+    };
+
+    await expect(deleteFileVersion("sample-file", "version-1", fetcher as typeof fetch)).resolves.toMatchObject({
+      versionId: "version-1",
+      pinned: true,
+      deleted: true
+    });
+    await expect(pruneFileVersions("sample-file", 1, fetcher as typeof fetch)).resolves.toMatchObject({
+      fileId: "sample-file",
+      keepUnpinned: 1,
+      deletedVersions: [expect.objectContaining({ versionId: "version-2", deleted: true })]
+    });
+    expect(calls.map((call) => [call.url, call.init?.method ?? "GET"])).toEqual([
+      [expect.stringContaining("/files/sample-file/versions/version-1"), "DELETE"],
+      [expect.stringContaining("/files/sample-file/versions/prune"), "POST"]
+    ]);
+  });
+
   test("lists, saves, reads, and restores file versions", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const fetcher = async (url: string | URL | Request, init?: RequestInit) => {

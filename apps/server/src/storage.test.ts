@@ -165,6 +165,43 @@ describe("FileStorage", () => {
     });
   });
 
+  test("file version retention deletes pinned versions manually and prunes only old unpinned versions", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+
+    const manuallyDeleted = await storage.saveFileVersion("sample-file", { message: "삭제할 고정 버전" });
+    await storage.setFileVersionPinned("sample-file", manuallyDeleted.versionId, true);
+    await expect(storage.deleteFileVersion("sample-file", manuallyDeleted.versionId)).resolves.toMatchObject({
+      versionId: manuallyDeleted.versionId,
+      pinned: true,
+      deleted: true
+    });
+    expect((await storage.listFileVersions("sample-file")).map((version) => version.versionId)).not.toContain(
+      manuallyDeleted.versionId
+    );
+
+    const protectedVersion = await storage.saveFileVersion("sample-file", { message: "릴리즈 기준" });
+    await storage.setFileVersionPinned("sample-file", protectedVersion.versionId, true);
+    const oldVersion = await storage.saveFileVersion("sample-file", { message: "오래된 작업" });
+    await storage.updateText("sample-file", "text-1", "최신 작업");
+    const newestVersion = await storage.saveFileVersion("sample-file", { message: "최신 작업" });
+
+    const pruned = await storage.pruneFileVersions("sample-file", { keepUnpinned: 1 });
+    expect(pruned).toMatchObject({ fileId: "sample-file", keepUnpinned: 1 });
+    expect(pruned.deletedVersions).toEqual([
+      expect.objectContaining({ versionId: oldVersion.versionId, pinned: false })
+    ]);
+
+    const versions = await storage.listFileVersions("sample-file");
+    expect(versions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ versionId: protectedVersion.versionId, pinned: true }),
+        expect.objectContaining({ versionId: newestVersion.versionId, pinned: false })
+      ])
+    );
+    expect(versions.map((version) => version.versionId)).not.toContain(oldVersion.versionId);
+  });
+
   test("creates an automatic file version after the third persisted edit", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
     const storage = await storageWithDocument(tempRoot);

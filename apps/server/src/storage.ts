@@ -224,6 +224,17 @@ export interface RestoreFileVersionResult {
   recoveryVersion: StoredFileVersionSummary;
 }
 
+export interface DeleteFileVersionResult extends StoredFileVersionSummary {
+  deleted: true;
+}
+
+export interface PruneFileVersionsResult {
+  fileId: string;
+  keepUnpinned: number;
+  deletedVersions: DeleteFileVersionResult[];
+  keptVersions: StoredFileVersionSummary[];
+}
+
 export interface StoredCommentThread {
   schemaVersion: 1;
   threadId: string;
@@ -910,6 +921,33 @@ export class FileStorage {
     const updated: StoredFileVersion = { ...version, pinned };
     await writeFile(this.fileVersionPathFor(fileId, versionId), `${JSON.stringify(updated, null, 2)}\n`, "utf8");
     return summarizeStoredFileVersion(updated);
+  }
+
+  async deleteFileVersion(fileId: string, versionId: string): Promise<DeleteFileVersionResult> {
+    await this.adoptPriorDefaultStoreIfNeeded();
+    const version = await this.readFileVersion(fileId, versionId);
+    await unlink(this.fileVersionPathFor(fileId, versionId));
+    return { ...summarizeStoredFileVersion(version), deleted: true };
+  }
+
+  async pruneFileVersions(
+    fileId: string,
+    options: { keepUnpinned: number }
+  ): Promise<PruneFileVersionsResult> {
+    await this.adoptPriorDefaultStoreIfNeeded();
+    const keepUnpinned = Math.max(0, Math.floor(Number(options.keepUnpinned) || 0));
+    const versions = await this.listFileVersions(fileId);
+    const unpinnedVersions = versions.filter((version) => !version.pinned);
+    const deletedVersions = await Promise.all(
+      unpinnedVersions.slice(keepUnpinned).map((version) => this.deleteFileVersion(fileId, version.versionId))
+    );
+    const deletedIds = new Set(deletedVersions.map((version) => version.versionId));
+    return {
+      fileId,
+      keepUnpinned,
+      deletedVersions,
+      keptVersions: versions.filter((version) => !deletedIds.has(version.versionId))
+    };
   }
 
   async restoreFileVersion(fileId: string, versionId: string): Promise<RestoreFileVersionResult> {
