@@ -2886,4 +2886,65 @@ describe("editor state commands", () => {
       "variant-elevated"
     );
   });
+
+  test("sets component definition variants and resets invalid instance selections with undo and redo", () => {
+    const document = sampleDocument();
+    document.components = [
+      {
+        id: "component-1",
+        name: "Card",
+        source_node: structuredClone(document.pages[0].children[0]),
+        variants: [
+          { id: "variant-flat", name: "Flat", properties: [{ name: "surface", value: "flat" }] },
+          { id: "variant-elevated", name: "Elevated", properties: [{ name: "surface", value: "elevated" }] }
+        ]
+      }
+    ];
+    document.pages[0].children[0].kind = "component";
+    const instance = structuredClone(document.pages[0].children[0]);
+    instance.id = "instance-1";
+    instance.name = "Card 인스턴스";
+    instance.kind = "component_instance";
+    instance.component_instance = {
+      definition_id: "component-1",
+      variant_id: "variant-elevated",
+      detached: false,
+      overrides: []
+    } as any;
+    document.pages[0].children.push(instance);
+
+    const selected = setSelection(createEditorState(document), "frame-1");
+    const updated = executeEditorCommand(selected, {
+      type: "set_component_variants",
+      componentId: "component-1",
+      variants: [
+        { id: "variant-flat", name: "Flat", properties: [{ name: "surface", value: "flat" }] },
+        { id: "variant-outline", name: "Outline", properties: [{ name: "surface", value: "outline" }] }
+      ]
+    } as any);
+
+    expect(updated.document.components?.[0].variants).toEqual([
+      { id: "variant-flat", name: "Flat", properties: [{ name: "surface", value: "flat" }] },
+      { id: "variant-outline", name: "Outline", properties: [{ name: "surface", value: "outline" }] }
+    ]);
+    expect((findNodeById(updated.document, "instance-1")?.component_instance as any)?.variant_id).toBe(
+      "variant-flat"
+    );
+    expect(updated.selection.nodeId).toBe("frame-1");
+
+    const undone = undo(updated);
+    expect(undone.document.components?.[0].variants).toEqual(document.components[0].variants);
+    expect((findNodeById(undone.document, "instance-1")?.component_instance as any)?.variant_id).toBe(
+      "variant-elevated"
+    );
+
+    const redone = redo(undone);
+    expect(redone.document.components?.[0].variants[1]).toMatchObject({
+      id: "variant-outline",
+      properties: [{ name: "surface", value: "outline" }]
+    });
+    expect((findNodeById(redone.document, "instance-1")?.component_instance as any)?.variant_id).toBe(
+      "variant-flat"
+    );
+  });
 });

@@ -499,6 +499,50 @@ test("inspector dev panel shows repo code mappings for selected component instan
   expect(clipboard).toContain('<Card title={title} surface="elevated" />');
 });
 
+test("right inspector authors component variants on selected main components", async ({ page }) => {
+  const { documentId } = await createProjectFromEmptyState(page);
+
+  const component = await page.request.post(`http://127.0.0.1:4317/files/${documentId}/components`, {
+    data: { nodeId: "frame-1", componentId: "component-card", name: "Card" }
+  });
+  expect(component.ok()).toBeTruthy();
+
+  await page.reload();
+  await openFilePanel(page);
+  await page.getByRole("button", { name: "랜딩 프레임" }).click();
+
+  await expect(page.getByTestId("inspector-component-definition-variants")).toBeVisible();
+  await page.getByTestId("inspector-component-definition-variant-property-name-default").fill("surface");
+  await page.getByTestId("inspector-component-definition-variant-property-value-default").fill("flat");
+  await page.getByTestId("inspector-component-variant-add").click();
+  await page.getByTestId("inspector-component-definition-variant-name-variant-2").fill("Elevated");
+  await page.getByTestId("inspector-component-definition-variant-property-name-variant-2").fill("surface");
+  await page.getByTestId("inspector-component-definition-variant-property-value-variant-2").fill("elevated");
+  await expect(page.getByTestId("project-status")).toContainText("컴포넌트 변형 저장됨");
+
+  const instance = await page.request.post(`http://127.0.0.1:4317/files/${documentId}/component-instances`, {
+    data: {
+      parentId: "page-1",
+      definitionId: "component-card",
+      instanceId: "instance-card",
+      x: 520,
+      y: 140
+    }
+  });
+  expect(instance.ok()).toBeTruthy();
+
+  await page.reload();
+  await openFilePanel(page);
+  await page.getByRole("button", { name: "Card 인스턴스" }).click();
+  await expect(page.getByTestId("inspector-component-variant-surface")).toBeVisible();
+  await expect(page.getByTestId("inspector-component-variant-surface").locator("option")).toHaveText([
+    "flat",
+    "elevated"
+  ]);
+  await page.getByTestId("inspector-component-variant-surface").selectOption("elevated");
+  await expect(page.getByTestId("inspector-component-variant-surface")).toHaveValue("elevated");
+});
+
 test("inspector dev panel copies generated handoff snippets to the clipboard", async ({ page }) => {
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], {
     origin: "http://127.0.0.1:5173"
