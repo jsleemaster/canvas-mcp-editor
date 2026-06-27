@@ -135,6 +135,7 @@ export interface ComponentVariant {
 
 export interface ComponentInstance {
   definition_id: string;
+  variant_id?: string | null;
   overrides: Array<{ node_id: string; field: string; value: string }>;
   detached: boolean;
 }

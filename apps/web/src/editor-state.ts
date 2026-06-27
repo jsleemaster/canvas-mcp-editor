@@ -223,6 +223,11 @@ export type EditorCommand =
       y: number;
     }
   | {
+      type: "set_component_instance_variant";
+      nodeId: string;
+      variantId: string | null;
+    }
+  | {
       type: "detach_instance";
       nodeId: string;
       previousNode?: RendererNode;
@@ -1869,6 +1874,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       node.transform = { ...node.transform, x: command.x, y: command.y };
       node.component_instance = {
         definition_id: command.definitionId,
+        variant_id: definition.variants[0]?.id ?? null,
         overrides: [],
         detached: false
       };
@@ -1879,6 +1885,42 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         document: next,
         inverse: { type: "delete_node", parentId: command.parentId, node },
         selectedNodeId: node.id
+      };
+    }
+    case "set_component_instance_variant": {
+      const node = findNodeById(next, command.nodeId);
+      if (!node || isNodeLocked(node) || !node.component_instance) {
+        return { document, inverse: null };
+      }
+
+      const definition = (next.components ?? []).find(
+        (component) => component.id === node.component_instance?.definition_id
+      );
+      if (!definition) {
+        return { document, inverse: null };
+      }
+      if (command.variantId !== null && !definition.variants.some((variant) => variant.id === command.variantId)) {
+        return { document, inverse: null };
+      }
+
+      const previousVariantId = node.component_instance.variant_id ?? null;
+      if (previousVariantId === command.variantId) {
+        return { document, inverse: null };
+      }
+
+      node.component_instance = {
+        ...node.component_instance,
+        variant_id: command.variantId
+      };
+
+      return {
+        document: next,
+        inverse: {
+          type: "set_component_instance_variant",
+          nodeId: command.nodeId,
+          variantId: previousVariantId
+        },
+        selectedNodeId: command.nodeId
       };
     }
     case "detach_instance": {

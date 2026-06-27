@@ -650,12 +650,38 @@ export function createHttpServer(storage = new FileStorage(), options: HttpServe
     };
   });
 
+  server.put<{
+    Params: { fileId: string; componentId: string };
+    Body: { variants: Array<{ id: string; name: string; properties: Array<{ name: string; value: string }> }> };
+  }>("/files/:fileId/components/:componentId/variants", async (request) => {
+    return {
+      component: await storage.setComponentVariants(
+        request.params.fileId,
+        request.params.componentId,
+        Array.isArray(request.body.variants) ? request.body.variants : []
+      )
+    };
+  });
+
   server.post<{
     Params: { fileId: string };
     Body: { parentId: string; definitionId: string; instanceId: string; x: number; y: number };
   }>("/files/:fileId/component-instances", async (request) => {
     return {
       node: await storage.createComponentInstance(request.params.fileId, request.body)
+    };
+  });
+
+  server.patch<{
+    Params: { fileId: string; nodeId: string };
+    Body: { variantId: string };
+  }>("/files/:fileId/nodes/:nodeId/component-variant", async (request) => {
+    return {
+      node: await storage.setComponentInstanceVariant(
+        request.params.fileId,
+        request.params.nodeId,
+        request.body.variantId
+      )
     };
   });
 

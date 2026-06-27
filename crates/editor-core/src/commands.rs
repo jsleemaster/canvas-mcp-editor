@@ -201,6 +201,7 @@ impl DesignFile {
                 };
                 instance.component_instance = Some(ComponentInstance {
                     definition_id,
+                    variant_id: definition.variants.first().map(|variant| variant.id.clone()),
                     overrides: vec![],
                     detached: false,
                 });

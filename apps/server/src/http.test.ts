@@ -978,6 +978,54 @@ describe("HTTP server", () => {
     expect(detached.json().node.kind).toBe("frame");
   });
 
+  test("serves component variant definitions and selected instance variant updates", async () => {
+    const server = await createServerWithDocument();
+
+    const component = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/components",
+      payload: { nodeId: "frame-1", componentId: "component-card", name: "Card" }
+    });
+    expect(component.statusCode).toBe(200);
+
+    const variants = await server.inject({
+      method: "PUT",
+      url: "/files/sample-file/components/component-card/variants",
+      payload: {
+        variants: [
+          { id: "card-flat", name: "Flat", properties: [{ name: "surface", value: "flat" }] },
+          { id: "card-elevated", name: "Elevated", properties: [{ name: "surface", value: "elevated" }] }
+        ]
+      }
+    });
+    expect(variants.statusCode).toBe(200);
+
+    const instance = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/component-instances",
+      payload: {
+        parentId: "page-1",
+        definitionId: "component-card",
+        instanceId: "instance-card",
+        x: 520,
+        y: 140
+      }
+    });
+    expect(instance.statusCode).toBe(200);
+    expect(instance.json().node.component_instance.variant_id).toBe("card-flat");
+
+    const selected = await server.inject({
+      method: "PATCH",
+      url: "/files/sample-file/nodes/instance-card/component-variant",
+      payload: { variantId: "card-elevated" }
+    });
+    expect(selected.statusCode).toBe(200);
+    expect(selected.json().node.component_instance.variant_id).toBe("card-elevated");
+
+    const listed = await server.inject({ method: "GET", url: "/files/sample-file/components" });
+    expect(listed.json().components[0].variants).toHaveLength(2);
+  });
+
   test("serves repo component mappings and includes them in code export", async () => {
     const server = await createServerWithDocument();
 

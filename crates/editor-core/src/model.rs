@@ -122,6 +122,8 @@ pub struct ComponentProperty {
 #[ts(export)]
 pub struct ComponentInstance {
     pub definition_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant_id: Option<String>,
     pub overrides: Vec<ComponentOverride>,
     pub detached: bool,
 }

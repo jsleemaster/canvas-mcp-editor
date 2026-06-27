@@ -192,6 +192,7 @@ describe("code export", () => {
     });
     expect(result.implementationSpec.elements[0].structure.componentRef).toEqual({
       definitionId: "component-button",
+      variantId: "component-button-primary",
       detached: false,
       overrides: [{ nodeId: "component-button-label", field: "value", value: "보내기" }]
     });
@@ -269,6 +270,45 @@ describe("code export", () => {
     expect(component.repoMapping.usage).toBe('<TossButton label={label} tone="primary" />');
     expect(instance.structure.repoMapping.variantProps).toEqual(component.repoMapping.variantProps);
     expect(instance.structure.repoMapping.usage).toBe('<TossButton label={label} tone="primary" />');
+  });
+
+  test("exports selected component instance variant mapping props", () => {
+    const fixture = componentFixture() as any;
+    fixture.components[0].variants.push({
+      id: "component-button-secondary",
+      name: "Secondary",
+      properties: [{ name: "tone", value: "secondary" }]
+    });
+    fixture.pages[0].children[0].component_instance.variant_id = "component-button-secondary";
+    fixture.code_mappings = [
+      {
+        ...repoComponentMappingFixture(),
+        variant_props: [
+          {
+            name: "tone",
+            type: "string",
+            variant_property: "tone",
+            default_value: "fallback"
+          }
+        ]
+      }
+    ];
+
+    const result = exportDesignToCode(fixture);
+    const component = result.implementationSpec.components[0] as any;
+    const instance = result.elements[0] as any;
+
+    expect(component.repoMapping.usage).toBe('<TossButton label={label} tone="primary" />');
+    expect(instance.structure.componentRef.variantId).toBe("component-button-secondary");
+    expect(instance.structure.repoMapping.variantProps).toEqual([
+      {
+        name: "tone",
+        type: "string",
+        variantProperty: "tone",
+        defaultValue: "secondary"
+      }
+    ]);
+    expect(instance.structure.repoMapping.usage).toBe('<TossButton label={label} tone="secondary" />');
   });
 
   test("exports layout and constraints metadata for agents", () => {
@@ -598,6 +638,7 @@ function componentFixture(): DesignFile {
   instance.transform = { x: 40, y: 48, rotation: 0 };
   instance.component_instance = {
     definition_id: "component-button",
+    variant_id: "component-button-primary",
     detached: false,
     overrides: [{ node_id: "component-button-label", field: "value", value: "보내기" }]
   };

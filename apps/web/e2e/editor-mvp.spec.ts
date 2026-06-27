@@ -417,6 +417,19 @@ test("inspector dev panel shows repo code mappings for selected component instan
   });
   expect(component.ok()).toBeTruthy();
 
+  const variants = await page.request.put(
+    `http://127.0.0.1:4317/files/${documentId}/components/component-card/variants`,
+    {
+      data: {
+        variants: [
+          { id: "card-flat", name: "Flat", properties: [{ name: "surface", value: "flat" }] },
+          { id: "card-elevated", name: "Elevated", properties: [{ name: "surface", value: "elevated" }] }
+        ]
+      }
+    }
+  );
+  expect(variants.ok()).toBeTruthy();
+
   const instance = await page.request.post(`http://127.0.0.1:4317/files/${documentId}/component-instances`, {
     data: {
       parentId: "page-1",
@@ -465,6 +478,10 @@ test("inspector dev panel shows repo code mappings for selected component instan
   await page.reload();
   await openFilePanel(page);
   await page.getByRole("button", { name: "Card 인스턴스" }).click();
+  await expect(page.getByTestId("inspector-component-variant-surface")).toHaveValue("flat");
+  await page.getByTestId("inspector-component-variant-surface").selectOption("elevated");
+  await expect(page.getByTestId("inspector-component-variant-surface")).toHaveValue("elevated");
+
   await page.getByTestId("inspector-tab-dev").click();
 
   const panel = page.getByTestId("dev-panel-code-mapping");
