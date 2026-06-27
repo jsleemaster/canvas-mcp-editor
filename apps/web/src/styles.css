@@ -465,6 +465,7 @@ button:disabled {
 .toolbar button:focus-visible,
 .inspector-action-grid button:focus-visible,
 .inspector-tabs button:focus-visible,
+.dev-panel-copy-button:focus-visible,
 .object-context-menu button:focus-visible,
 .inspector-action-strip button:focus-visible,
 .inspector-preset-row:focus-visible,
@@ -1269,6 +1270,7 @@ button:disabled {
 
 .dev-panel-status,
 .dev-panel-copy-status,
+.dev-panel-asset-status,
 .dev-panel-selected-node span,
 .dev-panel-specs span {
   color: var(--editor-color-muted);
@@ -1292,6 +1294,16 @@ button:disabled {
 
 .dev-panel-specs {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: var(--editor-space-sm);
+  border: var(--editor-border-hairline) solid var(--editor-color-border-soft);
+  border-radius: var(--editor-radius-sm);
+  background: var(--editor-color-control);
+}
+
+.dev-panel-asset-card {
+  display: grid;
+  gap: var(--editor-space-xxs);
+  min-width: 0;
   padding: var(--editor-space-sm);
   border: var(--editor-border-hairline) solid var(--editor-color-border-soft);
   border-radius: var(--editor-radius-sm);

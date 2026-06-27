@@ -404,6 +404,47 @@ function downloadBlob(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
 }
 
+function escapeSvgText(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function svgOpacityAttribute(opacity: number) {
+  return opacity < 1 ? ` opacity="${Math.max(0, Math.min(1, opacity)).toFixed(2)}"` : "";
+}
+
+function svgForNode(node: RendererNode) {
+  const width = Math.max(1, Math.round(node.size.width));
+  const height = Math.max(1, Math.round(node.size.height));
+  const fill = escapeSvgText(node.style.fill);
+  const opacity = svgOpacityAttribute(node.style.opacity);
+  const nodeId = escapeSvgText(node.id);
+  const nodeName = escapeSvgText(node.name);
+  const title = `<title>${nodeName}</title>`;
+  const body =
+    node.content.type === "text"
+      ? `<text x="0" y="${Math.max(1, Math.round(node.content.font_size))}" fill="${fill}" font-family="${escapeSvgText(
+          node.content.font_family
+        )}" font-size="${Math.max(1, Math.round(node.content.font_size))}"${opacity}>${escapeSvgText(
+          node.content.value
+        )}</text>`
+      : `<rect x="0" y="0" width="${width}" height="${height}" rx="0" fill="${fill}" stroke="${
+          node.style.stroke ? escapeSvgText(node.style.stroke) : "none"
+        }" stroke-width="${Math.max(0, Math.round(node.style.stroke_width))}"${opacity} />`;
+
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-node-id="${nodeId}" data-node-name="${nodeName}" role="img" aria-label="${nodeName}">`,
+    `  ${title}`,
+    `  ${body}`,
+    "</svg>",
+    ""
+  ].join("\n");
+}
+
 function readFileAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -3076,6 +3117,7 @@ function DevPanel({
   codeExportStatus: string;
 }) {
   const [copyStatus, setCopyStatus] = useState("복사 대기 중");
+  const [assetStatus, setAssetStatus] = useState("에셋 다운로드 대기 중");
   const codeStructure = selectedNode ? findCodeStructureForNode(codeExport, selectedNode.id) : null;
   const cssSnippet = codeExport && codeStructure ? cssSnippetForCodeNode(codeExport.css, codeStructure.className) : "";
   const htmlSnippet = codeExport && selectedNode ? htmlSnippetForCodeNode(codeExport.html, selectedNode.id) : "";
@@ -3083,6 +3125,7 @@ function DevPanel({
 
   useEffect(() => {
     setCopyStatus(selectedNode ? "복사 대기 중" : "레이어 선택 대기 중");
+    setAssetStatus(selectedNode ? "에셋 다운로드 대기 중" : "레이어 선택 대기 중");
   }, [selectedNode?.id]);
 
   const copySnippet = async (label: string, value: string) => {
@@ -3098,6 +3141,18 @@ function DevPanel({
       setCopyStatus(`${label} 복사됨`);
     } catch {
       setCopyStatus(`${label} 복사 실패`);
+    }
+  };
+
+  const downloadSelectedSvg = () => {
+    if (!selectedNode) {
+      return;
+    }
+    try {
+      downloadBlob(new Blob([svgForNode(selectedNode)], { type: "image/svg+xml" }), `${selectedNode.id}.svg`);
+      setAssetStatus(`${selectedNode.name} SVG 다운로드됨`);
+    } catch {
+      setAssetStatus("SVG 다운로드 실패");
     }
   };
 
@@ -3126,6 +3181,22 @@ function DevPanel({
           </div>
           <div className="dev-panel-copy-status" data-testid="dev-panel-copy-status" aria-live="polite">
             {copyStatus}
+          </div>
+          <div className="dev-panel-asset-card" data-testid="dev-panel-assets">
+            <div className="dev-panel-code-header">
+              <span>에셋</span>
+              <button
+                type="button"
+                className="dev-panel-copy-button"
+                data-testid="dev-panel-download-svg"
+                onClick={downloadSelectedSvg}
+              >
+                SVG 다운로드
+              </button>
+            </div>
+            <div className="dev-panel-asset-status" data-testid="dev-panel-asset-status" aria-live="polite">
+              {assetStatus}
+            </div>
           </div>
           <div className="stacked-field dev-panel-code-block">
             <div className="dev-panel-code-header">

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { Buffer } from "node:buffer";
-import { rm } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 
 test.beforeEach(async () => {
   await rm(".layo", { recursive: true, force: true });
@@ -413,6 +413,30 @@ test("inspector dev panel copies generated handoff snippets to the clipboard", a
   await expect(page.getByTestId("dev-panel-copy-status")).toContainText("구조 복사됨");
   const structureClipboard = await page.evaluate(() => navigator.clipboard.readText());
   expect(structureClipboard).toContain('"id": "text-1"');
+});
+
+test("inspector dev panel downloads the selected layer as svg", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await page.getByTestId("inspector-tab-dev").click();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByTestId("dev-panel-download-svg").click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("text-1.svg");
+  const downloadPath = await download.path();
+  if (!downloadPath) {
+    throw new Error("svg download path missing");
+  }
+  const svg = await readFile(downloadPath, "utf8");
+
+  expect(svg).toContain("<svg");
+  expect(svg).toContain('data-node-id="text-1"');
+  expect(svg).toContain('aria-label="헤드라인"');
+  expect(svg).toContain("Layo");
+  expect(svg).toContain("#111827");
+  await expect(page.getByTestId("dev-panel-asset-status")).toContainText("헤드라인 SVG 다운로드됨");
 });
 
 test("file panel exports a project archive and reviews every document before import", async ({ page }) => {
