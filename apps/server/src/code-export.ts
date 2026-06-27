@@ -3,12 +3,14 @@ import type {
   ComponentDefinition,
   DesignFile,
   DesignToken,
+  DesignTokenSet,
   DesignNode,
   NodeConstraints,
   NodeLayout,
   NodeLayoutItem,
   TextWritingMode
 } from "./storage";
+import { createActiveDesignTokenReferenceMap, resolveActiveDesignTokens } from "./design-token-io.js";
 
 export interface CodeExportOptions {
   moduleBasePath?: string;
@@ -152,6 +154,7 @@ export interface TokenCandidateSummary {
 }
 
 export interface TokenExportSummary {
+  tokenSets?: DesignTokenSet[];
   colors: DesignToken[];
   spacing: DesignToken[];
   typography: DesignToken[];
@@ -169,10 +172,11 @@ export function exportDesignToCode(
   options: CodeExportOptions = {}
 ): CodeExportResult {
   const roots = document.pages.flatMap((page) => page.children).filter(isNodeExportVisible);
-  const colorTokens = documentColorTokens(document);
-  const spacingTokens = documentSpacingTokens(document);
-  const typographyTokens = documentTypographyTokens(document);
-  const tokenMap = new Map([...colorTokens, ...spacingTokens, ...typographyTokens].map((token) => [token.id, token]));
+  const activeTokens = resolveActiveDesignTokens(document.tokens ?? [], document.token_sets ?? []);
+  const colorTokens = documentColorTokens(activeTokens);
+  const spacingTokens = documentSpacingTokens(activeTokens);
+  const typographyTokens = documentTypographyTokens(activeTokens);
+  const tokenMap = createActiveDesignTokenReferenceMap(document.tokens ?? [], document.token_sets ?? []);
   const componentById = new Map((document.components ?? []).map((component) => [component.id, component]));
   const mappingByComponentId = new Map(
     (document.code_mappings ?? []).map((mapping) => [mapping.component_id, mapping])
@@ -207,6 +211,7 @@ export function exportDesignToCode(
       elements,
       components,
       tokens: {
+        ...(document.token_sets?.length ? { tokenSets: document.token_sets } : {}),
         colors: colorTokens,
         spacing: spacingTokens,
         typography: typographyTokens
@@ -799,16 +804,16 @@ function nodeCss(node: DesignNode, tokenMap: Map<string, DesignToken>): string[]
   return [...lines, ...node.children.filter(isNodeExportVisible).flatMap((child) => nodeCss(child, tokenMap))];
 }
 
-function documentColorTokens(document: DesignFile): DesignToken[] {
-  return (document.tokens ?? []).filter((token) => token.type === "color");
+function documentColorTokens(tokens: DesignToken[]): DesignToken[] {
+  return tokens.filter((token) => token.type === "color");
 }
 
-function documentSpacingTokens(document: DesignFile): DesignToken[] {
-  return (document.tokens ?? []).filter((token) => token.type === "spacing");
+function documentSpacingTokens(tokens: DesignToken[]): DesignToken[] {
+  return tokens.filter((token) => token.type === "spacing");
 }
 
-function documentTypographyTokens(document: DesignFile): DesignToken[] {
-  return (document.tokens ?? []).filter((token) => token.type === "typography");
+function documentTypographyTokens(tokens: DesignToken[]): DesignToken[] {
+  return tokens.filter((token) => token.type === "typography");
 }
 
 function resolvedFill(node: DesignNode, tokenMap: Map<string, DesignToken>): string {

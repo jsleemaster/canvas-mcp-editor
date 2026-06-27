@@ -1108,7 +1108,8 @@ export function createMcpServer(storage = new FileStorage()) {
               {
                 fileId,
                 file: result.file,
-                tokens: result.tokens
+                tokens: result.tokens,
+                tokenSets: result.tokenSets
               },
               null,
               2

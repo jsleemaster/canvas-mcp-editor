@@ -2,6 +2,7 @@
 import type { CodeComponentMapping } from "./CodeComponentMapping";
 import type { ComponentDefinition } from "./ComponentDefinition";
 import type { DesignToken } from "./DesignToken";
+import type { DesignTokenSet } from "./DesignTokenSet";
 import type { Page } from "./Page";
 
-export type DesignFile = { id: string, name: string, version: number, tokens: Array<DesignToken>, components: Array<ComponentDefinition>, code_mappings?: Array<CodeComponentMapping>, pages: Array<Page>, };
+export type DesignFile = { id: string, name: string, version: number, token_sets?: Array<DesignTokenSet>, tokens: Array<DesignToken>, components: Array<ComponentDefinition>, code_mappings?: Array<CodeComponentMapping>, pages: Array<Page>, };

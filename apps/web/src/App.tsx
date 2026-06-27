@@ -15,6 +15,7 @@ import { Group, Image as KonvaImage, Layer, Rect, Stage, Text } from "react-konv
 import {
   flattenRendererNodes,
   type DesignToken,
+  type DesignTokenSet,
   type GridArea,
   type GridTrack,
   type ImageFitMode,
@@ -145,6 +146,7 @@ import {
   renameSelectedNode,
   reorderSelectedNode,
   resizeSelectedImageToNaturalSize,
+  resolveActiveDesignTokens,
   selectAllPageNodes,
   selectNodesInBounds,
   selectNodesWithSameKind,
@@ -1254,6 +1256,21 @@ async function persistTextTypographyToken(fileId: string, nodeId: string, tokenI
 
   if (!response.ok) {
     throw new Error(`텍스트 타이포그래피 토큰 저장 실패: ${response.status} ${response.statusText}`.trim());
+  }
+}
+
+async function persistTokenSetEnabled(fileId: string, tokenSetId: string, enabled: boolean) {
+  const response = await fetch(apiUrl(`/files/${fileId}/agent/commands`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dryRun: false,
+      commands: [{ type: "set_token_set_enabled", tokenSetId, enabled }]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`토큰 세트 저장 실패: ${response.status} ${response.statusText}`.trim());
   }
 }
 
@@ -3224,17 +3241,21 @@ function InspectorEmptySections() {
 function InspectorTokenControls({
   draft,
   status,
+  tokenSets,
   canEdit,
   onDraftChange,
   onExport,
-  onImport
+  onImport,
+  onTokenSetEnabledChange
 }: {
   draft: string;
   status: string;
+  tokenSets: DesignTokenSet[];
   canEdit: boolean;
   onDraftChange: (value: string) => void;
   onExport: () => void;
   onImport: () => void;
+  onTokenSetEnabledChange: (tokenSetId: string, enabled: boolean) => void;
 }) {
   return (
     <section className="inspector-section" data-testid="inspector-section-tokens" aria-label="토큰">
@@ -3247,6 +3268,26 @@ function InspectorTokenControls({
           토큰 가져오기
         </button>
       </div>
+      {tokenSets.length ? (
+        <div className="token-set-list" data-testid="token-set-list">
+          {tokenSets.map((tokenSet) => (
+            <label
+              key={tokenSet.id}
+              className="token-set-row"
+              data-testid={`token-set-row-${tokenSet.id}`}
+            >
+              <input
+                data-testid={`token-set-enabled-${tokenSet.id}`}
+                type="checkbox"
+                checked={tokenSet.enabled}
+                disabled={!canEdit}
+                onChange={(event) => onTokenSetEnabledChange(tokenSet.id, event.currentTarget.checked)}
+              />
+              <span>{tokenSet.name}</span>
+            </label>
+          ))}
+        </div>
+      ) : null}
       <label className="stacked-field">
         DTCG JSON
         <textarea
@@ -4143,6 +4184,7 @@ function Inspector({
   codeExport,
   codeExportStatus,
   documentTokens,
+  documentTokenSets,
   canAlign,
   canDistribute,
   onGeometryChange,
@@ -4171,6 +4213,7 @@ function Inspector({
   onTokenDtcgDraftChange,
   onExportTokensDtcg,
   onImportTokensDtcg,
+  onTokenSetEnabledChange,
   onCommentBodyChange,
   onCommentReplyBodyChange,
   onCreateComment,
@@ -4198,6 +4241,7 @@ function Inspector({
   codeExport: CodeExportPayload | null;
   codeExportStatus: string;
   documentTokens: DesignToken[];
+  documentTokenSets: DesignTokenSet[];
   canAlign: boolean;
   canDistribute: boolean;
   onGeometryChange: (nodeId: string, patch: GeometryPatch) => void;
@@ -4226,6 +4270,7 @@ function Inspector({
   onTokenDtcgDraftChange: (value: string) => void;
   onExportTokensDtcg: () => void;
   onImportTokensDtcg: () => void;
+  onTokenSetEnabledChange: (tokenSetId: string, enabled: boolean) => void;
   onCommentBodyChange: (value: string) => void;
   onCommentReplyBodyChange: (threadId: string, value: string) => void;
   onCreateComment: (nodeId: string) => void;
@@ -4254,10 +4299,12 @@ function Inspector({
     <InspectorTokenControls
       draft={tokenDtcgDraft}
       status={tokenDtcgStatus}
+      tokenSets={documentTokenSets}
       canEdit={canEditTokens}
       onDraftChange={onTokenDtcgDraftChange}
       onExport={onExportTokensDtcg}
       onImport={onImportTokensDtcg}
+      onTokenSetEnabledChange={onTokenSetEnabledChange}
     />
   );
 
@@ -4375,11 +4422,14 @@ function Inspector({
     : DEFAULT_NODE_LAYOUT_ITEM;
   const selectedParentUsesGrid = selectedParentNode?.layout?.mode === "grid";
   const constraints = selectedNode.constraints ?? DEFAULT_NODE_CONSTRAINTS;
+  const activeDocumentTokens = resolveActiveDesignTokens(documentTokens, documentTokenSets);
   const fillToken = selectedNode.style.fill_token
-    ? documentTokens.find((token) => token.id === selectedNode.style.fill_token && token.type === "color") ?? null
+    ? activeDocumentTokens.find((token) => token.id === selectedNode.style.fill_token && token.type === "color") ??
+      documentTokens.find((token) => token.id === selectedNode.style.fill_token && token.type === "color") ??
+      null
     : null;
-  const spacingTokens = documentTokens.filter((token) => token.type === "spacing");
-  const typographyTokens = documentTokens.filter((token) => token.type === "typography");
+  const spacingTokens = activeDocumentTokens.filter((token) => token.type === "spacing");
+  const typographyTokens = activeDocumentTokens.filter((token) => token.type === "typography");
   const variantControls =
     selectedNode.component_instance && componentDefinition
       ? componentVariantControls(componentDefinition, selectedNode.component_instance.variant_id ?? null)
@@ -9299,6 +9349,24 @@ export function App() {
     }
   };
 
+  const updateTokenSetEnabled = (tokenSetId: string, enabled: boolean) => {
+    dispatch({ type: "set_token_set_enabled", tokenSetId, enabled });
+    if (!currentProject) {
+      return;
+    }
+
+    void persistTokenSetEnabled(currentProject.currentDocumentId, tokenSetId, enabled)
+      .then(() => {
+        setTokenDtcgStatus(enabled ? "토큰 세트 활성화됨" : "토큰 세트 비활성화됨");
+        setProjectStatus("토큰 세트 저장됨");
+        setCodeExportRevision((current) => current + 1);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "토큰 세트를 저장하지 못했습니다";
+        setTokenDtcgStatus(message);
+      });
+  };
+
   const createNode = (kind: "rectangle" | "text") => {
     if (!editor) {
       return;
@@ -11359,6 +11427,7 @@ export function App() {
         codeExport={codeExportPayload}
         codeExportStatus={codeExportStatus}
         documentTokens={editor?.document.tokens ?? []}
+        documentTokenSets={editor?.document.token_sets ?? []}
         canAlign={canAlignInspectorSelection}
         canDistribute={canDistributeSelection}
         zoomLabel={`${Math.round((editor?.viewport.scale ?? 1) * 100)}%`}
@@ -11375,6 +11444,7 @@ export function App() {
         onTokenDtcgDraftChange={setTokenDtcgDraft}
         onExportTokensDtcg={() => void exportCurrentDocumentTokensDtcg()}
         onImportTokensDtcg={() => void importCurrentDocumentTokensDtcg()}
+        onTokenSetEnabledChange={updateTokenSetEnabled}
         onCommentBodyChange={setCommentBody}
         onCommentReplyBodyChange={(threadId, value) =>
           setCommentReplyBodies((current) => ({ ...current, [threadId]: value }))

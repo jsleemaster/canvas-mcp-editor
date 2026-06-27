@@ -319,6 +319,59 @@ describe("editor state commands", () => {
     });
   });
 
+  test("toggles token sets with undo and rematerializes active fill bindings", () => {
+    const document = sampleDocument() as any;
+    document.token_sets = [
+      { id: "base", name: "base", enabled: true },
+      { id: "dark", name: "dark", enabled: true }
+    ];
+    document.tokens = [
+      {
+        id: "color-base-brand-primary",
+        name: "Brand / Primary",
+        type: "color",
+        value: "#2563eb",
+        set_id: "base"
+      },
+      {
+        id: "color-dark-brand-primary",
+        name: "Brand / Primary",
+        type: "color",
+        value: "#93c5fd",
+        set_id: "dark"
+      }
+    ];
+    const bound = executeEditorCommand(createEditorState(document), {
+      type: "set_fill_token",
+      nodeId: "text-1",
+      tokenId: "color-base-brand-primary"
+    } as any);
+
+    expect(findNodeById(bound.document, "text-1")?.style).toMatchObject({
+      fill: "#93c5fd",
+      fill_token: "color-base-brand-primary"
+    });
+
+    const disabled = executeEditorCommand(bound, {
+      type: "set_token_set_enabled",
+      tokenSetId: "dark",
+      enabled: false
+    } as any);
+
+    expect(disabled.document.token_sets).toEqual([
+      { id: "base", name: "base", enabled: true },
+      { id: "dark", name: "dark", enabled: false }
+    ]);
+    expect(findNodeById(disabled.document, "text-1")?.style).toMatchObject({
+      fill: "#2563eb",
+      fill_token: "color-base-brand-primary"
+    });
+    expect(findNodeById(undo(disabled).document, "text-1")?.style).toMatchObject({
+      fill: "#93c5fd",
+      fill_token: "color-base-brand-primary"
+    });
+  });
+
   test("preserves layout spacing token bindings and clears them on manual override", () => {
     const document = sampleDocument() as any;
     document.tokens = [

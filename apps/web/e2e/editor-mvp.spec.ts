@@ -2859,6 +2859,55 @@ test("right inspector imports and exports DTCG token JSON", async ({ page }) => 
   await expect(page.getByTestId("dtcg-token-json")).toHaveValue(/#f97316/);
 });
 
+test("right inspector manages imported DTCG token sets", async ({ page }) => {
+  const { documentId } = await createProjectFromEmptyState(page);
+  const importedTokenJson = JSON.stringify(
+    {
+      $metadata: {
+        tokenSetOrder: ["base", "dark"],
+        activeTokenSets: ["base", "dark"]
+      },
+      base: {
+        Brand: {
+          Primary: {
+            $type: "color",
+            $value: "#2563eb"
+          }
+        }
+      },
+      dark: {
+        Brand: {
+          Primary: {
+            $type: "color",
+            $value: "#93c5fd"
+          }
+        }
+      }
+    },
+    null,
+    2
+  );
+
+  await page.getByTestId("dtcg-token-json").fill(importedTokenJson);
+  await page.getByRole("button", { name: "토큰 가져오기" }).click();
+  await expect(page.getByTestId("dtcg-token-status")).toContainText("2개 토큰 가져옴");
+  await expect(page.getByTestId("token-set-row-base")).toContainText("base");
+  await expect(page.getByTestId("token-set-row-dark")).toContainText("dark");
+
+  await page.getByTestId("token-set-enabled-dark").uncheck();
+  await expect(page.getByTestId("token-set-enabled-dark")).not.toBeChecked();
+
+  const fileResponse = await page.request.get(`http://127.0.0.1:4317/files/${documentId}`);
+  expect(fileResponse.ok()).toBeTruthy();
+  expect((await fileResponse.json()).file.token_sets).toEqual([
+    { id: "base", name: "base", enabled: true },
+    { id: "dark", name: "dark", enabled: false }
+  ]);
+
+  await page.getByRole("button", { name: "토큰 내보내기" }).click();
+  await expect(page.getByTestId("dtcg-token-json")).toHaveValue(/"activeTokenSets": \[\s+"base"\s+\]/);
+});
+
 test("right inspector binds imported spacing tokens to layout gap and padding", async ({ page }) => {
   const { documentId } = await createProjectFromEmptyState(page);
   const importedTokenJson = JSON.stringify(

@@ -5,10 +5,12 @@ import {
   normalizeNodeLayoutItem,
   relayoutDesignFile
 } from "./layout.js";
+import { createActiveDesignTokenReferenceMap } from "./design-token-io.js";
 import type {
   ComponentDefinition,
   DesignFile,
   DesignToken,
+  DesignTokenSet,
   DesignNode,
   NodeConstraints,
   NodeExportPreset,
@@ -58,6 +60,7 @@ export interface CanvasInspection {
   nodeCount: number;
   componentCount: number;
   tokens: DesignToken[];
+  tokenSets: DesignTokenSet[];
   components: Array<{ id: string; name: string; variantCount: number }>;
   nodes: AgentNodeSummary[];
   validation: DocumentValidation;
@@ -82,6 +85,7 @@ export type AgentCommand =
     }
   | { type: "set_fill"; nodeId: string; fill: string }
   | { type: "create_token"; token: DesignToken }
+  | { type: "set_token_set_enabled"; tokenSetId: string; enabled: boolean }
   | { type: "set_fill_token"; nodeId: string; tokenId: string }
   | { type: "set_text_typography_token"; nodeId: string; tokenId: string }
   | {
@@ -192,6 +196,7 @@ export function inspectCanvas(document: DesignFile): CanvasInspection {
     nodeCount: nodes.length,
     componentCount: components.length,
     tokens: document.tokens ?? [],
+    tokenSets: document.token_sets ?? [],
     components: components.map((component) => ({
       id: component.id,
       name: component.name,
@@ -236,6 +241,17 @@ export function validateDocument(document: DesignFile): DocumentValidation {
   const ids = new Map<string, string[][]>();
   const componentIds = new Set<string>();
   const tokenTypes = new Map<string, DesignToken["type"]>();
+  const tokenSetIds = new Set<string>();
+
+  for (const tokenSet of document.token_sets ?? []) {
+    if (tokenSetIds.has(tokenSet.id)) {
+      issues.push({
+        code: "duplicate_token_set_id",
+        message: `duplicate token set id: ${tokenSet.id}`
+      });
+    }
+    tokenSetIds.add(tokenSet.id);
+  }
 
   for (const token of document.tokens ?? []) {
     if (tokenTypes.has(token.id)) {
@@ -265,6 +281,12 @@ export function validateDocument(document: DesignFile): DocumentValidation {
       issues.push({
         code: "invalid_token_value",
         message: `token must have a non-empty value: ${token.id}`
+      });
+    }
+    if (token.set_id && document.token_sets?.length && !tokenSetIds.has(token.set_id)) {
+      issues.push({
+        code: "missing_token_set",
+        message: `token references missing token set: ${token.id} -> ${token.set_id}`
       });
     }
   }
@@ -704,7 +726,8 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
         id: command.token.id,
         name: command.token.name,
         type: command.token.type,
-        value: command.token.value
+        value: command.token.value,
+        ...(command.token.set_id ? { set_id: command.token.set_id } : {})
       };
       if (existingIndex >= 0) {
         document.tokens[existingIndex] = token;
@@ -713,10 +736,19 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
       }
       return token.id;
     }
+    case "set_token_set_enabled": {
+      const tokenSet = (document.token_sets ?? []).find((candidate) => candidate.id === command.tokenSetId);
+      if (!tokenSet) {
+        throw new Error(`token set not found: ${command.tokenSetId}`);
+      }
+      tokenSet.enabled = command.enabled;
+      materializeTokenBindings(document);
+      return tokenSet.id;
+    }
     case "set_fill_token": {
       const node = requireNode(document, command.nodeId);
       const token = requireColorToken(document, command.tokenId);
-      node.style = { ...node.style, fill: token.value, fill_token: token.id };
+      node.style = { ...node.style, fill: token.value, fill_token: command.tokenId };
       return node.id;
     }
     case "set_text_typography_token": {
@@ -730,7 +762,7 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
         ...node.content,
         font_family: typography.fontFamily,
         font_size: typography.fontSize,
-        typography_token: token.id
+        typography_token: command.tokenId
       };
       return node.id;
     }
@@ -745,9 +777,9 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
         layout.gap = value;
         layout.row_gap = value;
         layout.column_gap = value;
-        spacingTokens.gap = token.id;
-        spacingTokens.row_gap = token.id;
-        spacingTokens.column_gap = token.id;
+        spacingTokens.gap = command.tokenId;
+        spacingTokens.row_gap = command.tokenId;
+        spacingTokens.column_gap = command.tokenId;
       } else {
         layout.padding = {
           top: value,
@@ -755,10 +787,10 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
           bottom: value,
           left: value
         };
-        spacingTokens.padding_top = token.id;
-        spacingTokens.padding_right = token.id;
-        spacingTokens.padding_bottom = token.id;
-        spacingTokens.padding_left = token.id;
+        spacingTokens.padding_top = command.tokenId;
+        spacingTokens.padding_right = command.tokenId;
+        spacingTokens.padding_bottom = command.tokenId;
+        spacingTokens.padding_left = command.tokenId;
       }
 
       node.layout = normalizeNodeLayout({ ...layout, spacing_tokens: spacingTokens });
@@ -916,7 +948,7 @@ function normalizeNodeExportPresets(presets: NodeExportPreset[]): NodeExportPres
 }
 
 function requireColorToken(document: DesignFile, tokenId: string): DesignToken {
-  const token = (document.tokens ?? []).find((candidate) => candidate.id === tokenId);
+  const token = createActiveDesignTokenReferenceMap(document.tokens ?? [], document.token_sets ?? []).get(tokenId);
   if (!token) {
     throw new Error(`token not found: ${tokenId}`);
   }
@@ -927,7 +959,7 @@ function requireColorToken(document: DesignFile, tokenId: string): DesignToken {
 }
 
 function requireSpacingToken(document: DesignFile, tokenId: string): DesignToken {
-  const token = (document.tokens ?? []).find((candidate) => candidate.id === tokenId);
+  const token = createActiveDesignTokenReferenceMap(document.tokens ?? [], document.token_sets ?? []).get(tokenId);
   if (!token) {
     throw new Error(`token not found: ${tokenId}`);
   }
@@ -938,7 +970,7 @@ function requireSpacingToken(document: DesignFile, tokenId: string): DesignToken
 }
 
 function requireTypographyToken(document: DesignFile, tokenId: string): DesignToken {
-  const token = (document.tokens ?? []).find((candidate) => candidate.id === tokenId);
+  const token = createActiveDesignTokenReferenceMap(document.tokens ?? [], document.token_sets ?? []).get(tokenId);
   if (!token) {
     throw new Error(`token not found: ${tokenId}`);
   }
@@ -946,6 +978,78 @@ function requireTypographyToken(document: DesignFile, tokenId: string): DesignTo
     throw new Error(`token is not a typography token: ${tokenId}`);
   }
   return token;
+}
+
+function materializeTokenBindings(document: DesignFile): void {
+  const tokenMap = createActiveDesignTokenReferenceMap(document.tokens ?? [], document.token_sets ?? []);
+  for (const page of document.pages) {
+    for (const node of page.children) {
+      materializeNodeTokenBindings(node, tokenMap);
+    }
+  }
+  relayoutDesignFile(document);
+}
+
+function materializeNodeTokenBindings(node: DesignNode, tokenMap: Map<string, DesignToken>): void {
+  if (node.style.fill_token) {
+    const token = tokenMap.get(node.style.fill_token);
+    if (token?.type === "color") {
+      node.style = { ...node.style, fill: token.value };
+    }
+  }
+
+  if (node.content.type === "text" && node.content.typography_token) {
+    const token = tokenMap.get(node.content.typography_token);
+    if (token?.type === "typography") {
+      const typography = parseTypographyTokenValue(token);
+      node.content = {
+        ...node.content,
+        font_family: typography.fontFamily,
+        font_size: typography.fontSize
+      };
+    }
+  }
+
+  if (node.layout?.spacing_tokens) {
+    const layout = normalizeNodeLayout(node.layout);
+    const spacingTokens = layout.spacing_tokens;
+    if (spacingTokens?.gap) {
+      const token = tokenMap.get(spacingTokens.gap);
+      if (token?.type === "spacing") {
+        layout.gap = spacingTokenValueToNumber(token);
+      }
+    }
+    if (spacingTokens?.row_gap) {
+      const token = tokenMap.get(spacingTokens.row_gap);
+      if (token?.type === "spacing") {
+        layout.row_gap = spacingTokenValueToNumber(token);
+      }
+    }
+    if (spacingTokens?.column_gap) {
+      const token = tokenMap.get(spacingTokens.column_gap);
+      if (token?.type === "spacing") {
+        layout.column_gap = spacingTokenValueToNumber(token);
+      }
+    }
+    const paddingTokenKeys = [
+      ["padding_top", "top"],
+      ["padding_right", "right"],
+      ["padding_bottom", "bottom"],
+      ["padding_left", "left"]
+    ] as const;
+    for (const [tokenKey, side] of paddingTokenKeys) {
+      const tokenId = spacingTokens?.[tokenKey];
+      const token = tokenId ? tokenMap.get(tokenId) : undefined;
+      if (token?.type === "spacing") {
+        layout.padding[side] = spacingTokenValueToNumber(token);
+      }
+    }
+    node.layout = normalizeNodeLayout(layout);
+  }
+
+  for (const child of node.children) {
+    materializeNodeTokenBindings(child, tokenMap);
+  }
 }
 
 function spacingTokenValueToNumber(token: DesignToken): number {

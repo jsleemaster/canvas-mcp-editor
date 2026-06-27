@@ -1,4 +1,4 @@
-import type { DesignToken, RendererDocument } from "@layo/renderer";
+import type { DesignToken, DesignTokenSet, RendererDocument } from "@layo/renderer";
 import { apiUrl } from "./api-base";
 
 export interface FileVersionSummary {
@@ -325,8 +325,10 @@ export interface CodeExportPayload {
     elements: CodeElementArtifact[];
     components: unknown[];
     tokens: {
+      tokenSets?: DesignTokenSet[];
       colors: DesignToken[];
       spacing: DesignToken[];
+      typography?: DesignToken[];
     };
     tokenCandidates: {
       colors: string[];
