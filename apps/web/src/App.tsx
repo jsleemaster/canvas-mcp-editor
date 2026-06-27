@@ -3115,13 +3115,15 @@ function DevPanel({
   codeExport,
   codeExportStatus,
   onDownloadPng,
-  onDownloadJpeg
+  onDownloadJpeg,
+  onDownloadWebp
 }: {
   selectedNode: RendererNode | null;
   codeExport: CodeExportPayload | null;
   codeExportStatus: string;
   onDownloadPng: (scale: PngExportScale) => string | null;
   onDownloadJpeg: (scale: PngExportScale) => string | null;
+  onDownloadWebp: (scale: PngExportScale) => string | null;
 }) {
   const [copyStatus, setCopyStatus] = useState("복사 대기 중");
   const [assetStatus, setAssetStatus] = useState("에셋 다운로드 대기 중");
@@ -3172,6 +3174,11 @@ function DevPanel({
   const downloadSelectedJpeg = () => {
     const nextStatus = onDownloadJpeg(pngScale);
     setAssetStatus(nextStatus ?? "JPEG 다운로드 실패");
+  };
+
+  const downloadSelectedWebp = () => {
+    const nextStatus = onDownloadWebp(pngScale);
+    setAssetStatus(nextStatus ?? "WEBP 다운로드 실패");
   };
 
   return (
@@ -3227,14 +3234,22 @@ function DevPanel({
               >
                 JPEG 다운로드
               </button>
+              <button
+                type="button"
+                className="dev-panel-copy-button"
+                data-testid="dev-panel-download-webp"
+                onClick={downloadSelectedWebp}
+              >
+                WEBP 다운로드
+              </button>
             </div>
             <div
               className="dev-panel-scale-control"
               data-testid="dev-panel-png-scale-control"
               role="radiogroup"
-              aria-label="PNG 배율"
+              aria-label="래스터 배율"
             >
-              <span>PNG 배율</span>
+              <span>래스터 배율</span>
               <div className="dev-panel-scale-options">
                 {PNG_EXPORT_SCALES.map((scale) => (
                   <button
@@ -3355,6 +3370,7 @@ function Inspector({
   onMarkCommentRead,
   onDownloadSelectedPng,
   onDownloadSelectedJpeg,
+  onDownloadSelectedWebp,
   onTabChange
 }: {
   activeTab: InspectorTab;
@@ -3396,6 +3412,7 @@ function Inspector({
   onMarkCommentRead: (threadId: string) => void;
   onDownloadSelectedPng: (scale: PngExportScale) => string | null;
   onDownloadSelectedJpeg: (scale: PngExportScale) => string | null;
+  onDownloadSelectedWebp: (scale: PngExportScale) => string | null;
   onTabChange: (tab: InspectorTab) => void;
 }) {
   const tokenControls = (
@@ -3430,6 +3447,7 @@ function Inspector({
             codeExportStatus={codeExportStatus}
             onDownloadPng={onDownloadSelectedPng}
             onDownloadJpeg={onDownloadSelectedJpeg}
+            onDownloadWebp={onDownloadSelectedWebp}
           />
         ) : activeTab === "prototype" ? (
           <PrototypePanel />
@@ -3465,6 +3483,7 @@ function Inspector({
             codeExportStatus={codeExportStatus}
             onDownloadPng={onDownloadSelectedPng}
             onDownloadJpeg={onDownloadSelectedJpeg}
+            onDownloadWebp={onDownloadSelectedWebp}
           />
         ) : activeTab === "prototype" ? (
           <PrototypePanel />
@@ -3695,6 +3714,7 @@ function Inspector({
           codeExportStatus={codeExportStatus}
           onDownloadPng={onDownloadSelectedPng}
           onDownloadJpeg={onDownloadSelectedJpeg}
+          onDownloadWebp={onDownloadSelectedWebp}
         />
       ) : activeTab === "prototype" ? (
         <PrototypePanel />
@@ -5575,7 +5595,7 @@ export function App() {
     }: {
       scale?: PngExportScale;
       filename?: string;
-      mimeType: "image/png" | "image/jpeg";
+      mimeType: "image/png" | "image/jpeg" | "image/webp";
       failureMessage: string;
     }
   ): RendererNode | null => {
@@ -5612,9 +5632,9 @@ export function App() {
           height,
           pixelRatio: scale,
           mimeType,
-          quality: mimeType === "image/jpeg" ? 0.92 : undefined
+          quality: mimeType === "image/jpeg" || mimeType === "image/webp" ? 0.92 : undefined
         }),
-        filename ?? `${node.id}.${mimeType === "image/jpeg" ? "jpg" : "png"}`
+        filename ?? `${node.id}.${mimeType === "image/jpeg" ? "jpg" : mimeType === "image/webp" ? "webp" : "png"}`
       );
       return node;
     } catch (error) {
@@ -5676,6 +5696,23 @@ export function App() {
       failureMessage: "JPEG 다운로드 실패"
     });
     return node ? `${node.name} JPEG${scale === 2 ? "" : ` ${scale}x`} 다운로드됨` : null;
+  };
+
+  const downloadSelectedNodeWebpFromDevPanel = (scale: PngExportScale) => {
+    const currentEditor = editorRef.current;
+    if (!currentEditor) {
+      return null;
+    }
+
+    const nodeId = currentEditor.selection.nodeId;
+    const filename = nodeId ? `${nodeId}${scale === 2 ? "" : `@${scale}x`}.webp` : undefined;
+    const node = downloadSelectionRasterFromState(currentEditor, {
+      scale,
+      filename,
+      mimeType: "image/webp",
+      failureMessage: "WEBP 다운로드 실패"
+    });
+    return node ? `${node.name} WEBP${scale === 2 ? "" : ` ${scale}x`} 다운로드됨` : null;
   };
 
   const createContextComponent = () => {
@@ -10091,6 +10128,7 @@ export function App() {
         onMarkCommentRead={(threadId) => void markSelectedNodeCommentRead(threadId)}
         onDownloadSelectedPng={downloadSelectedNodePngFromDevPanel}
         onDownloadSelectedJpeg={downloadSelectedNodeJpegFromDevPanel}
+        onDownloadSelectedWebp={downloadSelectedNodeWebpFromDevPanel}
         onTabChange={setInspectorTab}
         onGeometryChange={updateGeometry}
         onFillChange={(nodeId, fill) => dispatch({ type: "set_fill", nodeId, fill })}
