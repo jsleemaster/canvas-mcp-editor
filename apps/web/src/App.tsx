@@ -3110,11 +3110,13 @@ function InspectorTokenControls({
 function DevPanel({
   selectedNode,
   codeExport,
-  codeExportStatus
+  codeExportStatus,
+  onDownloadPng
 }: {
   selectedNode: RendererNode | null;
   codeExport: CodeExportPayload | null;
   codeExportStatus: string;
+  onDownloadPng: () => string | null;
 }) {
   const [copyStatus, setCopyStatus] = useState("복사 대기 중");
   const [assetStatus, setAssetStatus] = useState("에셋 다운로드 대기 중");
@@ -3156,6 +3158,11 @@ function DevPanel({
     }
   };
 
+  const downloadSelectedPng = () => {
+    const nextStatus = onDownloadPng();
+    setAssetStatus(nextStatus ?? "PNG 다운로드 실패");
+  };
+
   return (
     <section className="inspector-section dev-panel" data-testid="dev-panel" aria-label="개발 핸드오프">
       <h3>개발</h3>
@@ -3192,6 +3199,14 @@ function DevPanel({
                 onClick={downloadSelectedSvg}
               >
                 SVG 다운로드
+              </button>
+              <button
+                type="button"
+                className="dev-panel-copy-button"
+                data-testid="dev-panel-download-png"
+                onClick={downloadSelectedPng}
+              >
+                PNG 다운로드
               </button>
             </div>
             <div className="dev-panel-asset-status" data-testid="dev-panel-asset-status" aria-live="polite">
@@ -3296,6 +3311,7 @@ function Inspector({
   onCreateCommentReply,
   onResolveComment,
   onMarkCommentRead,
+  onDownloadSelectedPng,
   onTabChange
 }: {
   activeTab: InspectorTab;
@@ -3335,6 +3351,7 @@ function Inspector({
   onCreateCommentReply: (threadId: string) => void;
   onResolveComment: (threadId: string) => void;
   onMarkCommentRead: (threadId: string) => void;
+  onDownloadSelectedPng: () => string | null;
   onTabChange: (tab: InspectorTab) => void;
 }) {
   const tokenControls = (
@@ -3363,7 +3380,12 @@ function Inspector({
           <span>다중 선택</span>
         </div>
         {activeTab === "dev" ? (
-          <DevPanel selectedNode={selectedNode} codeExport={codeExport} codeExportStatus={codeExportStatus} />
+          <DevPanel
+            selectedNode={selectedNode}
+            codeExport={codeExport}
+            codeExportStatus={codeExportStatus}
+            onDownloadPng={onDownloadSelectedPng}
+          />
         ) : activeTab === "prototype" ? (
           <PrototypePanel />
         ) : (
@@ -3392,7 +3414,12 @@ function Inspector({
           onShare={onShare}
         />
         {activeTab === "dev" ? (
-          <DevPanel selectedNode={selectedNode} codeExport={codeExport} codeExportStatus={codeExportStatus} />
+          <DevPanel
+            selectedNode={selectedNode}
+            codeExport={codeExport}
+            codeExportStatus={codeExportStatus}
+            onDownloadPng={onDownloadSelectedPng}
+          />
         ) : activeTab === "prototype" ? (
           <PrototypePanel />
         ) : (
@@ -3616,7 +3643,12 @@ function Inspector({
         <span>{nodeKindLabel(selectedNode.kind)}</span>
       </div>
       {activeTab === "dev" ? (
-        <DevPanel selectedNode={selectedNode} codeExport={codeExport} codeExportStatus={codeExportStatus} />
+        <DevPanel
+          selectedNode={selectedNode}
+          codeExport={codeExport}
+          codeExportStatus={codeExportStatus}
+          onDownloadPng={onDownloadSelectedPng}
+        />
       ) : activeTab === "prototype" ? (
         <PrototypePanel />
       ) : (
@@ -5486,21 +5518,19 @@ export function App() {
     }
   };
 
-  const downloadContextSelectionPng = () => {
+  const downloadSelectionPngFromState = (scopedState: EditorState): RendererNode | null => {
     const stage = konvaStageRef.current;
-    const currentEditor = editorRef.current;
-    if (!stage || !currentEditor) {
-      setObjectContextMenu(null);
-      return;
+    if (!stage) {
+      setProjectStatus("PNG 내보내기에 실패했습니다");
+      return null;
     }
 
-    const scopedState = scopeStateToContextNode(currentEditor);
     const nodeId = scopedState.selection.nodeId;
     const node = nodeId ? findNodeById(scopedState.document, nodeId) : null;
     const bounds = nodeId ? getNodeBounds(scopedState.document, nodeId) : null;
     if (!node || !bounds) {
-      setObjectContextMenu(null);
-      return;
+      setProjectStatus("PNG 내보내기에 실패했습니다");
+      return null;
     }
 
     const viewportRect = viewportBounds(bounds, scopedState.viewport);
@@ -5525,15 +5555,39 @@ export function App() {
         }),
         `${node.id}.png`
       );
-      setProjectStatus(`${node.name} PNG 내보내기 완료`);
+      return node;
     } catch (error) {
       const message = error instanceof Error ? error.message : "PNG 내보내기에 실패했습니다";
       setProjectStatus(message);
+      return null;
     } finally {
       selectionOverlays.forEach((overlay) => overlay.visible(true));
       stage.draw();
-      setObjectContextMenu(null);
     }
+  };
+
+  const downloadContextSelectionPng = () => {
+    const currentEditor = editorRef.current;
+    if (!currentEditor) {
+      setObjectContextMenu(null);
+      return;
+    }
+
+    const node = downloadSelectionPngFromState(scopeStateToContextNode(currentEditor));
+    if (node) {
+      setProjectStatus(`${node.name} PNG 내보내기 완료`);
+    }
+    setObjectContextMenu(null);
+  };
+
+  const downloadSelectedNodePngFromDevPanel = () => {
+    const currentEditor = editorRef.current;
+    if (!currentEditor) {
+      return null;
+    }
+
+    const node = downloadSelectionPngFromState(currentEditor);
+    return node ? `${node.name} PNG 다운로드됨` : null;
   };
 
   const createContextComponent = () => {
@@ -9947,6 +10001,7 @@ export function App() {
         onCreateCommentReply={(threadId) => void createSelectedNodeCommentReply(threadId)}
         onResolveComment={(threadId) => void resolveSelectedNodeComment(threadId)}
         onMarkCommentRead={(threadId) => void markSelectedNodeCommentRead(threadId)}
+        onDownloadSelectedPng={downloadSelectedNodePngFromDevPanel}
         onTabChange={setInspectorTab}
         onGeometryChange={updateGeometry}
         onFillChange={(nodeId, fill) => dispatch({ type: "set_fill", nodeId, fill })}
