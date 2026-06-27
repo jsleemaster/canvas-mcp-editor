@@ -197,6 +197,47 @@ describe("code export", () => {
     });
   });
 
+  test("exports repo component mappings for component definitions and instances", () => {
+    const fixture = componentFixture() as any;
+    fixture.code_mappings = [repoComponentMappingFixture()];
+
+    const result = exportDesignToCode(fixture);
+    const component = result.implementationSpec.components[0] as any;
+    const instance = result.elements[0] as any;
+
+    expect(component.repoMapping).toMatchObject({
+      id: "mapping-toss-button",
+      componentId: "component-button",
+      packageName: "@repo/ui",
+      importPath: "@repo/ui/toss-button",
+      exportName: "TossButton",
+      importMode: "named",
+      importStatement: 'import { TossButton } from "@repo/ui/toss-button";',
+      usage: "<TossButton label={label} />",
+      props: [
+        {
+          name: "label",
+          type: "string",
+          sourceNodeId: "component-button-label",
+          sourceField: "text",
+          defaultValue: "확인"
+        }
+      ],
+      docsUrl: "https://repo.example/ui/toss-button"
+    });
+    expect(component.implementation.repoMapping).toEqual(component.repoMapping);
+    expect(instance.structure.repoMapping).toMatchObject({
+      componentId: "component-button",
+      importStatement: 'import { TossButton } from "@repo/ui/toss-button";',
+      usage: "<TossButton label={label} />"
+    });
+    expect(instance.implementation.repoMapping).toMatchObject({
+      componentId: "component-button",
+      usage: "<TossButton label={label} />"
+    });
+    expect(instance.jsModule).toContain("repoMapping");
+  });
+
   test("exports layout and constraints metadata for agents", () => {
     const fixture = tossFixture();
     fixture.pages[0].children[0].layout = {
@@ -553,5 +594,26 @@ function componentFixture(): DesignFile {
         children: [instance]
       }
     ]
+  };
+}
+
+function repoComponentMappingFixture() {
+  return {
+    id: "mapping-toss-button",
+    component_id: "component-button",
+    package_name: "@repo/ui",
+    import_path: "@repo/ui/toss-button",
+    export_name: "TossButton",
+    import_mode: "named",
+    props: [
+      {
+        name: "label",
+        type: "string",
+        source_node_id: "component-button-label",
+        source_field: "text",
+        default_value: "확인"
+      }
+    ],
+    docs_url: "https://repo.example/ui/toss-button"
   };
 }

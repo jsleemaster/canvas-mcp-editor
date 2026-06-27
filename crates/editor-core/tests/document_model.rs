@@ -46,6 +46,52 @@ fn component_document_round_trips_through_json() {
 }
 
 #[test]
+fn code_component_mappings_round_trip_through_json() {
+    let raw = r##"
+    {
+      "id": "mapping-file",
+      "name": "Mapping File",
+      "version": 1,
+      "components": [],
+      "code_mappings": [
+        {
+          "id": "mapping-card",
+          "component_id": "component-card",
+          "package_name": "@repo/ui",
+          "import_path": "@repo/ui/card",
+          "export_name": "Card",
+          "import_mode": "named",
+          "props": [
+            {
+              "name": "title",
+              "type": "string",
+              "source_node_id": "text-1",
+              "source_field": "text",
+              "default_value": "Layo"
+            }
+          ],
+          "docs_url": "https://repo.example/ui/card"
+        }
+      ],
+      "pages": []
+    }
+    "##;
+
+    let parsed: DesignFile = serde_json::from_str(raw).unwrap();
+
+    assert_eq!(parsed.code_mappings.len(), 1);
+    assert_eq!(parsed.code_mappings[0].component_id, "component-card");
+    assert_eq!(
+        parsed.code_mappings[0].props[0].source_field,
+        editor_core::CodeComponentMappingSourceField::Text
+    );
+
+    let serialized = serde_json::to_string(&parsed).unwrap();
+    assert!(serialized.contains("\"code_mappings\""));
+    assert!(serialized.contains("\"import_path\":\"@repo/ui/card\""));
+}
+
+#[test]
 fn layout_metadata_round_trips_through_json() {
     let raw = r##"
     {

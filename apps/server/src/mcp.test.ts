@@ -72,6 +72,18 @@ describe("MCP AI editing workflow", () => {
       idempotentHint: false,
       openWorldHint: false
     });
+    expect(byName.get("list_code_component_mappings")?.annotations).toMatchObject({
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
+    });
+    expect(byName.get("set_code_component_mappings")?.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: false
+    });
     expect(byName.get("import_file_archive")?.annotations).toMatchObject({
       readOnlyHint: false,
       destructiveHint: true,
@@ -345,6 +357,74 @@ describe("MCP AI editing workflow", () => {
           }
         }
       }
+    });
+  });
+
+  test("lets an MCP client save and list repo component mappings", async () => {
+    const client = await connectMcpClient();
+
+    await client.callTool({
+      name: "create_project",
+      arguments: {
+        projectId: "mapping-project",
+        name: "Mapping project",
+        documentId: "mapping-file",
+        documentName: "Mapping file"
+      }
+    });
+
+    await client.callTool({
+      name: "create_component",
+      arguments: {
+        fileId: "mapping-file",
+        nodeId: "frame-1",
+        componentId: "component-card",
+        name: "Card"
+      }
+    });
+
+    const saved = parseToolJson(
+      await client.callTool({
+        name: "set_code_component_mappings",
+        arguments: {
+          fileId: "mapping-file",
+          mappings: [
+            {
+              id: "mapping-card",
+              component_id: "component-card",
+              package_name: "@repo/ui",
+              import_path: "@repo/ui/card",
+              export_name: "Card",
+              import_mode: "named",
+              props: [
+                {
+                  name: "title",
+                  type: "string",
+                  source_node_id: "text-1",
+                  source_field: "text",
+                  default_value: "Layo"
+                }
+              ],
+              docs_url: "https://repo.example/ui/card"
+            }
+          ]
+        }
+      })
+    );
+    expect(saved.mappings).toEqual([
+      expect.objectContaining({ id: "mapping-card", component_id: "component-card" })
+    ]);
+
+    const listed = parseToolJson(
+      await client.callTool({
+        name: "list_code_component_mappings",
+        arguments: { fileId: "mapping-file" }
+      })
+    );
+    expect(listed.mappings[0]).toMatchObject({
+      component_id: "component-card",
+      import_path: "@repo/ui/card",
+      export_name: "Card"
     });
   });
 

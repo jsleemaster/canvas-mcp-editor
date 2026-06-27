@@ -281,6 +281,17 @@ function annotationSnippetForCodeNode(annotations: CodeStructureNode["annotation
     .join("\n\n");
 }
 
+function codeMappingSnippetFor(mapping: NonNullable<CodeStructureNode["repoMapping"]>) {
+  return [
+    mapping.importStatement,
+    "",
+    mapping.usage,
+    mapping.docsUrl ? `Docs: ${mapping.docsUrl}` : null
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
+}
+
 function gridTrackInputValue(tracks: GridTrack[] | undefined, count: number) {
   return Array.from({ length: count }, (_, index) => gridTrackToken(tracks?.[index])).join(" ");
 }
@@ -3250,6 +3261,8 @@ function DevPanel({
   const structureSnippet = codeStructure ? JSON.stringify(codeStructure, null, 2) : "";
   const annotations = codeStructure?.annotations ?? [];
   const annotationSnippet = annotationSnippetForCodeNode(annotations);
+  const repoMapping = codeStructure?.repoMapping ?? null;
+  const codeMappingSnippet = repoMapping ? codeMappingSnippetFor(repoMapping) : "";
   const exportPresets = selectedNode?.export_presets ?? [];
   const selectedExportReviewItems = selectedNodes.length > 1 ? buildExportPresetReviewItems(selectedNodes) : [];
   const isPageExportReview = !selectedNode && selectedExportReviewItems.length === 0;
@@ -3565,6 +3578,30 @@ function DevPanel({
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+          <div className="dev-panel-code-mapping" data-testid="dev-panel-code-mapping">
+            <div className="dev-panel-code-header">
+              <span>Code mapping</span>
+              <button
+                type="button"
+                className="dev-panel-copy-button"
+                data-testid="dev-panel-copy-code-mapping"
+                disabled={!codeMappingSnippet}
+                onClick={() => void copySnippet("코드 매핑", codeMappingSnippet)}
+              >
+                매핑 복사
+              </button>
+            </div>
+            {repoMapping ? (
+              <div className="dev-panel-code-mapping-list">
+                <span>{repoMapping.importStatement}</span>
+                <span>{repoMapping.usage}</span>
+                <span>{repoMapping.importPath}</span>
+                {repoMapping.docsUrl ? <span>{repoMapping.docsUrl}</span> : null}
+              </div>
+            ) : (
+              <span className="dev-panel-annotation-empty">저장된 code mapping 없음</span>
             )}
           </div>
           <div className="dev-panel-asset-card" data-testid="dev-panel-assets">

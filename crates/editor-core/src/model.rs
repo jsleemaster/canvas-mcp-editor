@@ -12,6 +12,8 @@ pub struct DesignFile {
     pub tokens: Vec<DesignToken>,
     #[serde(default)]
     pub components: Vec<ComponentDefinition>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub code_mappings: Vec<CodeComponentMapping>,
     pub pages: Vec<Page>,
 }
 
@@ -130,6 +132,54 @@ pub struct ComponentOverride {
     pub node_id: String,
     pub field: String,
     pub value: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct CodeComponentMapping {
+    pub id: String,
+    pub component_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_name: Option<String>,
+    pub import_path: String,
+    pub export_name: String,
+    pub import_mode: CodeComponentMappingImportMode,
+    pub props: Vec<CodeComponentMappingProp>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub docs_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum CodeComponentMappingImportMode {
+    Named,
+    Default,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct CodeComponentMappingProp {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub prop_type: CodeComponentMappingPropType,
+    pub source_node_id: String,
+    pub source_field: CodeComponentMappingSourceField,
+    pub default_value: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum CodeComponentMappingPropType {
+    String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum CodeComponentMappingSourceField {
+    Text,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
@@ -493,6 +543,7 @@ impl DesignFile {
             version: 1,
             tokens: vec![],
             components: vec![],
+            code_mappings: vec![],
             pages: vec![Page {
                 id: "page-1".to_string(),
                 name: "페이지 1".to_string(),

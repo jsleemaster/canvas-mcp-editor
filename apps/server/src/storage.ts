@@ -178,6 +178,29 @@ export interface ComponentInstance {
   detached: boolean;
 }
 
+export type CodeComponentMappingImportMode = "named" | "default";
+export type CodeComponentMappingPropType = "string";
+export type CodeComponentMappingSourceField = "text";
+
+export interface CodeComponentMappingProp {
+  name: string;
+  type: CodeComponentMappingPropType;
+  source_node_id: string;
+  source_field: CodeComponentMappingSourceField;
+  default_value: string;
+}
+
+export interface CodeComponentMapping {
+  id: string;
+  component_id: string;
+  package_name?: string;
+  import_path: string;
+  export_name: string;
+  import_mode: CodeComponentMappingImportMode;
+  props: CodeComponentMappingProp[];
+  docs_url?: string;
+}
+
 export interface DesignToken {
   id: string;
   name: string;
@@ -191,6 +214,7 @@ export interface DesignFile {
   version?: number;
   tokens?: DesignToken[];
   components?: ComponentDefinition[];
+  code_mappings?: CodeComponentMapping[];
   pages: Array<{ id: string; name: string; children: DesignNode[] }>;
 }
 
@@ -1878,6 +1902,31 @@ export class FileStorage {
     return document.components ?? [];
   }
 
+  async listCodeComponentMappings(fileId: string): Promise<CodeComponentMapping[]> {
+    const document = await this.readFile(fileId);
+    return document.code_mappings ?? [];
+  }
+
+  async setCodeComponentMappings(
+    fileId: string,
+    mappings: CodeComponentMapping[]
+  ): Promise<CodeComponentMapping[]> {
+    const document = await this.readFile(fileId);
+    const componentIds = new Set((document.components ?? []).map((component) => component.id));
+    const parsed = mappings.map((mapping) => parseCodeComponentMapping(mapping));
+
+    for (const mapping of parsed) {
+      if (!componentIds.has(mapping.component_id)) {
+        throw inputValidationError(`code mapping component not found: ${mapping.component_id}`);
+      }
+    }
+
+    document.code_mappings = parsed;
+    await this.writeFile(fileId, document);
+    await this.recordFileEditForAutoVersion(fileId, document);
+    return parsed;
+  }
+
   async createComponent(
     fileId: string,
     nodeId: string,
@@ -2351,6 +2400,83 @@ function inputValidationError(message: string) {
   error.code = INPUT_VALIDATION_ERROR_CODE;
   error.statusCode = 400;
   return error;
+}
+
+function parseCodeComponentMapping(input: unknown): CodeComponentMapping {
+  if (!input || typeof input !== "object") {
+    throw inputValidationError("code component mapping is required");
+  }
+
+  const candidate = input as Partial<CodeComponentMapping>;
+  const id = normalizeRequiredCodeString(candidate.id, "mapping id");
+  const componentId = normalizeRequiredCodeString(candidate.component_id, "mapping component id");
+  assertSafeStorageId(id);
+  assertSafeStorageId(componentId);
+
+  const importMode = candidate.import_mode;
+  if (importMode !== "named" && importMode !== "default") {
+    throw inputValidationError("code mapping import mode is invalid");
+  }
+
+  return {
+    id,
+    component_id: componentId,
+    ...normalizeOptionalCodeString(candidate.package_name, "package_name"),
+    import_path: normalizeRequiredCodeString(candidate.import_path, "mapping import path"),
+    export_name: normalizeRequiredCodeString(candidate.export_name, "mapping export name"),
+    import_mode: importMode,
+    props: normalizeCodeComponentMappingProps(candidate.props),
+    ...normalizeOptionalCodeString(candidate.docs_url, "docs_url")
+  };
+}
+
+function normalizeCodeComponentMappingProps(input: unknown): CodeComponentMappingProp[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return input.map((value) => {
+    if (!value || typeof value !== "object") {
+      throw inputValidationError("code mapping prop is required");
+    }
+    const candidate = value as Partial<CodeComponentMappingProp>;
+    const name = normalizeRequiredCodeString(candidate.name, "mapping prop name");
+    const sourceNodeId = normalizeRequiredCodeString(candidate.source_node_id, "mapping prop source node");
+    assertSafeStorageId(sourceNodeId);
+    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) {
+      throw inputValidationError(`code mapping prop name is invalid: ${name}`);
+    }
+    if (candidate.type !== "string") {
+      throw inputValidationError("code mapping prop type is invalid");
+    }
+    if (candidate.source_field !== "text") {
+      throw inputValidationError("code mapping prop source field is invalid");
+    }
+
+    return {
+      name,
+      type: "string",
+      source_node_id: sourceNodeId,
+      source_field: "text",
+      default_value: normalizeRequiredCodeString(candidate.default_value, "mapping prop default value")
+    };
+  });
+}
+
+function normalizeRequiredCodeString(value: unknown, label: string): string {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) {
+    throw inputValidationError(`${label} is required`);
+  }
+  return normalized;
+}
+
+function normalizeOptionalCodeString(
+  value: unknown,
+  key: "package_name" | "docs_url"
+): Partial<Pick<CodeComponentMapping, "package_name" | "docs_url">> {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized ? { [key]: normalized } : {};
 }
 
 function parseStoredAsset(input: unknown): StoredAsset {

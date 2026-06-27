@@ -10,6 +10,7 @@ import {
   INPUT_VALIDATION_ERROR_CODE,
   LIBRARY_ARCHIVE_MIME_TYPE,
   PROJECT_ARCHIVE_MIME_TYPE,
+  type CodeComponentMapping,
   type CreateAssetInput,
   type DesignNode,
   type GeometryPatch
@@ -620,6 +621,22 @@ export function createHttpServer(storage = new FileStorage(), options: HttpServe
   server.get<{ Params: { fileId: string } }>("/files/:fileId/components", async (request) => {
     return { components: await storage.listComponents(request.params.fileId) };
   });
+
+  server.get<{ Params: { fileId: string } }>("/files/:fileId/code-mappings", async (request) => {
+    return { mappings: await storage.listCodeComponentMappings(request.params.fileId) };
+  });
+
+  server.put<{ Params: { fileId: string }; Body: { mappings: CodeComponentMapping[] } }>(
+    "/files/:fileId/code-mappings",
+    async (request) => {
+      return {
+        mappings: await storage.setCodeComponentMappings(
+          request.params.fileId,
+          Array.isArray(request.body.mappings) ? request.body.mappings : []
+        )
+      };
+    }
+  );
 
   server.post<{
     Params: { fileId: string };
