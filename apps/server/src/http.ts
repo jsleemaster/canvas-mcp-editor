@@ -161,6 +161,17 @@ export function createHttpServer(storage = new FileStorage(), options: HttpServe
     }
   );
 
+  server.post<{ Params: { fileId: string }; Body: { keepUnpinned?: number } }>(
+    "/files/:fileId/versions/prune",
+    async (request) => {
+      return {
+        result: await storage.pruneFileVersions(request.params.fileId, {
+          keepUnpinned: request.body?.keepUnpinned ?? 10
+        })
+      };
+    }
+  );
+
   server.get<{ Params: { fileId: string; versionId: string } }>(
     "/files/:fileId/versions/:versionId",
     async (request) => {
@@ -182,6 +193,15 @@ export function createHttpServer(storage = new FileStorage(), options: HttpServe
       )
     };
   });
+
+  server.delete<{ Params: { fileId: string; versionId: string } }>(
+    "/files/:fileId/versions/:versionId",
+    async (request) => {
+      return {
+        version: await storage.deleteFileVersion(request.params.fileId, request.params.versionId)
+      };
+    }
+  );
 
   server.post<{ Params: { fileId: string; versionId: string } }>(
     "/files/:fileId/versions/:versionId/restore",

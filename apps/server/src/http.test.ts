@@ -848,6 +848,81 @@ describe("HTTP server", () => {
     expect(unpinned.json().version).toMatchObject({ versionId, pinned: false });
   });
 
+  test("file version retention deletes versions and prunes only old unpinned versions through HTTP", async () => {
+    const server = await createServerWithDocument();
+
+    const deletedCandidate = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/versions",
+      payload: { message: "삭제할 고정 버전" }
+    });
+    const deletedCandidateId = deletedCandidate.json().version.versionId;
+    await server.inject({
+      method: "PATCH",
+      url: `/files/sample-file/versions/${deletedCandidateId}/pin`,
+      payload: { pinned: true }
+    });
+
+    const deleted = await server.inject({
+      method: "DELETE",
+      url: `/files/sample-file/versions/${deletedCandidateId}`
+    });
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json().version).toMatchObject({
+      versionId: deletedCandidateId,
+      pinned: true,
+      deleted: true
+    });
+
+    const protectedVersion = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/versions",
+      payload: { message: "릴리즈 기준" }
+    });
+    const protectedVersionId = protectedVersion.json().version.versionId;
+    await server.inject({
+      method: "PATCH",
+      url: `/files/sample-file/versions/${protectedVersionId}/pin`,
+      payload: { pinned: true }
+    });
+    const oldVersion = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/versions",
+      payload: { message: "오래된 작업" }
+    });
+    await server.inject({
+      method: "PATCH",
+      url: "/files/sample-file/nodes/text-1/text",
+      payload: { value: "최신 작업" }
+    });
+    const newestVersion = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/versions",
+      payload: { message: "최신 작업" }
+    });
+
+    const pruned = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/versions/prune",
+      payload: { keepUnpinned: 1 }
+    });
+    expect(pruned.statusCode).toBe(200);
+    expect(pruned.json().result.deletedVersions).toEqual([
+      expect.objectContaining({ versionId: oldVersion.json().version.versionId, pinned: false })
+    ]);
+
+    const listed = await server.inject({ method: "GET", url: "/files/sample-file/versions" });
+    expect(listed.json().versions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ versionId: protectedVersionId, pinned: true }),
+        expect.objectContaining({ versionId: newestVersion.json().version.versionId, pinned: false })
+      ])
+    );
+    expect(listed.json().versions.map((version: { versionId: string }) => version.versionId)).not.toContain(
+      oldVersion.json().version.versionId
+    );
+  });
+
   test("serves automatic file versions created by persisted agent commands", async () => {
     const server = await createServerWithDocument();
 

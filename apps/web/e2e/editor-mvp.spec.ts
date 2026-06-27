@@ -1292,6 +1292,44 @@ test("file version history pins and unpins recovery checkpoints", async ({ page 
   await expect(versionRow()).not.toContainText("고정됨");
 });
 
+test("file version retention deletes and prunes saved versions", async ({ page }) => {
+  const { documentId } = await createProjectFromEmptyState(page);
+
+  const saveVersion = async (message: string) => {
+    await page.getByTestId("file-version-message").fill(message);
+    await page.getByRole("button", { name: "현재 버전 저장" }).click();
+    await expect(page.getByTestId("file-version-status")).toContainText(`${message} 저장됨`);
+  };
+  const versionRow = (message: string) =>
+    page.getByTestId("file-version-list").locator(".file-version-row").filter({ hasText: message });
+
+  await saveVersion("릴리즈 기준");
+  await versionRow("릴리즈 기준").getByRole("button", { name: "릴리즈 기준 고정" }).click();
+  await expect(versionRow("릴리즈 기준")).toContainText("고정됨");
+
+  await saveVersion("오래된 작업");
+  await saveVersion("최신 작업");
+  await versionRow("최신 작업").getByRole("button", { name: "최신 작업 삭제" }).click();
+  await expect(page.getByTestId("file-version-status")).toContainText("최신 작업 삭제됨");
+  await expect(versionRow("최신 작업")).toHaveCount(0);
+
+  await saveVersion("최종 작업");
+  await page.getByTestId("file-version-retention-keep").fill("1");
+  await page.getByRole("button", { name: "오래된 버전 정리" }).click();
+  await expect(page.getByTestId("file-version-status")).toContainText("오래된 버전 1개 정리됨");
+  await expect(versionRow("릴리즈 기준")).toContainText("고정됨");
+  await expect(versionRow("최종 작업")).toHaveCount(1);
+  await expect(versionRow("오래된 작업")).toHaveCount(0);
+
+  const versionsResponse = await page.request.get(`http://127.0.0.1:4317/files/${documentId}/versions`);
+  expect(versionsResponse.ok()).toBeTruthy();
+  const messages = ((await versionsResponse.json()).versions as Array<{ message: string }>).map(
+    (version) => version.message
+  );
+  expect(messages).toEqual(expect.arrayContaining(["릴리즈 기준", "최종 작업"]));
+  expect(messages).not.toContain("오래된 작업");
+});
+
 test("comments panel creates and resolves a selected-layer thread", async ({ page }) => {
   const { documentId } = await createProjectFromEmptyState(page);
 

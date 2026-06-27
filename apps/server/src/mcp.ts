@@ -676,6 +676,60 @@ export function createMcpServer(storage = new FileStorage()) {
   );
 
   server.registerTool(
+    "delete_file_version",
+    {
+      description: "Delete one saved Layo file version, including pinned versions when explicitly requested.",
+      annotations: writeToolAnnotations,
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files"),
+        versionId: z.string().describe("Saved version id returned by list_file_versions")
+      }
+    },
+    async ({ fileId, versionId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              version: await storage.deleteFileVersion(fileId, versionId)
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "prune_file_versions",
+    {
+      description: "Delete old unpinned Layo file versions while preserving pinned recovery checkpoints.",
+      annotations: writeToolAnnotations,
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files"),
+        keepUnpinned: z.number().int().min(0).optional().describe("Newest unpinned versions to keep")
+      }
+    },
+    async ({ fileId, keepUnpinned }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              result: await storage.pruneFileVersions(fileId, { keepUnpinned: keepUnpinned ?? 10 })
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
     "restore_file_version",
     {
       description:

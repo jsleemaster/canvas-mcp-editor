@@ -1,6 +1,6 @@
 # Figma To Layo Migration Roadmap
 
-Last checked: 2026-06-26
+Last checked: 2026-06-27
 
 This roadmap translates `docs/product/figma-feature-inventory.md` into implementation lanes for Layo. It now sits under the broader Penpot-comparable team-product maturity target in `docs/product/penpot-maturity-benchmark.md`: Layo should mature into a professional team design platform while preserving local-first storage and deterministic MCP/HTTP control.
 
@@ -20,7 +20,7 @@ This roadmap translates `docs/product/figma-feature-inventory.md` into implement
 The current main branch already has:
 
 - Rust/TypeScript document primitives for pages, frames, rectangles, text, images, components, instances, and geometry.
-- Browser editor shell with a generated Layo brand logo asset in the left mode rail and browser icon surfaces, a Figma-like left mode rail, default asset-library panel with thumbnail-rich starter kit cards, top file tabs, rulers, bottom floating toolbar, right Inspector action strip, expanded frame preset categories, creation, selection, dragging, corner-only resizing, direct double-click text editing, selection size badges, inspector geometry, grouped Inspector alignment/distribution controls, Inspector auto-layout normal/reverse direction/gap/row-gap/column-gap/padding/child-margin/child fill sizing/equal-cell grid auto-placement/manual grid cell placement/grid item span/cross-axis alignment/main-axis distribution/width-height fit sizing controls, viewport grid resize/add/remove/reorder controls including Ctrl/Command preserve-elements reorder, bounded span/named-area reorder, direct selected area/span boundary handles, and single-cell empty-cell area creation menu, viewport grid row/column header context menus including delete-track-with-shapes actions, grouped object context-menu selection/flip/fit/export/style actions with shortcut hints and matching cut/select/fit/style/rename/group/ungroup/alignment keyboard routes, color/text editing, undo/redo shortcuts, zoom, hover measurement overlays, selected-frame padding/child-spacing guides, a multi-selection group outline with combined dimensions, and file-version history with manual/automatic snapshots, restore, and a saved-version preview card backed by current-file change-summary diff.
+- Browser editor shell with a generated Layo brand logo asset in the left mode rail and browser icon surfaces, a Figma-like left mode rail, default asset-library panel with thumbnail-rich starter kit cards, top file tabs, rulers, bottom floating toolbar, right Inspector action strip, expanded frame preset categories, creation, selection, dragging, corner-only resizing, direct double-click text editing, selection size badges, inspector geometry, grouped Inspector alignment/distribution controls, Inspector auto-layout normal/reverse direction/gap/row-gap/column-gap/padding/child-margin/child fill sizing/equal-cell grid auto-placement/manual grid cell placement/grid item span/cross-axis alignment/main-axis distribution/width-height fit sizing controls, viewport grid resize/add/remove/reorder controls including Ctrl/Command preserve-elements reorder, bounded span/named-area reorder, direct selected area/span boundary handles, and single-cell empty-cell area creation menu, viewport grid row/column header context menus including delete-track-with-shapes actions, grouped object context-menu selection/flip/fit/export/style actions with shortcut hints and matching cut/select/fit/style/rename/group/ungroup/alignment keyboard routes, color/text editing, undo/redo shortcuts, zoom, hover measurement overlays, selected-frame padding/child-spacing guides, a multi-selection group outline with combined dimensions, and file-version history with manual/automatic snapshots, restore, pinned checkpoints, manual delete, explicit retention cleanup, and a saved-version preview card backed by current-file change-summary diff.
 - Local image asset storage with browser clipboard paste, file drag/drop insertion for image nodes, context-menu image replacement, image fill/fit sizing modes, original image dimensions, and context-menu original-size restore.
 - Shift-click and marquee multi-selection, selected-layer alignment/distribution, grouped selected-layer dragging, transient snap guides for page-level peer bounds/centers, and combined multi-selection group feedback.
 - Component definitions, instances, and detach.
@@ -103,7 +103,8 @@ Figma capabilities to bring over:
 
 - Canvas comments with threads, mentions, resolved state, and prototype comments.
 - Cursor chat and spotlight.
-- Version history with named checkpoints and automatic recovery snapshots.
+- Version history with named checkpoints, automatic recovery snapshots,
+  protected pins, manual delete, and explicit retention cleanup.
 - Branches, review, and merge.
 - Viewer history or lightweight activity log.
 
@@ -112,7 +113,8 @@ Implementation shape:
 - Store comments and checkpoints as document-adjacent local/team data.
 - Use the landed selected-node comment thread sidecar as the base for viewport bubbles, replies, mentions, unread state, and resolved-review workflows. Replies, persisted mention extraction, and local unread/read state are now exposed through storage, HTTP, MCP, web API helpers, and the Inspector; live team sync, dashboard notifications, and real team-member mention targeting remain follow-up gaps.
 - Reuse existing Yjs collaboration for live comment updates.
-- Reuse the landed version-preview change-summary logic as the basis for branch diff UI.
+- Reuse the landed version-preview change-summary and retained-checkpoint logic as
+  the basis for branch diff UI.
 - Keep audio out of scope unless a later user explicitly asks for it.
 
 ## Lane 5: Prototyping And Presentation

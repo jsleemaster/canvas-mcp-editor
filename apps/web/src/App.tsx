@@ -33,6 +33,7 @@ import { apiUrl } from "./api-base";
 import {
   addCommentReply,
   createCommentThread,
+  deleteFileVersion,
   exportDesignTokensDtcg,
   importDesignTokensDtcg,
   listCommentActivity,
@@ -45,6 +46,7 @@ import {
   readFileVersion,
   restoreFileVersion,
   resolveCommentThread,
+  pruneFileVersions,
   saveFileVersion,
   setFileVersionPinned,
   subscribeToCommentEvents,
@@ -4093,6 +4095,7 @@ export function App() {
   const [fileVersions, setFileVersions] = useState<FileVersionSummary[]>([]);
   const [fileVersionPreview, setFileVersionPreview] = useState<FileVersionPreviewState | null>(null);
   const [fileVersionMessage, setFileVersionMessage] = useState("검토 전");
+  const [fileVersionRetentionKeep, setFileVersionRetentionKeep] = useState("10");
   const [fileVersionStatus, setFileVersionStatus] = useState("버전 기록 대기 중");
   const [commentThreads, setCommentThreads] = useState<CommentThread[]>([]);
   const [commentBody, setCommentBody] = useState("");
@@ -6965,6 +6968,55 @@ export function App() {
     }
   };
 
+  const deleteCurrentFileVersion = async (version: FileVersionSummary) => {
+    if (!currentProject) {
+      setFileVersionStatus("프로젝트 없음");
+      return;
+    }
+
+    try {
+      const deleted = await deleteFileVersion(currentProject.currentDocumentId, version.versionId);
+      if (fileVersionPreview?.version.versionId === version.versionId) {
+        setFileVersionPreview(null);
+      }
+      await refreshFileVersions(currentProject.currentDocumentId, `${deleted.message} 삭제됨`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "버전을 삭제하지 못했습니다";
+      setFileVersionStatus(message);
+    }
+  };
+
+  const pruneCurrentFileVersions = async () => {
+    if (!currentProject) {
+      setFileVersionStatus("프로젝트 없음");
+      return;
+    }
+
+    const keepUnpinned = Math.max(0, Math.floor(Number(fileVersionRetentionKeep)));
+    if (!Number.isFinite(keepUnpinned)) {
+      setFileVersionStatus("보관 개수를 입력하세요");
+      return;
+    }
+
+    try {
+      const result = await pruneFileVersions(currentProject.currentDocumentId, keepUnpinned);
+      setFileVersionPreview((preview) =>
+        preview && result.deletedVersions.some((version) => version.versionId === preview.version.versionId)
+          ? null
+          : preview
+      );
+      await refreshFileVersions(
+        currentProject.currentDocumentId,
+        result.deletedVersions.length > 0
+          ? `오래된 버전 ${result.deletedVersions.length}개 정리됨`
+          : "정리할 오래된 버전 없음"
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "오래된 버전을 정리하지 못했습니다";
+      setFileVersionStatus(message);
+    }
+  };
+
   const createSelectedNodeComment = async (nodeId: string) => {
     if (!currentProject) {
       setCommentStatus("프로젝트 없음");
@@ -8022,6 +8074,22 @@ export function App() {
                       새로고침
                     </button>
                   </div>
+                  <label>
+                    최근 보관
+                    <input
+                      data-testid="file-version-retention-keep"
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={fileVersionRetentionKeep}
+                      onChange={(event) => setFileVersionRetentionKeep(event.currentTarget.value)}
+                    />
+                  </label>
+                  <div className="project-actions file-version-actions">
+                    <button type="button" onClick={pruneCurrentFileVersions} disabled={!currentProject}>
+                      오래된 버전 정리
+                    </button>
+                  </div>
                   <div className="project-status" data-testid="file-version-status">
                     {fileVersionStatus}
                   </div>
@@ -8082,6 +8150,13 @@ export function App() {
                               onClick={() => void toggleFileVersionPinned(version)}
                             >
                               {version.pinned ? "고정 해제" : "고정"}
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`${version.message} 삭제`}
+                              onClick={() => void deleteCurrentFileVersion(version)}
+                            >
+                              삭제
                             </button>
                             <button
                               type="button"
