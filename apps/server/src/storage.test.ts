@@ -1959,6 +1959,62 @@ describe("FileStorage", () => {
     expect(findNode(persisted, "button-secondary")?.transform).toMatchObject({ x: 136, y: 420 });
   });
 
+  test("setComponentVariants reflows persisted variant sources after reorder", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+    await storage.applyAgentCommands("sample-file", {
+      dryRun: false,
+      commands: [
+        {
+          type: "create_rectangle",
+          parentId: "page-1",
+          id: "button-secondary",
+          name: "Button / Secondary",
+          x: 340,
+          y: 120,
+          width: 180,
+          height: 64,
+          fill: "#0f766e"
+        },
+        {
+          type: "create_component",
+          nodeId: "frame-1",
+          componentId: "component-primary",
+          name: "Button / Primary"
+        },
+        {
+          type: "create_component",
+          nodeId: "button-secondary",
+          componentId: "component-secondary",
+          name: "Button / Secondary"
+        },
+        {
+          type: "combine_components_as_variants",
+          componentId: "component-primary",
+          nodeIds: ["frame-1", "button-secondary"],
+          propertyName: "variant"
+        }
+      ]
+    });
+
+    const combined = await storage.readFile("sample-file");
+    const combinedComponent = combined.components?.find((candidate) => candidate.id === "component-primary") as any;
+    await storage.setComponentVariants("sample-file", "component-primary", [
+      combinedComponent.variants[1],
+      combinedComponent.variants[0]
+    ]);
+
+    const persisted = await storage.readFile("sample-file");
+    const component = persisted.components?.find((candidate) => candidate.id === "component-primary") as any;
+    expect(component.variants.map((variant: any) => variant.id)).toEqual(["variant-button-secondary", "variant-frame-1"]);
+    expect(component.source_node.id).toBe("button-secondary");
+    expect(component.source_node.transform).toMatchObject({ x: 120, y: 80 });
+    expect(component.variants[0].source_node.transform).toMatchObject({ x: 120, y: 80 });
+    expect(component.variants[1].source_node.transform).toMatchObject({ x: 332, y: 80 });
+    expect(findNode(persisted, "button-secondary")?.transform).toMatchObject({ x: 120, y: 80 });
+    expect(findNode(persisted, "frame-1")?.transform).toMatchObject({ x: 332, y: 80 });
+  });
+
   test("component instance fill overrides persist after switching variants", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
     const storage = await storageWithDocument(tempRoot);

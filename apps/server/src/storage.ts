@@ -2100,10 +2100,12 @@ export class FileStorage {
       throw new Error("component variants must not be empty");
     }
 
+    const previousArea = structuredClone(component.variant_area ?? null);
     component.variants = normalizedVariants;
     if (normalizedVariants.length > 1 && !component.variant_area) {
       component.variant_area = defaultComponentVariantArea();
     }
+    reflowComponentVariantArea(document, component, previousArea);
     const validVariantIds = new Set(normalizedVariants.map((variant) => variant.id));
     const fallbackVariantId = normalizedVariants[0]?.id ?? null;
     forEachNode(document, (node) => {
