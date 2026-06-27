@@ -405,6 +405,14 @@ describe("MCP AI editing workflow", () => {
                   default_value: "Layo"
                 }
               ],
+              variant_props: [
+                {
+                  name: "surface",
+                  type: "string",
+                  variant_property: "surface",
+                  default_value: "elevated"
+                }
+              ],
               docs_url: "https://repo.example/ui/card"
             }
           ]
@@ -424,7 +432,15 @@ describe("MCP AI editing workflow", () => {
     expect(listed.mappings[0]).toMatchObject({
       component_id: "component-card",
       import_path: "@repo/ui/card",
-      export_name: "Card"
+      export_name: "Card",
+      variant_props: [
+        {
+          name: "surface",
+          type: "string",
+          variant_property: "surface",
+          default_value: "elevated"
+        }
+      ]
     });
   });
 

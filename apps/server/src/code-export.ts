@@ -126,6 +126,12 @@ export interface CodeComponentMappingArtifact {
     sourceField: "text";
     defaultValue: string;
   }>;
+  variantProps: Array<{
+    name: string;
+    type: "string";
+    variantProperty: string;
+    defaultValue: string;
+  }>;
   docsUrl?: string;
 }
 
@@ -156,8 +162,12 @@ export function exportDesignToCode(
   const colorTokens = documentColorTokens(document);
   const spacingTokens = documentSpacingTokens(document);
   const tokenMap = new Map([...colorTokens, ...spacingTokens].map((token) => [token.id, token]));
+  const componentById = new Map((document.components ?? []).map((component) => [component.id, component]));
   const mappingByComponentId = new Map(
-    (document.code_mappings ?? []).map((mapping) => [mapping.component_id, mappingArtifactFor(mapping)])
+    (document.code_mappings ?? []).map((mapping) => [
+      mapping.component_id,
+      mappingArtifactFor(mapping, componentById.get(mapping.component_id))
+    ])
   );
   const componentIdBySourceNodeId = new Map(
     (document.components ?? []).map((component) => [component.source_node.id, component.id])
@@ -271,13 +281,22 @@ function repoMappingForNode(
   return componentId ? mappingByComponentId.get(componentId) : undefined;
 }
 
-function mappingArtifactFor(mapping: CodeComponentMapping): CodeComponentMappingArtifact {
+function mappingArtifactFor(mapping: CodeComponentMapping, component?: ComponentDefinition): CodeComponentMappingArtifact {
   const props = mapping.props.map((prop) => ({
     name: prop.name,
     type: prop.type,
     sourceNodeId: prop.source_node_id,
     sourceField: prop.source_field,
     defaultValue: prop.default_value
+  }));
+  const variantValueByProperty = new Map(
+    (component?.variants[0]?.properties ?? []).map((property) => [property.name, property.value])
+  );
+  const variantProps = (mapping.variant_props ?? []).map((prop) => ({
+    name: prop.name,
+    type: prop.type,
+    variantProperty: prop.variant_property,
+    defaultValue: variantValueByProperty.get(prop.variant_property) ?? prop.default_value
   }));
   const artifact: CodeComponentMappingArtifact = {
     id: mapping.id,
@@ -287,8 +306,9 @@ function mappingArtifactFor(mapping: CodeComponentMapping): CodeComponentMapping
     exportName: mapping.export_name,
     importMode: mapping.import_mode,
     importStatement: importStatementForMapping(mapping),
-    usage: usageForMapping(mapping.export_name, props),
+    usage: usageForMapping(mapping.export_name, props, variantProps),
     props,
+    variantProps,
     ...(mapping.docs_url ? { docsUrl: mapping.docs_url } : {})
   };
   return artifact;
@@ -301,11 +321,19 @@ function importStatementForMapping(mapping: CodeComponentMapping) {
   return `import { ${mapping.export_name} } from "${mapping.import_path}";`;
 }
 
-function usageForMapping(exportName: string, props: CodeComponentMappingArtifact["props"]) {
-  if (props.length === 0) {
+function usageForMapping(
+  exportName: string,
+  props: CodeComponentMappingArtifact["props"],
+  variantProps: CodeComponentMappingArtifact["variantProps"]
+) {
+  const propParts = [
+    ...props.map((prop) => `${prop.name}={${prop.name}}`),
+    ...variantProps.map((prop) => `${prop.name}=${JSON.stringify(prop.defaultValue)}`)
+  ];
+  if (propParts.length === 0) {
     return `<${exportName} />`;
   }
-  return `<${exportName} ${props.map((prop) => `${prop.name}={${prop.name}}`).join(" ")} />`;
+  return `<${exportName} ${propParts.join(" ")} />`;
 }
 
 function structureFor(

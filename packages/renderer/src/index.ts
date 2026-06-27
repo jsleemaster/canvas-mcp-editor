@@ -147,6 +147,13 @@ export interface CodeComponentMappingProp {
   default_value: string;
 }
 
+export interface CodeComponentMappingVariantProp {
+  name: string;
+  type: "string";
+  variant_property: string;
+  default_value: string;
+}
+
 export interface CodeComponentMapping {
   id: string;
   component_id: string;
@@ -155,6 +162,7 @@ export interface CodeComponentMapping {
   export_name: string;
   import_mode: "named" | "default";
   props: CodeComponentMappingProp[];
+  variant_props: CodeComponentMappingVariantProp[];
   docs_url?: string;
 }
 

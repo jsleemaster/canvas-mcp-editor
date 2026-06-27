@@ -286,6 +286,9 @@ function codeMappingSnippetFor(mapping: NonNullable<CodeStructureNode["repoMappi
     mapping.importStatement,
     "",
     mapping.usage,
+    mapping.variantProps.length > 0
+      ? `Variant props: ${mapping.variantProps.map((prop) => `${prop.name}=${prop.defaultValue}`).join(", ")}`
+      : null,
     mapping.docsUrl ? `Docs: ${mapping.docsUrl}` : null
   ]
     .filter((line): line is string => line !== null)
@@ -3598,6 +3601,9 @@ function DevPanel({
                 <span>{repoMapping.importStatement}</span>
                 <span>{repoMapping.usage}</span>
                 <span>{repoMapping.importPath}</span>
+                {repoMapping.variantProps.map((prop) => (
+                  <span key={prop.name}>{`${prop.name}: ${prop.defaultValue}`}</span>
+                ))}
                 {repoMapping.docsUrl ? <span>{repoMapping.docsUrl}</span> : null}
               </div>
             ) : (

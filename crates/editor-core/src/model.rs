@@ -145,6 +145,8 @@ pub struct CodeComponentMapping {
     pub export_name: String,
     pub import_mode: CodeComponentMappingImportMode,
     pub props: Vec<CodeComponentMappingProp>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub variant_props: Vec<CodeComponentMappingVariantProp>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub docs_url: Option<String>,
 }
@@ -165,6 +167,16 @@ pub struct CodeComponentMappingProp {
     pub prop_type: CodeComponentMappingPropType,
     pub source_node_id: String,
     pub source_field: CodeComponentMappingSourceField,
+    pub default_value: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct CodeComponentMappingVariantProp {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub prop_type: CodeComponentMappingPropType,
+    pub variant_property: String,
     pub default_value: String,
 }
 

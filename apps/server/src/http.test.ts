@@ -1008,6 +1008,14 @@ describe("HTTP server", () => {
                 default_value: "Layo"
               }
             ],
+            variant_props: [
+              {
+                name: "surface",
+                type: "string",
+                variant_property: "surface",
+                default_value: "elevated"
+              }
+            ],
             docs_url: "https://repo.example/ui/card"
           }
         ]
@@ -1030,7 +1038,15 @@ describe("HTTP server", () => {
     expect(exported.json().export.implementationSpec.components[0].repoMapping).toMatchObject({
       componentId: "component-card",
       importStatement: 'import { Card } from "@repo/ui/card";',
-      usage: "<Card title={title} />"
+      usage: '<Card title={title} surface="elevated" />',
+      variantProps: [
+        {
+          name: "surface",
+          type: "string",
+          variantProperty: "surface",
+          defaultValue: "elevated"
+        }
+      ]
     });
     expect(exported.json().export.elements[0].structure.repoMapping).toMatchObject({
       componentId: "component-card",

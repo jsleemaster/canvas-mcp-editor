@@ -447,6 +447,14 @@ test("inspector dev panel shows repo code mappings for selected component instan
               default_value: "Layo"
             }
           ],
+          variant_props: [
+            {
+              name: "surface",
+              type: "string",
+              variant_property: "surface",
+              default_value: "elevated"
+            }
+          ],
           docs_url: "https://repo.example/ui/card"
         }
       ]
@@ -463,14 +471,15 @@ test("inspector dev panel shows repo code mappings for selected component instan
   await expect(panel).toContainText("Code mapping");
   await expect(panel).toContainText("@repo/ui/card");
   await expect(panel).toContainText("import { Card }");
-  await expect(panel).toContainText("<Card title={title} />");
+  await expect(panel).toContainText('<Card title={title} surface="elevated" />');
+  await expect(panel).toContainText("surface: elevated");
   await expect(panel).toContainText("https://repo.example/ui/card");
 
   await page.getByTestId("dev-panel-copy-code-mapping").click();
   await expect(page.getByTestId("dev-panel-copy-status")).toContainText("코드 매핑 복사됨");
   const clipboard = await page.evaluate(() => navigator.clipboard.readText());
   expect(clipboard).toContain('import { Card } from "@repo/ui/card";');
-  expect(clipboard).toContain("<Card title={title} />");
+  expect(clipboard).toContain('<Card title={title} surface="elevated" />');
 });
 
 test("inspector dev panel copies generated handoff snippets to the clipboard", async ({ page }) => {
