@@ -3,6 +3,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent as ReactChangeEvent,
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
@@ -34,7 +35,9 @@ import {
   addCommentReply,
   createCommentThread,
   deleteFileVersion,
+  exportFileArchive,
   exportDesignTokensDtcg,
+  importFileArchive,
   importDesignTokensDtcg,
   listCommentActivity,
   listCommentNotifications,
@@ -47,6 +50,7 @@ import {
   restoreFileVersion,
   resolveCommentThread,
   pruneFileVersions,
+  reviewFileArchive,
   saveFileVersion,
   setFileVersionPinned,
   subscribeToCommentEvents,
@@ -55,6 +59,7 @@ import {
   type CommentMentionTarget,
   type CommentNotificationSummary,
   type CommentThread,
+  type FileArchiveReview,
   type FileVersionChangeSummary,
   type FileVersionSummary
 } from "./document-api";
@@ -326,6 +331,32 @@ function downloadDataUrl(dataUrl: string, filename: string) {
   anchor.remove();
 }
 
+function downloadBlob(blob: Blob, filename: string) {
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      const result = String(reader.result ?? "");
+      const commaIndex = result.indexOf(",");
+      resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result);
+    });
+    reader.addEventListener("error", () => {
+      reject(reader.error ?? new Error("파일을 읽지 못했습니다"));
+    });
+    reader.readAsDataURL(file);
+  });
+}
+
 function ContextMenuSection({
   label,
   children
@@ -496,6 +527,12 @@ type LeftPanelMode = "files" | "assets" | "layers" | "team";
 interface FileVersionPreviewState {
   version: FileVersionSummary;
   summary: FileVersionChangeSummary;
+}
+
+interface FileArchiveReviewState {
+  review: FileArchiveReview;
+  archiveBase64: string;
+  sourceFileName: string;
 }
 
 interface AreaSelectionSession {
@@ -4097,6 +4134,9 @@ export function App() {
   const [fileVersionMessage, setFileVersionMessage] = useState("검토 전");
   const [fileVersionRetentionKeep, setFileVersionRetentionKeep] = useState("10");
   const [fileVersionStatus, setFileVersionStatus] = useState("버전 기록 대기 중");
+  const [fileArchiveReview, setFileArchiveReview] = useState<FileArchiveReviewState | null>(null);
+  const [fileArchiveImportName, setFileArchiveImportName] = useState("");
+  const [fileArchiveStatus, setFileArchiveStatus] = useState("아카이브 대기 중");
   const [commentThreads, setCommentThreads] = useState<CommentThread[]>([]);
   const [commentBody, setCommentBody] = useState("");
   const [commentReplyBodies, setCommentReplyBodies] = useState<Record<string, string>>({});
@@ -4145,6 +4185,7 @@ export function App() {
   const remotePresenceSignatureRef = useRef(new Map<string, string>());
   const remotePresenceSeenAtRef = useRef(new Map<string, number>());
   const manifestFileInputRef = useRef<HTMLInputElement | null>(null);
+  const fileArchiveInputRef = useRef<HTMLInputElement | null>(null);
   const imageReplacementFileInputRef = useRef<HTMLInputElement | null>(null);
   const imageReplacementNodeIdRef = useRef<string | null>(null);
   const stageFrameRef = useRef<HTMLDivElement | null>(null);
@@ -6773,6 +6814,107 @@ export function App() {
     }
   };
 
+  const exportCurrentFileArchive = async () => {
+    if (!currentProject) {
+      setFileArchiveStatus("프로젝트 없음");
+      return;
+    }
+
+    try {
+      const archive = await exportFileArchive(currentProject.currentDocumentId);
+      downloadBlob(archive.blob, archive.fileName);
+      setFileArchiveStatus(`${archive.fileName} 내보냄`);
+      setProjectStatus("파일 아카이브 내보냄");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "파일 아카이브를 내보내지 못했습니다";
+      setFileArchiveStatus(message);
+      setProjectStatus(message);
+    }
+  };
+
+  const reviewSelectedFileArchive = async (event: ReactChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      setFileArchiveStatus("아카이브 검토 중");
+      const archiveBase64 = await readFileAsBase64(file);
+      const review = await reviewFileArchive(archiveBase64);
+      setFileArchiveReview({
+        review,
+        archiveBase64,
+        sourceFileName: file.name
+      });
+      setFileArchiveImportName(review.suggestedName || review.originalName);
+      setFileArchiveStatus(`${review.suggestedName || review.originalName} 검토됨`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "아카이브를 검토하지 못했습니다";
+      setFileArchiveReview(null);
+      setFileArchiveImportName("");
+      setFileArchiveStatus(message);
+    } finally {
+      input.value = "";
+    }
+  };
+
+  const cancelFileArchiveImport = () => {
+    setFileArchiveReview(null);
+    setFileArchiveImportName("");
+    setFileArchiveStatus("아카이브 가져오기 취소됨");
+  };
+
+  const importReviewedFileArchive = async () => {
+    if (!fileArchiveReview) {
+      setFileArchiveStatus("검토된 아카이브 없음");
+      return;
+    }
+
+    const archiveName =
+      fileArchiveImportName.trim() ||
+      fileArchiveReview.review.suggestedName ||
+      fileArchiveReview.review.originalName ||
+      "가져온 파일";
+
+    try {
+      setFileArchiveStatus("아카이브 가져오는 중");
+      const project = await createSavedProject({
+        name: archiveName,
+        documentName: archiveName
+      });
+      const imported = await importFileArchive({
+        archiveBase64: fileArchiveReview.archiveBase64,
+        fileId: project.currentDocumentId,
+        name: archiveName
+      });
+      const importedName = imported.name || archiveName;
+      const importedProject: ProjectManifest = {
+        ...project,
+        name: importedName,
+        documents: project.documents.map((document) =>
+          document.documentId === project.currentDocumentId
+            ? { ...document, name: importedName, updatedAt: new Date().toISOString() }
+            : document
+        )
+      };
+      const nextProjects = [
+        importedProject,
+        ...projects.filter((candidate) => candidate.projectId !== importedProject.projectId)
+      ];
+      await loadProjectDocument(importedProject, nextProjects);
+      setFileArchiveReview(null);
+      setFileArchiveImportName("");
+      setFileArchiveStatus(`${importedName} 가져옴`);
+      setProjectStatus(`${importedName} 가져옴`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "아카이브를 가져오지 못했습니다";
+      setFileArchiveStatus(message);
+      setProjectStatus(message);
+    }
+  };
+
   const saveProjectName = async () => {
     if (!currentProject) {
       return;
@@ -7965,6 +8107,68 @@ export function App() {
                 <div className="project-status" data-testid="project-sharing-status">
                   {topFileShareLabel === "비공개" ? "비공개 프로젝트" : topFileShareLabel}
                 </div>
+                <section className="file-archive-panel" data-testid="file-archive-panel" aria-label="파일 아카이브">
+                  <div className="file-archive-heading">
+                    <strong>파일 아카이브</strong>
+                  </div>
+                  <div className="project-actions file-archive-actions">
+                    <button type="button" onClick={() => void exportCurrentFileArchive()} disabled={!currentProject}>
+                      현재 파일 아카이브 내보내기
+                    </button>
+                    <button type="button" onClick={() => fileArchiveInputRef.current?.click()}>
+                      아카이브 파일 선택
+                    </button>
+                  </div>
+                  <input
+                    ref={fileArchiveInputRef}
+                    className="visually-hidden"
+                    data-testid="file-archive-upload"
+                    type="file"
+                    accept=".layo.zip,.zip,application/zip,application/vnd.layo.file-archive+zip"
+                    onChange={(event) => void reviewSelectedFileArchive(event)}
+                  />
+                  <div className="project-status" data-testid="file-archive-status">
+                    {fileArchiveStatus}
+                  </div>
+                  {fileArchiveReview ? (
+                    <div className="file-archive-review" data-testid="file-archive-review">
+                      <div className="file-archive-review-header">
+                        <span>
+                          <strong>가져오기 전 검토</strong>
+                          <span>
+                            {fileArchiveReview.review.suggestedName} · {fileArchiveReview.sourceFileName}
+                          </span>
+                        </span>
+                        <button type="button" onClick={cancelFileArchiveImport}>
+                          검토 취소
+                        </button>
+                      </div>
+                      <div className="file-archive-review-body">
+                        <strong>{fileArchiveReview.review.originalName}</strong>
+                        <span>
+                          페이지 {fileArchiveReview.review.pageCount}개 · 객체 {fileArchiveReview.review.nodeCount}개 ·
+                          에셋 {fileArchiveReview.review.assetCount}개
+                        </span>
+                        <span>원본 파일 {fileArchiveReview.review.originalFileId}</span>
+                      </div>
+                      <label>
+                        가져올 이름
+                        <input
+                          data-testid="file-archive-import-name"
+                          value={fileArchiveImportName}
+                          onChange={(event) => setFileArchiveImportName(event.currentTarget.value)}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="file-archive-import"
+                        onClick={() => void importReviewedFileArchive()}
+                      >
+                        검토한 아카이브 가져오기
+                      </button>
+                    </div>
+                  ) : null}
+                </section>
                 <section
                   className="comment-notification-summary"
                   data-testid="comment-notification-summary"

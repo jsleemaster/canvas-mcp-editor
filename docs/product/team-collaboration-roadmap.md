@@ -64,6 +64,9 @@ deployment details in `docs/deployment/collaboration.md`.
   manifest/document JSON plus referenced image asset metadata and bytes, then
   imported into another local store through storage, HTTP, or MCP while keeping
   image asset references intact.
+- The file panel exposes single-file Layo archive export/import controls. Import
+  starts with a server-validated review summary, then creates a fresh project
+  shell and writes the reviewed archive into that new document.
 
 ## Phase 1: Local Team Creation
 
@@ -163,8 +166,8 @@ Exit criteria:
 - Document-level permission policies beyond relay connection roles.
 - Shared team libraries for components, variables, assets, and code-export
   mappings.
-- Import review UI for Layo archives, multi-file project archives, and
-  Penpot/Figma migration paths.
+- Import review UI for multi-file project archives and Penpot/Figma migration
+  paths.
 - Admin-facing diagnostics for relay health, room activity, and sync errors.
 
 ## Non-Goals
