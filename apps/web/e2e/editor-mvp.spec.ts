@@ -458,6 +458,25 @@ test("inspector dev panel downloads the selected layer as png", async ({ page })
   await expect(page.getByTestId("dev-panel-asset-status")).toContainText("헤드라인 PNG 다운로드됨");
 });
 
+test("inspector dev panel downloads the selected layer as jpeg", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await page.getByTestId("inspector-tab-dev").click();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByTestId("dev-panel-download-jpeg").click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("text-1.jpg");
+  const downloadPath = await download.path();
+  if (!downloadPath) {
+    throw new Error("jpeg download path missing");
+  }
+  const jpeg = await readFile(downloadPath);
+  expect([...jpeg.subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff]);
+  await expect(page.getByTestId("dev-panel-asset-status")).toContainText("헤드라인 JPEG 다운로드됨");
+});
+
 function pngDimensions(png: Buffer) {
   expect([...png.subarray(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   return {

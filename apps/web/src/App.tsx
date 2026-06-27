@@ -3114,12 +3114,14 @@ function DevPanel({
   selectedNode,
   codeExport,
   codeExportStatus,
-  onDownloadPng
+  onDownloadPng,
+  onDownloadJpeg
 }: {
   selectedNode: RendererNode | null;
   codeExport: CodeExportPayload | null;
   codeExportStatus: string;
   onDownloadPng: (scale: PngExportScale) => string | null;
+  onDownloadJpeg: (scale: PngExportScale) => string | null;
 }) {
   const [copyStatus, setCopyStatus] = useState("복사 대기 중");
   const [assetStatus, setAssetStatus] = useState("에셋 다운로드 대기 중");
@@ -3167,6 +3169,11 @@ function DevPanel({
     setAssetStatus(nextStatus ?? "PNG 다운로드 실패");
   };
 
+  const downloadSelectedJpeg = () => {
+    const nextStatus = onDownloadJpeg(pngScale);
+    setAssetStatus(nextStatus ?? "JPEG 다운로드 실패");
+  };
+
   return (
     <section className="inspector-section dev-panel" data-testid="dev-panel" aria-label="개발 핸드오프">
       <h3>개발</h3>
@@ -3211,6 +3218,14 @@ function DevPanel({
                 onClick={downloadSelectedPng}
               >
                 PNG 다운로드
+              </button>
+              <button
+                type="button"
+                className="dev-panel-copy-button"
+                data-testid="dev-panel-download-jpeg"
+                onClick={downloadSelectedJpeg}
+              >
+                JPEG 다운로드
               </button>
             </div>
             <div
@@ -3339,6 +3354,7 @@ function Inspector({
   onResolveComment,
   onMarkCommentRead,
   onDownloadSelectedPng,
+  onDownloadSelectedJpeg,
   onTabChange
 }: {
   activeTab: InspectorTab;
@@ -3379,6 +3395,7 @@ function Inspector({
   onResolveComment: (threadId: string) => void;
   onMarkCommentRead: (threadId: string) => void;
   onDownloadSelectedPng: (scale: PngExportScale) => string | null;
+  onDownloadSelectedJpeg: (scale: PngExportScale) => string | null;
   onTabChange: (tab: InspectorTab) => void;
 }) {
   const tokenControls = (
@@ -3412,6 +3429,7 @@ function Inspector({
             codeExport={codeExport}
             codeExportStatus={codeExportStatus}
             onDownloadPng={onDownloadSelectedPng}
+            onDownloadJpeg={onDownloadSelectedJpeg}
           />
         ) : activeTab === "prototype" ? (
           <PrototypePanel />
@@ -3446,6 +3464,7 @@ function Inspector({
             codeExport={codeExport}
             codeExportStatus={codeExportStatus}
             onDownloadPng={onDownloadSelectedPng}
+            onDownloadJpeg={onDownloadSelectedJpeg}
           />
         ) : activeTab === "prototype" ? (
           <PrototypePanel />
@@ -3675,6 +3694,7 @@ function Inspector({
           codeExport={codeExport}
           codeExportStatus={codeExportStatus}
           onDownloadPng={onDownloadSelectedPng}
+          onDownloadJpeg={onDownloadSelectedJpeg}
         />
       ) : activeTab === "prototype" ? (
         <PrototypePanel />
@@ -5545,14 +5565,23 @@ export function App() {
     }
   };
 
-  const downloadSelectionPngFromState = (
+  const downloadSelectionRasterFromState = (
     scopedState: EditorState,
-    scale: PngExportScale = 2,
-    filename?: string
+    {
+      scale = 2,
+      filename,
+      mimeType,
+      failureMessage
+    }: {
+      scale?: PngExportScale;
+      filename?: string;
+      mimeType: "image/png" | "image/jpeg";
+      failureMessage: string;
+    }
   ): RendererNode | null => {
     const stage = konvaStageRef.current;
     if (!stage) {
-      setProjectStatus("PNG 내보내기에 실패했습니다");
+      setProjectStatus(failureMessage);
       return null;
     }
 
@@ -5560,7 +5589,7 @@ export function App() {
     const node = nodeId ? findNodeById(scopedState.document, nodeId) : null;
     const bounds = nodeId ? getNodeBounds(scopedState.document, nodeId) : null;
     if (!node || !bounds) {
-      setProjectStatus("PNG 내보내기에 실패했습니다");
+      setProjectStatus(failureMessage);
       return null;
     }
 
@@ -5582,13 +5611,14 @@ export function App() {
           width,
           height,
           pixelRatio: scale,
-          mimeType: "image/png"
+          mimeType,
+          quality: mimeType === "image/jpeg" ? 0.92 : undefined
         }),
-        filename ?? `${node.id}.png`
+        filename ?? `${node.id}.${mimeType === "image/jpeg" ? "jpg" : "png"}`
       );
       return node;
     } catch (error) {
-      const message = error instanceof Error ? error.message : "PNG 내보내기에 실패했습니다";
+      const message = error instanceof Error ? error.message : failureMessage;
       setProjectStatus(message);
       return null;
     } finally {
@@ -5604,7 +5634,10 @@ export function App() {
       return;
     }
 
-    const node = downloadSelectionPngFromState(scopeStateToContextNode(currentEditor));
+    const node = downloadSelectionRasterFromState(scopeStateToContextNode(currentEditor), {
+      mimeType: "image/png",
+      failureMessage: "PNG 내보내기에 실패했습니다"
+    });
     if (node) {
       setProjectStatus(`${node.name} PNG 내보내기 완료`);
     }
@@ -5619,8 +5652,30 @@ export function App() {
 
     const nodeId = currentEditor.selection.nodeId;
     const filename = nodeId ? `${nodeId}${scale === 2 ? "" : `@${scale}x`}.png` : undefined;
-    const node = downloadSelectionPngFromState(currentEditor, scale, filename);
+    const node = downloadSelectionRasterFromState(currentEditor, {
+      scale,
+      filename,
+      mimeType: "image/png",
+      failureMessage: "PNG 다운로드 실패"
+    });
     return node ? `${node.name} PNG${scale === 2 ? "" : ` ${scale}x`} 다운로드됨` : null;
+  };
+
+  const downloadSelectedNodeJpegFromDevPanel = (scale: PngExportScale) => {
+    const currentEditor = editorRef.current;
+    if (!currentEditor) {
+      return null;
+    }
+
+    const nodeId = currentEditor.selection.nodeId;
+    const filename = nodeId ? `${nodeId}${scale === 2 ? "" : `@${scale}x`}.jpg` : undefined;
+    const node = downloadSelectionRasterFromState(currentEditor, {
+      scale,
+      filename,
+      mimeType: "image/jpeg",
+      failureMessage: "JPEG 다운로드 실패"
+    });
+    return node ? `${node.name} JPEG${scale === 2 ? "" : ` ${scale}x`} 다운로드됨` : null;
   };
 
   const createContextComponent = () => {
@@ -10035,6 +10090,7 @@ export function App() {
         onResolveComment={(threadId) => void resolveSelectedNodeComment(threadId)}
         onMarkCommentRead={(threadId) => void markSelectedNodeCommentRead(threadId)}
         onDownloadSelectedPng={downloadSelectedNodePngFromDevPanel}
+        onDownloadSelectedJpeg={downloadSelectedNodeJpegFromDevPanel}
         onTabChange={setInspectorTab}
         onGeometryChange={updateGeometry}
         onFillChange={(nodeId, fill) => dispatch({ type: "set_fill", nodeId, fill })}
