@@ -130,6 +130,13 @@ const codeComponentMappingPropSchema = z.object({
   default_value: z.string().describe("Default prop value from the design source")
 });
 
+const codeComponentMappingVariantPropSchema = z.object({
+  name: z.string().describe("Code variant prop name, for example tone or size"),
+  type: z.literal("string"),
+  variant_property: z.string().describe("Layo component variant property name"),
+  default_value: z.string().describe("Fallback value when the component has no matching variant property")
+});
+
 const codeComponentMappingSchema = z.object({
   id: z.string().describe("Stable mapping id"),
   component_id: z.string().describe("Layo component definition id"),
@@ -138,6 +145,7 @@ const codeComponentMappingSchema = z.object({
   export_name: z.string().describe("Code component export name"),
   import_mode: z.enum(["named", "default"]).describe("Whether the import is named or default"),
   props: z.array(codeComponentMappingPropSchema).default([]),
+  variant_props: z.array(codeComponentMappingVariantPropSchema).default([]),
   docs_url: z.string().optional().describe("Optional component documentation URL")
 });
 

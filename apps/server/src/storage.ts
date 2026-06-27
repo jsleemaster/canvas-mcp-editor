@@ -190,6 +190,13 @@ export interface CodeComponentMappingProp {
   default_value: string;
 }
 
+export interface CodeComponentMappingVariantProp {
+  name: string;
+  type: CodeComponentMappingPropType;
+  variant_property: string;
+  default_value: string;
+}
+
 export interface CodeComponentMapping {
   id: string;
   component_id: string;
@@ -198,6 +205,7 @@ export interface CodeComponentMapping {
   export_name: string;
   import_mode: CodeComponentMappingImportMode;
   props: CodeComponentMappingProp[];
+  variant_props: CodeComponentMappingVariantProp[];
   docs_url?: string;
 }
 
@@ -2426,6 +2434,7 @@ function parseCodeComponentMapping(input: unknown): CodeComponentMapping {
     export_name: normalizeRequiredCodeString(candidate.export_name, "mapping export name"),
     import_mode: importMode,
     props: normalizeCodeComponentMappingProps(candidate.props),
+    variant_props: normalizeCodeComponentMappingVariantProps(candidate.variant_props),
     ...normalizeOptionalCodeString(candidate.docs_url, "docs_url")
   };
 }
@@ -2459,6 +2468,33 @@ function normalizeCodeComponentMappingProps(input: unknown): CodeComponentMappin
       source_node_id: sourceNodeId,
       source_field: "text",
       default_value: normalizeRequiredCodeString(candidate.default_value, "mapping prop default value")
+    };
+  });
+}
+
+function normalizeCodeComponentMappingVariantProps(input: unknown): CodeComponentMappingVariantProp[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return input.map((value) => {
+    if (!value || typeof value !== "object") {
+      throw inputValidationError("code mapping variant prop is required");
+    }
+    const candidate = value as Partial<CodeComponentMappingVariantProp>;
+    const name = normalizeRequiredCodeString(candidate.name, "mapping variant prop name");
+    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) {
+      throw inputValidationError(`code mapping variant prop name is invalid: ${name}`);
+    }
+    if (candidate.type !== "string") {
+      throw inputValidationError("code mapping variant prop type is invalid");
+    }
+
+    return {
+      name,
+      type: "string",
+      variant_property: normalizeRequiredCodeString(candidate.variant_property, "mapping variant property"),
+      default_value: normalizeRequiredCodeString(candidate.default_value, "mapping variant default value")
     };
   });
 }

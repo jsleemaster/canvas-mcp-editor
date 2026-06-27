@@ -238,6 +238,39 @@ describe("code export", () => {
     expect(instance.jsModule).toContain("repoMapping");
   });
 
+  test("exports variant-aware repo component mapping props", () => {
+    const fixture = componentFixture() as any;
+    fixture.code_mappings = [
+      {
+        ...repoComponentMappingFixture(),
+        variant_props: [
+          {
+            name: "tone",
+            type: "string",
+            variant_property: "tone",
+            default_value: "secondary"
+          }
+        ]
+      }
+    ];
+
+    const result = exportDesignToCode(fixture);
+    const component = result.implementationSpec.components[0] as any;
+    const instance = result.elements[0] as any;
+
+    expect(component.repoMapping.variantProps).toEqual([
+      {
+        name: "tone",
+        type: "string",
+        variantProperty: "tone",
+        defaultValue: "primary"
+      }
+    ]);
+    expect(component.repoMapping.usage).toBe('<TossButton label={label} tone="primary" />');
+    expect(instance.structure.repoMapping.variantProps).toEqual(component.repoMapping.variantProps);
+    expect(instance.structure.repoMapping.usage).toBe('<TossButton label={label} tone="primary" />');
+  });
+
   test("exports layout and constraints metadata for agents", () => {
     const fixture = tossFixture();
     fixture.pages[0].children[0].layout = {

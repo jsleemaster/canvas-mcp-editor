@@ -297,6 +297,12 @@ export interface CodeComponentMappingArtifact {
     sourceField: "text";
     defaultValue: string;
   }>;
+  variantProps: Array<{
+    name: string;
+    type: "string";
+    variantProperty: string;
+    defaultValue: string;
+  }>;
   docsUrl?: string;
 }
 

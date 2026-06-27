@@ -70,6 +70,14 @@ fn code_component_mappings_round_trip_through_json() {
               "default_value": "Layo"
             }
           ],
+          "variant_props": [
+            {
+              "name": "surface",
+              "type": "string",
+              "variant_property": "surface",
+              "default_value": "elevated"
+            }
+          ],
           "docs_url": "https://repo.example/ui/card"
         }
       ],
@@ -85,9 +93,11 @@ fn code_component_mappings_round_trip_through_json() {
         parsed.code_mappings[0].props[0].source_field,
         editor_core::CodeComponentMappingSourceField::Text
     );
+    assert_eq!(parsed.code_mappings[0].variant_props[0].variant_property, "surface");
 
     let serialized = serde_json::to_string(&parsed).unwrap();
     assert!(serialized.contains("\"code_mappings\""));
+    assert!(serialized.contains("\"variant_props\""));
     assert!(serialized.contains("\"import_path\":\"@repo/ui/card\""));
 }
 
