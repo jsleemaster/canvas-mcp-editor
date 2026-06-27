@@ -3,6 +3,8 @@ import {
   addCommentReply,
   createCommentThread,
   deleteFileVersion,
+  exportFileArchive,
+  importFileArchive,
   listCommentActivity,
   listCommentNotifications,
   listCommentThreads,
@@ -14,6 +16,7 @@ import {
   resolveCommentThread,
   restoreFileVersion,
   pruneFileVersions,
+  reviewFileArchive,
   saveFileVersion,
   setFileVersionPinned,
   subscribeToCommentEvents,
@@ -272,6 +275,83 @@ describe("parseDocumentPayload", () => {
 });
 
 describe("file version API helpers", () => {
+  test("reviews, imports, and exports file archives", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetcher = async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), init });
+      const pathname = new URL(String(url), "http://127.0.0.1:4317").pathname;
+
+      if (pathname === "/files/import/archive/review" && init?.method === "POST") {
+        expect(init.headers).toEqual({ "Content-Type": "application/json" });
+        expect(JSON.parse(String(init.body))).toEqual({ archiveBase64: "UEs=" });
+        return jsonResponse({
+          review: {
+            originalFileId: "document-1",
+            originalName: "원본 문서",
+            suggestedName: "원본 문서",
+            assetCount: 2,
+            pageCount: 1,
+            nodeCount: 4
+          }
+        });
+      }
+
+      if (pathname === "/files/import/archive" && init?.method === "POST") {
+        expect(init.headers).toEqual({ "Content-Type": "application/json" });
+        expect(JSON.parse(String(init.body))).toEqual({
+          archiveBase64: "UEs=",
+          fileId: "document-imported",
+          name: "가져온 문서"
+        });
+        return jsonResponse({
+          imported: {
+            fileId: "document-imported",
+            name: "가져온 문서",
+            originalFileId: "document-1",
+            originalName: "원본 문서",
+            assetCount: 2
+          }
+        });
+      }
+
+      if (pathname === "/files/document-1/export/archive") {
+        return new Response(new Blob([new Uint8Array([0x50, 0x4b])]), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/vnd.layo.file-archive+zip",
+            "Content-Disposition": 'attachment; filename="document-1.layo.zip"'
+          }
+        });
+      }
+
+      return new Response("not found", { status: 404 });
+    };
+
+    await expect(reviewFileArchive("UEs=", fetcher as typeof fetch)).resolves.toMatchObject({
+      originalFileId: "document-1",
+      assetCount: 2,
+      nodeCount: 4
+    });
+    await expect(
+      importFileArchive(
+        { archiveBase64: "UEs=", fileId: "document-imported", name: "가져온 문서" },
+        fetcher as typeof fetch
+      )
+    ).resolves.toMatchObject({
+      fileId: "document-imported",
+      name: "가져온 문서"
+    });
+    await expect(exportFileArchive("document-1", fetcher as typeof fetch)).resolves.toMatchObject({
+      fileName: "document-1.layo.zip",
+      mimeType: "application/vnd.layo.file-archive+zip"
+    });
+    expect(calls.map((call) => [call.url, call.init?.method ?? "GET"])).toEqual([
+      [expect.stringContaining("/files/import/archive/review"), "POST"],
+      [expect.stringContaining("/files/import/archive"), "POST"],
+      [expect.stringContaining("/files/document-1/export/archive"), "GET"]
+    ]);
+  });
+
   test("file version retention deletes and prunes versions", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const fetcher = async (url: string | URL | Request, init?: RequestInit) => {

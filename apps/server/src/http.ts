@@ -148,6 +148,14 @@ export function createHttpServer(storage = new FileStorage(), options: HttpServe
   });
 
   server.post<{
+    Body: { archiveBase64: string };
+  }>("/files/import/archive/review", async (request) => {
+    return {
+      review: await storage.reviewFileArchive(Buffer.from(request.body.archiveBase64, "base64"))
+    };
+  });
+
+  server.post<{
     Body: { archiveBase64: string; fileId?: string; name?: string };
   }>("/files/import/archive", async (request) => {
     return {

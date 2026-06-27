@@ -276,6 +276,30 @@ test("creates, reopens, and team-links a saved project", async ({ page }) => {
   expect((await projectResponse.json()).project.sharing).toMatchObject({ mode: "team" });
 });
 
+test("file panel exports a Layo archive and reviews it before import", async ({ page }) => {
+  const { documentId } = await createProjectFromEmptyState(page);
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "현재 파일 아카이브 내보내기" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(`${documentId}.layo.zip`);
+  const archivePath = await download.path();
+  if (!archivePath) {
+    throw new Error("archive download path missing");
+  }
+
+  await page.getByTestId("file-archive-upload").setInputFiles(archivePath);
+  const review = page.getByTestId("file-archive-review");
+  await expect(review).toContainText("가져오기 전 검토");
+  await expect(review).toContainText("새 문서");
+  await expect(review).toContainText("페이지 1개");
+
+  await page.getByTestId("file-archive-import-name").fill("아카이브 복원본");
+  await page.getByRole("button", { name: "검토한 아카이브 가져오기" }).click();
+  await expect(page.getByTestId("project-status")).toContainText("아카이브 복원본 가져옴");
+  await expect(page.getByTestId("project-name")).toHaveValue("아카이브 복원본");
+});
+
 test("filters projects and keeps recently opened projects first", async ({ page }) => {
   await openEmptyEditor(page);
   const alphaProjectId = await createNamedProject(page, "검색 알파");

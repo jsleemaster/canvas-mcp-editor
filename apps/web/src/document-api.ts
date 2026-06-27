@@ -156,12 +156,85 @@ export interface FileVersionChangeSummary {
   changedNodeIds: string[];
 }
 
+export interface FileArchiveReview {
+  originalFileId: string;
+  originalName: string;
+  suggestedName: string;
+  assetCount: number;
+  pageCount: number;
+  nodeCount: number;
+}
+
+export interface ImportedFileArchive {
+  fileId: string;
+  name: string;
+  originalFileId: string;
+  originalName: string;
+  assetCount: number;
+}
+
+export interface ImportFileArchiveInput {
+  archiveBase64: string;
+  fileId?: string;
+  name?: string;
+}
+
+export interface ExportedFileArchiveDownload {
+  blob: Blob;
+  fileName: string;
+  mimeType: string;
+}
+
 export function parseDocumentPayload(payload: unknown): RendererDocument {
   if (!payload || typeof payload !== "object" || !("file" in payload)) {
     throw new Error("문서 응답에 파일이 없습니다");
   }
 
   return (payload as { file: RendererDocument }).file;
+}
+
+export async function reviewFileArchive(
+  archiveBase64: string,
+  fetcher: typeof fetch = fetch
+): Promise<FileArchiveReview> {
+  const response = await fetcher(apiUrl("/files/import/archive/review"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ archiveBase64 })
+  });
+  const payload = await readDocumentJson(response);
+  return (payload as { review: FileArchiveReview }).review;
+}
+
+export async function importFileArchive(
+  input: ImportFileArchiveInput,
+  fetcher: typeof fetch = fetch
+): Promise<ImportedFileArchive> {
+  const response = await fetcher(apiUrl("/files/import/archive"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  const payload = await readDocumentJson(response);
+  return (payload as { imported: ImportedFileArchive }).imported;
+}
+
+export async function exportFileArchive(
+  fileId: string,
+  fetcher: typeof fetch = fetch
+): Promise<ExportedFileArchiveDownload> {
+  const response = await fetcher(apiUrl(`/files/${fileId}/export/archive`));
+  if (!response.ok) {
+    throw new Error(`문서 요청 실패: ${response.status} ${response.statusText}`.trim());
+  }
+  const mimeType = response.headers.get("Content-Type") ?? "application/vnd.layo.file-archive+zip";
+  const fileName =
+    parseContentDispositionFilename(response.headers.get("Content-Disposition")) ?? `${fileId}.layo.zip`;
+  return {
+    blob: await response.blob(),
+    fileName,
+    mimeType
+  };
 }
 
 export async function exportDesignTokensDtcg(fileId: string, fetcher: typeof fetch = fetch): Promise<unknown> {
@@ -446,4 +519,9 @@ async function readDocumentJson(response: Response): Promise<unknown> {
     throw new Error(`문서 요청 실패: ${response.status} ${response.statusText}`.trim());
   }
   return response.json();
+}
+
+function parseContentDispositionFilename(header: string | null): string | null {
+  const match = header?.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
 }

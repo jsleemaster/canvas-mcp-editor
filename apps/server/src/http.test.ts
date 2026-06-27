@@ -328,6 +328,46 @@ describe("HTTP server", () => {
     expect(importedAsset.rawPayload.equals(Buffer.from(pixelPng, "base64"))).toBe(true);
   });
 
+  test("reviews file archive imports without writing the file", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const sourceServer = createHttpServer(new FileStorage(path.join(tempRoot, "source")));
+    await sourceServer.inject({
+      method: "POST",
+      url: "/projects",
+      payload: {
+        projectId: "archive-project",
+        name: "아카이브 프로젝트",
+        documentId: "archive-file",
+        documentName: "HTTP 아카이브"
+      }
+    });
+    const exported = await sourceServer.inject({
+      method: "GET",
+      url: "/files/archive-file/export/archive"
+    });
+    const targetServer = createHttpServer(new FileStorage(path.join(tempRoot, "target")));
+
+    const review = await targetServer.inject({
+      method: "POST",
+      url: "/files/import/archive/review",
+      payload: {
+        archiveBase64: exported.rawPayload.toString("base64")
+      }
+    });
+
+    expect(review.statusCode).toBe(200);
+    expect(review.json().review).toMatchObject({
+      originalFileId: "archive-file",
+      originalName: "HTTP 아카이브",
+      suggestedName: "HTTP 아카이브",
+      assetCount: 0,
+      pageCount: 1,
+      nodeCount: expect.any(Number)
+    });
+    const missing = await targetServer.inject({ method: "GET", url: "/files/archive-file" });
+    expect(missing.statusCode).toBe(404);
+  });
+
   test("updates node geometry, fill, text, and creates nodes", async () => {
     const server = await createServerWithDocument();
 

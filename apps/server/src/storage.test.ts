@@ -292,6 +292,26 @@ describe("FileStorage", () => {
     expect(importedAsset.data.equals(Buffer.from(pixelPng, "base64"))).toBe(true);
   });
 
+  test("reviews a file archive without writing the imported file", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const source = await storageWithDocument(path.join(tempRoot, "source"));
+    const exported = await source.exportFileArchive("sample-file");
+    const target = new FileStorage(path.join(tempRoot, "target"));
+
+    const review = await target.reviewFileArchive(exported.archive);
+
+    expect(review).toMatchObject({
+      originalFileId: "sample-file",
+      originalName: "테스트 문서",
+      suggestedName: "테스트 문서",
+      assetCount: 0,
+      pageCount: 1,
+      nodeCount: expect.any(Number)
+    });
+    expect(review.nodeCount).toBeGreaterThan(0);
+    await expect(target.readFile("sample-file")).rejects.toThrow();
+  });
+
   test("comment threads are stored beside the design file and can be resolved", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
     const storage = await storageWithDocument(tempRoot);

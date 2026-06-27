@@ -462,6 +462,15 @@ export interface ImportedFileArchive {
   assetCount: number;
 }
 
+export interface ReviewedFileArchive {
+  originalFileId: string;
+  originalName: string;
+  suggestedName: string;
+  assetCount: number;
+  pageCount: number;
+  nodeCount: number;
+}
+
 export interface ImportFileArchiveOptions {
   fileId?: string;
   name?: string;
@@ -969,25 +978,8 @@ export class FileStorage {
       throw new Error("file archive asset count mismatch");
     }
 
-    await Promise.all(
-      assetIds.map(async (assetId) => {
-        const metadataPath = `assets/${assetId}.json`;
-        const dataPath = `assets/${assetId}.bin`;
-        const metadata = parseStoredAsset(readJsonArchiveEntry(entries, metadataPath));
-        if (metadata.assetId !== assetId) {
-          throw new Error(`file archive asset mismatch: ${metadata.assetId}`);
-        }
-        const data = entries.get(dataPath);
-        if (!data) {
-          throw new Error(`missing file archive entry: ${dataPath}`);
-        }
-        if (data.length !== metadata.byteLength) {
-          throw new Error(`file archive asset byte length mismatch: ${assetId}`);
-        }
-        assertImageBytesMatchMimeType(data, metadata.mimeType);
-        await this.writeAsset(metadata, data);
-      })
-    );
+    const assets = readFileArchiveAssets(entries, assetIds);
+    await Promise.all(assets.map((asset) => this.writeAsset(asset.metadata, asset.data)));
     await this.writeFile(fileId, document);
     return {
       fileId,
@@ -995,6 +987,30 @@ export class FileStorage {
       originalFileId: manifest.fileId,
       originalName: manifest.name,
       assetCount: assetIds.length
+    };
+  }
+
+  async reviewFileArchive(archive: Buffer): Promise<ReviewedFileArchive> {
+    const entries = readZipArchive(archive);
+    const manifest = parseFileArchiveManifest(readJsonArchiveEntry(entries, "manifest.json"));
+    const archivedDocument = parseDesignFileArchiveDocument(readJsonArchiveEntry(entries, "document.json"));
+    if (archivedDocument.id !== manifest.fileId) {
+      throw new Error(`file archive document mismatch: ${archivedDocument.id}`);
+    }
+
+    const assetIds = collectImageAssetIds(archivedDocument);
+    if (assetIds.length !== manifest.assetCount) {
+      throw new Error("file archive asset count mismatch");
+    }
+    readFileArchiveAssets(entries, assetIds);
+
+    return {
+      originalFileId: manifest.fileId,
+      originalName: manifest.name,
+      suggestedName: archivedDocument.name,
+      assetCount: assetIds.length,
+      pageCount: archivedDocument.pages.length,
+      nodeCount: countDocumentNodes(archivedDocument)
     };
   }
 
@@ -2008,6 +2024,29 @@ function readJsonArchiveEntry(entries: Map<string, Buffer>, entryPath: string): 
     throw new Error(`missing file archive entry: ${entryPath}`);
   }
   return JSON.parse(entry.toString("utf8"));
+}
+
+function readFileArchiveAssets(
+  entries: Map<string, Buffer>,
+  assetIds: string[]
+): Array<{ metadata: StoredAsset; data: Buffer }> {
+  return assetIds.map((assetId) => {
+    const metadataPath = `assets/${assetId}.json`;
+    const dataPath = `assets/${assetId}.bin`;
+    const metadata = parseStoredAsset(readJsonArchiveEntry(entries, metadataPath));
+    if (metadata.assetId !== assetId) {
+      throw new Error(`file archive asset mismatch: ${metadata.assetId}`);
+    }
+    const data = entries.get(dataPath);
+    if (!data) {
+      throw new Error(`missing file archive entry: ${dataPath}`);
+    }
+    if (data.length !== metadata.byteLength) {
+      throw new Error(`file archive asset byte length mismatch: ${assetId}`);
+    }
+    assertImageBytesMatchMimeType(data, metadata.mimeType);
+    return { metadata, data };
+  });
 }
 
 function jsonArchiveEntry(pathName: string, value: unknown): ZipArchiveEntry {
