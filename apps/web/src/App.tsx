@@ -1404,6 +1404,36 @@ async function persistTokenThemeEnabled(fileId: string, tokenThemeId: string, en
   }
 }
 
+async function persistUpsertTokenTheme(fileId: string, tokenTheme: DesignTokenTheme) {
+  const response = await fetch(apiUrl(`/files/${fileId}/agent/commands`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dryRun: false,
+      commands: [{ type: "upsert_token_theme", tokenTheme }]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`토큰 테마 저장 실패: ${response.status} ${response.statusText}`.trim());
+  }
+}
+
+async function persistDeleteTokenTheme(fileId: string, tokenThemeId: string) {
+  const response = await fetch(apiUrl(`/files/${fileId}/agent/commands`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dryRun: false,
+      commands: [{ type: "delete_token_theme", tokenThemeId }]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`토큰 테마 삭제 실패: ${response.status} ${response.statusText}`.trim());
+  }
+}
+
 function CanvasImageBody({
   assetId,
   width,
@@ -3378,7 +3408,9 @@ function InspectorTokenControls({
   onExport,
   onImport,
   onTokenSetEnabledChange,
-  onTokenThemeEnabledChange
+  onTokenThemeEnabledChange,
+  onTokenThemeUpsert,
+  onTokenThemeDelete
 }: {
   draft: string;
   status: string;
@@ -3390,8 +3422,35 @@ function InspectorTokenControls({
   onImport: () => void;
   onTokenSetEnabledChange: (tokenSetId: string, enabled: boolean) => void;
   onTokenThemeEnabledChange: (tokenThemeId: string, enabled: boolean) => void;
+  onTokenThemeUpsert: (tokenTheme: DesignTokenTheme) => void;
+  onTokenThemeDelete: (tokenThemeId: string) => void;
 }) {
   const themesByGroup = groupTokenThemes(tokenThemes);
+  const createTokenTheme = () => {
+    const { id, index } = nextTokenThemeIdentity(tokenThemes);
+    onTokenThemeUpsert({
+      id,
+      name: `테마 ${index}`,
+      group: "mode",
+      enabled: false,
+      token_set_ids: tokenSets[0] ? [tokenSets[0].id] : []
+    });
+  };
+  const updateTokenTheme = (theme: DesignTokenTheme, patch: Partial<DesignTokenTheme>) => {
+    onTokenThemeUpsert({
+      ...theme,
+      ...patch,
+      token_set_ids: patch.token_set_ids ?? theme.token_set_ids
+    });
+  };
+  const updateTokenThemeSetMembership = (theme: DesignTokenTheme, tokenSetId: string, included: boolean) => {
+    const currentSetIds = theme.token_set_ids ?? [];
+    const tokenSetIds = included
+      ? [...currentSetIds, tokenSetId].filter((id, index, ids) => ids.indexOf(id) === index)
+      : currentSetIds.filter((id) => id !== tokenSetId);
+    updateTokenTheme(theme, { token_set_ids: tokenSetIds });
+  };
+
   return (
     <section className="inspector-section" data-testid="inspector-section-tokens" aria-label="토큰">
       <h3>토큰</h3>
@@ -3423,26 +3482,96 @@ function InspectorTokenControls({
           ))}
         </div>
       ) : null}
+      <div className="token-theme-toolbar">
+        <button
+          type="button"
+          className="inspector-compact-button"
+          data-testid="token-theme-add"
+          disabled={!canEdit || !tokenSets.length}
+          onClick={createTokenTheme}
+        >
+          테마 추가
+        </button>
+      </div>
       {themesByGroup.length ? (
         <div className="token-theme-list" data-testid="token-theme-list">
           {themesByGroup.map((group) => (
             <div key={group.name} className="token-theme-group" data-testid={`token-theme-group-${group.name}`}>
               <div className="token-theme-group-label">{group.name}</div>
               {group.themes.map((theme) => (
-                <label
+                <div
                   key={theme.id}
-                  className="token-set-row"
+                  className="token-theme-row"
                   data-testid={`token-theme-row-${theme.id}`}
                 >
-                  <input
-                    data-testid={`token-theme-enabled-${theme.id}`}
-                    type="checkbox"
-                    checked={theme.enabled}
+                  <label className="token-theme-toggle">
+                    <input
+                      data-testid={`token-theme-enabled-${theme.id}`}
+                      type="checkbox"
+                      checked={theme.enabled}
+                      disabled={!canEdit}
+                      onChange={(event) => onTokenThemeEnabledChange(theme.id, event.currentTarget.checked)}
+                    />
+                    <span>활성</span>
+                  </label>
+                  <div className="token-theme-fields">
+                    <label>
+                      이름
+                      <input
+                        key={`${theme.id}-name-${theme.name}`}
+                        data-testid={`token-theme-name-${theme.id}`}
+                        defaultValue={theme.name}
+                        disabled={!canEdit}
+                        onBlur={(event) => updateTokenTheme(theme, { name: event.currentTarget.value })}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.currentTarget.blur();
+                          }
+                        }}
+                      />
+                    </label>
+                    <label>
+                      그룹
+                      <input
+                        key={`${theme.id}-group-${theme.group ?? ""}`}
+                        data-testid={`token-theme-group-input-${theme.id}`}
+                        defaultValue={theme.group ?? ""}
+                        disabled={!canEdit}
+                        onBlur={(event) => updateTokenTheme(theme, { group: event.currentTarget.value })}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.currentTarget.blur();
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <div className="token-theme-sets" aria-label={`${theme.name} 토큰 세트`}>
+                    {tokenSets.map((tokenSet) => (
+                      <label key={tokenSet.id} className="token-theme-set-option">
+                        <input
+                          data-testid={`token-theme-set-${theme.id}-${tokenSet.id}`}
+                          type="checkbox"
+                          checked={(theme.token_set_ids ?? []).includes(tokenSet.id)}
+                          disabled={!canEdit}
+                          onChange={(event) =>
+                            updateTokenThemeSetMembership(theme, tokenSet.id, event.currentTarget.checked)
+                          }
+                        />
+                        <span>{tokenSet.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="inspector-compact-button"
+                    data-testid={`token-theme-delete-${theme.id}`}
                     disabled={!canEdit}
-                    onChange={(event) => onTokenThemeEnabledChange(theme.id, event.currentTarget.checked)}
-                  />
-                  <span>{theme.name}</span>
-                </label>
+                    onClick={() => onTokenThemeDelete(theme.id)}
+                  >
+                    삭제
+                  </button>
+                </div>
               ))}
             </div>
           ))}
@@ -3463,6 +3592,15 @@ function InspectorTokenControls({
       </div>
     </section>
   );
+}
+
+function nextTokenThemeIdentity(tokenThemes: DesignTokenTheme[]): { id: string; index: number } {
+  const existingIds = new Set(tokenThemes.map((theme) => theme.id));
+  let index = 1;
+  while (existingIds.has(`theme-${index}`)) {
+    index += 1;
+  }
+  return { id: `theme-${index}`, index };
 }
 
 function groupTokenThemes(tokenThemes: DesignTokenTheme[]): Array<{ name: string; themes: DesignTokenTheme[] }> {
@@ -4612,6 +4750,8 @@ function Inspector({
   onImportTokensDtcg,
   onTokenSetEnabledChange,
   onTokenThemeEnabledChange,
+  onTokenThemeUpsert,
+  onTokenThemeDelete,
   onCommentBodyChange,
   onCommentReplyBodyChange,
   onCreateComment,
@@ -4680,6 +4820,8 @@ function Inspector({
   onImportTokensDtcg: () => void;
   onTokenSetEnabledChange: (tokenSetId: string, enabled: boolean) => void;
   onTokenThemeEnabledChange: (tokenThemeId: string, enabled: boolean) => void;
+  onTokenThemeUpsert: (tokenTheme: DesignTokenTheme) => void;
+  onTokenThemeDelete: (tokenThemeId: string) => void;
   onCommentBodyChange: (value: string) => void;
   onCommentReplyBodyChange: (threadId: string, value: string) => void;
   onCreateComment: (nodeId: string) => void;
@@ -4728,6 +4870,8 @@ function Inspector({
       onImport={onImportTokensDtcg}
       onTokenSetEnabledChange={onTokenSetEnabledChange}
       onTokenThemeEnabledChange={onTokenThemeEnabledChange}
+      onTokenThemeUpsert={onTokenThemeUpsert}
+      onTokenThemeDelete={onTokenThemeDelete}
     />
   );
 
@@ -10310,6 +10454,46 @@ export function App() {
       });
   };
 
+  const upsertTokenTheme = (tokenTheme: DesignTokenTheme) => {
+    if (!tokenTheme.id.trim() || !tokenTheme.name.trim()) {
+      return;
+    }
+
+    dispatch({ type: "upsert_token_theme", tokenTheme });
+    if (!currentProject) {
+      return;
+    }
+
+    void persistUpsertTokenTheme(currentProject.currentDocumentId, tokenTheme)
+      .then(() => {
+        setTokenDtcgStatus("토큰 테마 저장됨");
+        setProjectStatus("토큰 테마 저장됨");
+        setCodeExportRevision((current) => current + 1);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "토큰 테마를 저장하지 못했습니다";
+        setTokenDtcgStatus(message);
+      });
+  };
+
+  const deleteTokenTheme = (tokenThemeId: string) => {
+    dispatch({ type: "delete_token_theme", tokenThemeId });
+    if (!currentProject) {
+      return;
+    }
+
+    void persistDeleteTokenTheme(currentProject.currentDocumentId, tokenThemeId)
+      .then(() => {
+        setTokenDtcgStatus("토큰 테마 삭제됨");
+        setProjectStatus("토큰 테마 삭제됨");
+        setCodeExportRevision((current) => current + 1);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "토큰 테마를 삭제하지 못했습니다";
+        setTokenDtcgStatus(message);
+      });
+  };
+
   const createNode = (kind: "rectangle" | "text") => {
     if (!editor) {
       return;
@@ -12392,6 +12576,8 @@ export function App() {
         onImportTokensDtcg={() => void importCurrentDocumentTokensDtcg()}
         onTokenSetEnabledChange={updateTokenSetEnabled}
         onTokenThemeEnabledChange={updateTokenThemeEnabled}
+        onTokenThemeUpsert={upsertTokenTheme}
+        onTokenThemeDelete={deleteTokenTheme}
         onCommentBodyChange={setCommentBody}
         onCommentReplyBodyChange={(threadId, value) =>
           setCommentReplyBodies((current) => ({ ...current, [threadId]: value }))

@@ -115,6 +115,14 @@ const designTokenSchema = z.object({
   value: z.string()
 });
 
+const designTokenThemeSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  group: z.string().optional(),
+  enabled: z.boolean(),
+  token_set_ids: z.array(z.string()).default([])
+});
+
 const designStyleSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -192,6 +200,14 @@ const agentCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("delete_style"),
     styleId: z.string()
+  }),
+  z.object({
+    type: z.literal("upsert_token_theme"),
+    tokenTheme: designTokenThemeSchema
+  }),
+  z.object({
+    type: z.literal("delete_token_theme"),
+    tokenThemeId: z.string()
   }),
   z.object({
     type: z.literal("set_token_set_enabled"),

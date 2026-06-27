@@ -104,6 +104,8 @@ export type AgentCommand =
   | { type: "rename_style"; styleId: string; name: string }
   | { type: "duplicate_style"; styleId: string; newStyleId: string; name: string }
   | { type: "delete_style"; styleId: string }
+  | { type: "upsert_token_theme"; tokenTheme: DesignTokenTheme }
+  | { type: "delete_token_theme"; tokenThemeId: string }
   | { type: "set_token_set_enabled"; tokenSetId: string; enabled: boolean }
   | { type: "set_token_theme_enabled"; tokenThemeId: string; enabled: boolean }
   | { type: "set_fill_token"; nodeId: string; tokenId: string }
@@ -1041,6 +1043,20 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
       clearStyleBindings(document, command.styleId);
       return command.styleId;
     }
+    case "upsert_token_theme": {
+      const theme = upsertTokenTheme(document, command.tokenTheme);
+      materializeTokenBindings(document);
+      return theme.id;
+    }
+    case "delete_token_theme": {
+      requireTokenTheme(document, command.tokenThemeId);
+      document.token_themes = (document.token_themes ?? []).filter((theme) => theme.id !== command.tokenThemeId);
+      if (!document.token_themes.length) {
+        delete document.token_themes;
+      }
+      materializeTokenBindings(document);
+      return command.tokenThemeId;
+    }
     case "set_token_set_enabled": {
       const tokenSet = (document.token_sets ?? []).find((candidate) => candidate.id === command.tokenSetId);
       if (!tokenSet) {
@@ -1533,10 +1549,7 @@ function materializeNodeTokenBindings(node: DesignNode, tokenMap: Map<string, De
 }
 
 function setTokenThemeEnabled(document: DesignFile, tokenThemeId: string, enabled: boolean): DesignTokenTheme {
-  const theme = (document.token_themes ?? []).find((candidate) => candidate.id === tokenThemeId);
-  if (!theme) {
-    throw new Error(`token theme not found: ${tokenThemeId}`);
-  }
+  const theme = requireTokenTheme(document, tokenThemeId);
 
   const group = theme.group?.trim();
   if (enabled && group) {
@@ -1548,6 +1561,68 @@ function setTokenThemeEnabled(document: DesignFile, tokenThemeId: string, enable
   }
 
   theme.enabled = enabled;
+  return theme;
+}
+
+function upsertTokenTheme(document: DesignFile, input: DesignTokenTheme): DesignTokenTheme {
+  const id = input.id.trim();
+  if (!id) {
+    throw new Error("token theme id is required");
+  }
+  const name = input.name.trim();
+  if (!name) {
+    throw new Error("token theme name is required");
+  }
+  const tokenSetIds = normalizeTokenThemeSetIds(document, input.token_set_ids ?? []);
+  const group = input.group?.trim();
+  const theme: DesignTokenTheme = {
+    id,
+    name,
+    ...(group ? { group } : {}),
+    enabled: input.enabled,
+    token_set_ids: tokenSetIds
+  };
+
+  document.token_themes = document.token_themes ?? [];
+  const existingIndex = document.token_themes.findIndex((candidate) => candidate.id === id);
+  if (existingIndex >= 0) {
+    document.token_themes[existingIndex] = theme;
+  } else {
+    document.token_themes.push(theme);
+  }
+
+  if (theme.enabled && theme.group?.trim()) {
+    for (const candidate of document.token_themes) {
+      if (candidate.id !== theme.id && candidate.group?.trim() === theme.group.trim()) {
+        candidate.enabled = false;
+      }
+    }
+  }
+
+  return theme;
+}
+
+function normalizeTokenThemeSetIds(document: DesignFile, tokenSetIds: string[]): string[] {
+  const knownTokenSetIds = new Set((document.token_sets ?? []).map((tokenSet) => tokenSet.id));
+  const normalized: string[] = [];
+  for (const rawId of tokenSetIds) {
+    const tokenSetId = rawId.trim();
+    if (!tokenSetId || normalized.includes(tokenSetId)) {
+      continue;
+    }
+    if (!knownTokenSetIds.has(tokenSetId)) {
+      throw new Error(`token set not found: ${tokenSetId}`);
+    }
+    normalized.push(tokenSetId);
+  }
+  return normalized;
+}
+
+function requireTokenTheme(document: DesignFile, tokenThemeId: string): DesignTokenTheme {
+  const theme = (document.token_themes ?? []).find((candidate) => candidate.id === tokenThemeId);
+  if (!theme) {
+    throw new Error(`token theme not found: ${tokenThemeId}`);
+  }
   return theme;
 }
 
