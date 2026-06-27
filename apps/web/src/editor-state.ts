@@ -160,6 +160,18 @@ export type EditorCommand =
       enabled: boolean;
     }
   | {
+      type: "upsert_token_theme";
+      tokenTheme: DesignTokenTheme;
+    }
+  | {
+      type: "delete_token_theme";
+      tokenThemeId: string;
+    }
+  | {
+      type: "set_document_token_themes";
+      tokenThemes: DesignTokenTheme[];
+    }
+  | {
       type: "restore_token_theme_enabled_states";
       states: Array<{ id: string; enabled: boolean }>;
     }
@@ -717,6 +729,54 @@ function sameTokenThemeStates(
   after: Array<{ id: string; enabled: boolean }>
 ): boolean {
   return before.length === after.length && before.every((state, index) => state.id === after[index]?.id && state.enabled === after[index]?.enabled);
+}
+
+function cloneTokenThemes(tokenThemes: DesignTokenTheme[] = []): DesignTokenTheme[] {
+  return structuredClone(tokenThemes);
+}
+
+function sameTokenThemes(before: DesignTokenTheme[], after: DesignTokenTheme[]): boolean {
+  return JSON.stringify(before) === JSON.stringify(after);
+}
+
+function normalizeTokenTheme(document: RendererDocument, input: DesignTokenTheme): DesignTokenTheme | null {
+  const id = input.id.trim();
+  const name = input.name.trim();
+  if (!id || !name) {
+    return null;
+  }
+
+  const tokenSetIds = normalizeTokenThemeSetIds(document, input.token_set_ids ?? []);
+  if (!tokenSetIds) {
+    return null;
+  }
+
+  const group = input.group?.trim();
+  return {
+    id,
+    name,
+    ...(group ? { group } : {}),
+    enabled: input.enabled,
+    token_set_ids: tokenSetIds
+  };
+}
+
+function normalizeTokenThemeSetIds(document: RendererDocument, tokenSetIds: string[]): string[] | null {
+  const knownTokenSetIds = new Set((document.token_sets ?? []).map((tokenSet) => tokenSet.id));
+  const normalized: string[] = [];
+
+  for (const rawId of tokenSetIds) {
+    const tokenSetId = rawId.trim();
+    if (!tokenSetId || normalized.includes(tokenSetId)) {
+      continue;
+    }
+    if (!knownTokenSetIds.has(tokenSetId)) {
+      return null;
+    }
+    normalized.push(tokenSetId);
+  }
+
+  return normalized;
 }
 
 export function getNodeAbsolutePosition(
@@ -1822,6 +1882,80 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
           type: "set_token_set_enabled",
           tokenSetId: command.tokenSetId,
           enabled: previousEnabled
+        }
+      };
+    }
+    case "upsert_token_theme": {
+      const tokenTheme = normalizeTokenTheme(next, command.tokenTheme);
+      if (!tokenTheme) {
+        return { document, inverse: null };
+      }
+
+      const previousThemes = cloneTokenThemes(next.token_themes ?? []);
+      const nextThemes = cloneTokenThemes(next.token_themes ?? []);
+      const existingIndex = nextThemes.findIndex((candidate) => candidate.id === tokenTheme.id);
+      if (existingIndex >= 0) {
+        nextThemes[existingIndex] = tokenTheme;
+      } else {
+        nextThemes.push(tokenTheme);
+      }
+
+      const group = tokenTheme.group?.trim();
+      if (tokenTheme.enabled && group) {
+        for (const candidate of nextThemes) {
+          if (candidate.id !== tokenTheme.id && candidate.group?.trim() === group) {
+            candidate.enabled = false;
+          }
+        }
+      }
+
+      if (sameTokenThemes(previousThemes, nextThemes)) {
+        return { document, inverse: null };
+      }
+
+      next.token_themes = nextThemes;
+      materializeTokenBindings(next);
+
+      return {
+        document: next,
+        inverse: {
+          type: "set_document_token_themes",
+          tokenThemes: previousThemes
+        }
+      };
+    }
+    case "delete_token_theme": {
+      const previousThemes = cloneTokenThemes(next.token_themes ?? []);
+      if (!previousThemes.some((theme) => theme.id === command.tokenThemeId)) {
+        return { document, inverse: null };
+      }
+
+      next.token_themes = previousThemes.filter((theme) => theme.id !== command.tokenThemeId);
+      materializeTokenBindings(next);
+
+      return {
+        document: next,
+        inverse: {
+          type: "set_document_token_themes",
+          tokenThemes: previousThemes
+        }
+      };
+    }
+    case "set_document_token_themes": {
+      const previousThemes = cloneTokenThemes(next.token_themes ?? []);
+      const nextThemes = cloneTokenThemes(command.tokenThemes);
+      if (sameTokenThemes(previousThemes, nextThemes)) {
+        return { document, inverse: null };
+      }
+
+      next.token_themes = nextThemes;
+      materializeTokenBindings(next);
+
+      return {
+        document: next,
+        inverse: {
+          type: "set_document_token_themes",
+          tokenThemes: previousThemes
         }
       };
     }

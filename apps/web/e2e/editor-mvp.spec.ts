@@ -3335,6 +3335,90 @@ test("right inspector activates imported DTCG token themes", async ({ page }) =>
     });
 });
 
+test("right inspector creates edits and deletes token themes", async ({ page }) => {
+  const { documentId } = await createProjectFromEmptyState(page);
+  const importedTokenJson = JSON.stringify(
+    {
+      $metadata: {
+        tokenSetOrder: ["base", "light", "dark"],
+        activeTokenSets: ["base"]
+      },
+      base: {
+        Surface: {
+          Canvas: {
+            $type: "color",
+            $value: "#f8fafc"
+          }
+        }
+      },
+      light: {
+        Surface: {
+          Canvas: {
+            $type: "color",
+            $value: "#ffffff"
+          }
+        }
+      },
+      dark: {
+        Surface: {
+          Canvas: {
+            $type: "color",
+            $value: "#0f172a"
+          }
+        }
+      }
+    },
+    null,
+    2
+  );
+
+  await page.getByTestId("dtcg-token-json").fill(importedTokenJson);
+  await page.getByRole("button", { name: "토큰 가져오기" }).click();
+  await expect(page.getByTestId("dtcg-token-status")).toContainText("3개 토큰 가져옴");
+
+  const agentResponse = await page.request.post(`http://127.0.0.1:4317/files/${documentId}/agent/commands`, {
+    data: {
+      dryRun: false,
+      commands: [{ type: "set_fill_token", nodeId: "text-1", tokenId: "color-base-surface-canvas" }]
+    }
+  });
+  expect(agentResponse.ok()).toBeTruthy();
+
+  await page.reload();
+  await openFilePanel(page);
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await expect(page.getByTestId("inspector-fill")).toHaveValue("#f8fafc");
+
+  await page.getByTestId("token-theme-add").click();
+  await expect(page.getByTestId("token-theme-name-theme-1")).toHaveValue("테마 1");
+  await page.getByTestId("token-theme-name-theme-1").fill("Review");
+  await page.getByTestId("token-theme-group-input-theme-1").fill("mode");
+  await page.getByTestId("token-theme-set-theme-1-dark").check();
+  await page.getByTestId("token-theme-enabled-theme-1").check();
+  await expect(page.getByTestId("inspector-fill")).toHaveValue("#0f172a");
+
+  await page.getByTestId("token-theme-set-theme-1-dark").uncheck();
+  await page.getByTestId("token-theme-set-theme-1-light").check();
+  await page.getByTestId("token-theme-name-theme-1").fill("Light Review");
+  await expect(page.getByTestId("inspector-fill")).toHaveValue("#ffffff");
+
+  await page.getByTestId("token-theme-delete-theme-1").click();
+  await expect(page.getByTestId("token-theme-name-theme-1")).toHaveCount(0);
+  await expect(page.getByTestId("inspector-fill")).toHaveValue("#f8fafc");
+
+  await expect
+    .poll(async () => {
+      const fileResponse = await page.request.get(`http://127.0.0.1:4317/files/${documentId}`);
+      expect(fileResponse.ok()).toBeTruthy();
+      const file = (await fileResponse.json()).file;
+      return {
+        fill: file.pages[0].children[0].children[0].style.fill,
+        tokenThemes: file.token_themes ?? []
+      };
+    })
+    .toEqual({ fill: "#f8fafc", tokenThemes: [] });
+});
+
 test("right inspector binds imported spacing tokens to layout gap and padding", async ({ page }) => {
   const { documentId } = await createProjectFromEmptyState(page);
   const importedTokenJson = JSON.stringify(

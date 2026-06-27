@@ -1276,6 +1276,134 @@ describe("HTTP server", () => {
     });
   });
 
+  test("agent commands manage token themes without raw DTCG edits", async () => {
+    const server = await createServerWithDocument();
+
+    await server.inject({
+      method: "PUT",
+      url: "/files/sample-file/tokens/dtcg",
+      payload: {
+        $metadata: {
+          tokenSetOrder: ["base", "light", "dark"],
+          activeTokenSets: ["base"]
+        },
+        base: {
+          Surface: {
+            Canvas: {
+              $type: "color",
+              $value: "#f8fafc"
+            }
+          }
+        },
+        light: {
+          Surface: {
+            Canvas: {
+              $type: "color",
+              $value: "#ffffff"
+            }
+          }
+        },
+        dark: {
+          Surface: {
+            Canvas: {
+              $type: "color",
+              $value: "#0f172a"
+            }
+          }
+        }
+      }
+    });
+
+    const created = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/agent/commands",
+      payload: {
+        dryRun: false,
+        commands: [
+          {
+            type: "upsert_token_theme",
+            tokenTheme: {
+              id: "theme-high-contrast",
+              name: "High Contrast",
+              group: "mode",
+              enabled: true,
+              token_set_ids: ["base", "dark"]
+            }
+          },
+          {
+            type: "set_fill_token",
+            nodeId: "text-1",
+            tokenId: "color-base-surface-canvas"
+          }
+        ]
+      }
+    });
+    expect(created.statusCode).toBe(200);
+    expect(created.json().result.audit.commandTypes).toContain("upsert_token_theme");
+
+    const afterCreate = await server.inject({ method: "GET", url: "/files/sample-file" });
+    expect(afterCreate.json().file.token_themes).toEqual([
+      {
+        id: "theme-high-contrast",
+        name: "High Contrast",
+        group: "mode",
+        enabled: true,
+        token_set_ids: ["base", "dark"]
+      }
+    ]);
+    expect(afterCreate.json().file.pages[0].children[0].children[0].style).toMatchObject({
+      fill: "#0f172a",
+      fill_token: "color-base-surface-canvas"
+    });
+
+    const updated = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/agent/commands",
+      payload: {
+        dryRun: false,
+        commands: [
+          {
+            type: "upsert_token_theme",
+            tokenTheme: {
+              id: "theme-high-contrast",
+              name: "Light Review",
+              group: "review",
+              enabled: true,
+              token_set_ids: ["base", "light"]
+            }
+          }
+        ]
+      }
+    });
+    expect(updated.statusCode).toBe(200);
+
+    const afterUpdate = await server.inject({ method: "GET", url: "/files/sample-file" });
+    expect(afterUpdate.json().file.token_themes).toEqual([
+      {
+        id: "theme-high-contrast",
+        name: "Light Review",
+        group: "review",
+        enabled: true,
+        token_set_ids: ["base", "light"]
+      }
+    ]);
+    expect(afterUpdate.json().file.pages[0].children[0].children[0].style.fill).toBe("#ffffff");
+
+    const deleted = await server.inject({
+      method: "POST",
+      url: "/files/sample-file/agent/commands",
+      payload: {
+        dryRun: false,
+        commands: [{ type: "delete_token_theme", tokenThemeId: "theme-high-contrast" }]
+      }
+    });
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json().result.audit.commandTypes).toContain("delete_token_theme");
+
+    const inspect = await server.inject({ method: "GET", url: "/files/sample-file/agent/inspect" });
+    expect(inspect.json().inspection.tokenThemes).toEqual([]);
+  });
+
   test("serves repo component mappings and includes them in code export", async () => {
     const server = await createServerWithDocument();
 

@@ -583,6 +583,91 @@ describe("editor state commands", () => {
     });
   });
 
+  test("manages token themes with undo redo and rematerialized bindings", () => {
+    const document = sampleDocument() as any;
+    document.token_sets = [
+      { id: "base", name: "base", enabled: true },
+      { id: "light", name: "light", enabled: false },
+      { id: "dark", name: "dark", enabled: false }
+    ];
+    document.tokens = [
+      {
+        id: "color-base-surface-canvas",
+        name: "Surface / Canvas",
+        type: "color",
+        value: "#f8fafc",
+        set_id: "base"
+      },
+      {
+        id: "color-light-surface-canvas",
+        name: "Surface / Canvas",
+        type: "color",
+        value: "#ffffff",
+        set_id: "light"
+      },
+      {
+        id: "color-dark-surface-canvas",
+        name: "Surface / Canvas",
+        type: "color",
+        value: "#0f172a",
+        set_id: "dark"
+      }
+    ];
+    const bound = executeEditorCommand(createEditorState(document), {
+      type: "set_fill_token",
+      nodeId: "text-1",
+      tokenId: "color-base-surface-canvas"
+    } as any);
+    expect(findNodeById(bound.document, "text-1")?.style.fill).toBe("#f8fafc");
+
+    const dark = executeEditorCommand(bound, {
+      type: "upsert_token_theme",
+      tokenTheme: {
+        id: "theme-review",
+        name: "Review",
+        group: "mode",
+        enabled: true,
+        token_set_ids: ["base", "dark"]
+      }
+    } as any);
+    expect(dark.document.token_themes).toEqual([
+      { id: "theme-review", name: "Review", group: "mode", enabled: true, token_set_ids: ["base", "dark"] }
+    ]);
+    expect(findNodeById(dark.document, "text-1")?.style.fill).toBe("#0f172a");
+
+    const light = executeEditorCommand(dark, {
+      type: "upsert_token_theme",
+      tokenTheme: {
+        id: "theme-review",
+        name: "Light Review",
+        group: "mode",
+        enabled: true,
+        token_set_ids: ["base", "light"]
+      }
+    } as any);
+    expect(light.document.token_themes).toEqual([
+      { id: "theme-review", name: "Light Review", group: "mode", enabled: true, token_set_ids: ["base", "light"] }
+    ]);
+    expect(findNodeById(light.document, "text-1")?.style.fill).toBe("#ffffff");
+
+    const deleted = executeEditorCommand(light, {
+      type: "delete_token_theme",
+      tokenThemeId: "theme-review"
+    } as any);
+    expect(deleted.document.token_themes ?? []).toEqual([]);
+    expect(findNodeById(deleted.document, "text-1")?.style.fill).toBe("#f8fafc");
+
+    const restored = undo(deleted);
+    expect(restored.document.token_themes).toEqual([
+      { id: "theme-review", name: "Light Review", group: "mode", enabled: true, token_set_ids: ["base", "light"] }
+    ]);
+    expect(findNodeById(restored.document, "text-1")?.style.fill).toBe("#ffffff");
+
+    const redone = redo(restored);
+    expect(redone.document.token_themes ?? []).toEqual([]);
+    expect(findNodeById(redone.document, "text-1")?.style.fill).toBe("#f8fafc");
+  });
+
   test("preserves layout spacing token bindings and clears them on manual override", () => {
     const document = sampleDocument() as any;
     document.tokens = [
