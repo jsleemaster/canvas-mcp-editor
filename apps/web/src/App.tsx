@@ -3907,8 +3907,8 @@ function componentVariantControls(component: ComponentDefinition, variantId?: st
   });
 }
 
-function firstVariantProperty(variant: ComponentVariant) {
-  return variant.properties[0] ?? { name: "", value: "" };
+function visibleVariantProperties(variant: ComponentVariant) {
+  return variant.properties.length > 0 ? variant.properties : [{ name: "", value: "" }];
 }
 
 function updateComponentVariantAt(
@@ -3927,9 +3927,10 @@ function updateComponentVariantAt(
   );
 }
 
-function updateComponentVariantFirstProperty(
+function updateComponentVariantPropertyAt(
   variants: ComponentVariant[],
   variantId: string,
+  propertyIndex: number,
   patch: Partial<{ name: string; value: string }>
 ): ComponentVariant[] {
   return variants.map((variant) => {
@@ -3937,12 +3938,39 @@ function updateComponentVariantFirstProperty(
       return variant;
     }
 
-    const currentProperty = firstVariantProperty(variant);
+    const properties = visibleVariantProperties(variant);
+    const currentProperty = properties[propertyIndex] ?? { name: "", value: "" };
+    const nextProperties = [...properties];
+    nextProperties[propertyIndex] = { ...currentProperty, ...patch };
     return {
       ...variant,
-      properties: [{ ...currentProperty, ...patch }, ...variant.properties.slice(1)]
+      properties: nextProperties
     };
   });
+}
+
+function updateComponentVariantPropertyNameAcrossVariants(
+  variants: ComponentVariant[],
+  propertyIndex: number,
+  name: string
+): ComponentVariant[] {
+  return variants.map((variant) => {
+    const properties = visibleVariantProperties(variant);
+    const currentProperty = properties[propertyIndex] ?? { name: "", value: "" };
+    const nextProperties = [...properties];
+    nextProperties[propertyIndex] = { ...currentProperty, name };
+    return {
+      ...variant,
+      properties: nextProperties
+    };
+  });
+}
+
+function addComponentVariantPropertyAcrossVariants(variants: ComponentVariant[]) {
+  return variants.map((variant) => ({
+    ...variant,
+    properties: [...visibleVariantProperties(variant), { name: "", value: "" }]
+  }));
 }
 
 function nextComponentVariantId(variants: ComponentVariant[]) {
@@ -4245,15 +4273,22 @@ function Inspector({
       return;
     }
     const variantId = nextComponentVariantId(componentDefinitionVariants);
-    const propertyName = componentDefinitionVariants.map(firstVariantProperty).find((property) => property.name)?.name ?? "";
+    const propertyNames = visibleVariantProperties(componentDefinitionVariants[0] ?? { id: "", name: "", properties: [] }).map(
+      (property) => property.name
+    );
     updateComponentDefinitionVariants([
       ...componentDefinitionVariants,
       {
         id: variantId,
         name: `Variant ${componentDefinitionVariants.length + 1}`,
-        properties: [{ name: propertyName, value: "" }]
+        properties: propertyNames.map((name) => ({ name, value: "" }))
       }
     ]);
+  };
+  const addComponentDefinitionVariantProperty = () => {
+    if (selectedComponentDefinition) {
+      updateComponentDefinitionVariants(addComponentVariantPropertyAcrossVariants(componentDefinitionVariants));
+    }
   };
   const updateLayout = (patch: Partial<NodeLayout>) => {
     onLayoutChange(selectedNode.id, {
@@ -4460,18 +4495,28 @@ function Inspector({
         >
           <div className="inspector-section-heading">
             <h3>변형 작성</h3>
-            <button
-              type="button"
-              className="inspector-compact-button"
-              data-testid="inspector-component-variant-add"
-              onClick={addComponentDefinitionVariant}
-            >
-              변형 추가
-            </button>
+            <div className="component-variant-editor-actions">
+              <button
+                type="button"
+                className="inspector-compact-button"
+                data-testid="inspector-component-variant-property-add"
+                onClick={addComponentDefinitionVariantProperty}
+              >
+                속성 추가
+              </button>
+              <button
+                type="button"
+                className="inspector-compact-button"
+                data-testid="inspector-component-variant-add"
+                onClick={addComponentDefinitionVariant}
+              >
+                변형 추가
+              </button>
+            </div>
           </div>
           <div className="component-variant-editor-list">
             {componentDefinitionVariants.map((variant) => {
-              const property = firstVariantProperty(variant);
+              const properties = visibleVariantProperties(variant);
               const variantTestId = safeTestId(variant.id);
               return (
                 <div className="component-variant-editor-row" key={variant.id}>
@@ -4489,36 +4534,40 @@ function Inspector({
                       }
                     />
                   </label>
-                  <div className="field-grid">
-                    <label>
-                      속성
-                      <input
-                        data-testid={`inspector-component-definition-variant-property-name-${variantTestId}`}
-                        value={property.name}
-                        onChange={(event) =>
-                          updateComponentDefinitionVariants(
-                            updateComponentVariantFirstProperty(componentDefinitionVariants, variant.id, {
-                              name: event.currentTarget.value
-                            })
-                          )
-                        }
-                      />
-                    </label>
-                    <label>
-                      값
-                      <input
-                        data-testid={`inspector-component-definition-variant-property-value-${variantTestId}`}
-                        value={property.value}
-                        onChange={(event) =>
-                          updateComponentDefinitionVariants(
-                            updateComponentVariantFirstProperty(componentDefinitionVariants, variant.id, {
-                              value: event.currentTarget.value
-                            })
-                          )
-                        }
-                      />
-                    </label>
-                  </div>
+                  {properties.map((property, propertyIndex) => (
+                    <div className="field-grid" key={`${variant.id}-${propertyIndex}`}>
+                      <label>
+                        속성
+                        <input
+                          data-testid={`inspector-component-definition-variant-property-name-${variantTestId}-${propertyIndex}`}
+                          value={property.name}
+                          onChange={(event) =>
+                            updateComponentDefinitionVariants(
+                              updateComponentVariantPropertyNameAcrossVariants(
+                                componentDefinitionVariants,
+                                propertyIndex,
+                                event.currentTarget.value
+                              )
+                            )
+                          }
+                        />
+                      </label>
+                      <label>
+                        값
+                        <input
+                          data-testid={`inspector-component-definition-variant-property-value-${variantTestId}-${propertyIndex}`}
+                          value={property.value}
+                          onChange={(event) =>
+                            updateComponentDefinitionVariants(
+                              updateComponentVariantPropertyAt(componentDefinitionVariants, variant.id, propertyIndex, {
+                                value: event.currentTarget.value
+                              })
+                            )
+                          }
+                        />
+                      </label>
+                    </div>
+                  ))}
                 </div>
               );
             })}

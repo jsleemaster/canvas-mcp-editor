@@ -1584,6 +1584,14 @@ button:disabled {
   white-space: nowrap;
 }
 
+.component-variant-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--editor-space-xs);
+  min-width: 0;
+}
+
 .component-variant-editor-list {
   display: grid;
   gap: var(--editor-space-sm);
