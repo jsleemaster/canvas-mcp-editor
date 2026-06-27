@@ -195,5 +195,6 @@ fn reusable_styles_round_trip_through_json() {
 ## Completion Evidence
 
 - RED/GREEN focused storage regression: `manual fill updates clear reusable fill style bindings` failed before `setNodeFill` cleared `fill_style`, then passed after the fix.
+- RED/GREEN e2e reliability regression: `pnpm test:e2e` failed with `net::ERR_CONNECTION_REFUSED` because Playwright assumed external dev servers on `127.0.0.1:5173`/`4317`; `scripts/run-e2e.mjs` now starts the server and web dev services, waits for readiness, runs Playwright CLI, and cleans up its own processes.
 - Focused GREEN: server storage/code-export/MCP tests, web editor-state tests, Rust document model tests, and Playwright CLI `right inspector creates and applies reusable styles`.
 - Broad GREEN after final changes: `pnpm run check:penpot-maturity`, `pnpm run check:design-rules`, `pnpm typecheck`, `pnpm --filter @layo/web build`, `pnpm test`, `cargo test --workspace`, `pnpm test:e2e` with 125 tests, and `git diff --check`.
