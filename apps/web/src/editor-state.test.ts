@@ -3412,6 +3412,123 @@ describe("editor state commands", () => {
     );
   });
 
+  test("preserves component instance text overrides while switching variants", () => {
+    const document = sampleDocument();
+    document.components = [
+      {
+        id: "component-1",
+        name: "Card",
+        source_node: structuredClone(document.pages[0].children[0]),
+        variants: [
+          { id: "variant-default", name: "Default", properties: [{ name: "surface", value: "flat" }] },
+          { id: "variant-elevated", name: "Elevated", properties: [{ name: "surface", value: "elevated" }] }
+        ]
+      }
+    ];
+    document.pages[0].children[0].kind = "component";
+
+    const instance = executeEditorCommand(createEditorState(document), {
+      type: "create_component_instance",
+      parentId: "page-1",
+      definitionId: "component-1",
+      instanceId: "instance-1",
+      x: 520,
+      y: 140
+    });
+    const edited = executeEditorCommand(instance, {
+      type: "update_text",
+      nodeId: "instance-1__text-1",
+      value: "Custom headline"
+    });
+    const switched = executeEditorCommand(edited, {
+      type: "set_component_instance_variant",
+      nodeId: "instance-1",
+      variantId: "variant-elevated"
+    });
+
+    const instanceNode = findNodeById(switched.document, "instance-1");
+    const textNode = findNodeById(switched.document, "instance-1__text-1");
+    expect(textNode?.content).toMatchObject({ type: "text", value: "Custom headline" });
+    expect(instanceNode?.component_instance).toMatchObject({
+      variant_id: "variant-elevated",
+      overrides: [{ node_id: "text-1", field: "text", value: "Custom headline" }]
+    });
+
+    const undoneVariant = undo(switched);
+    expect((findNodeById(undoneVariant.document, "instance-1")?.component_instance as any)?.variant_id).toBe(
+      "variant-default"
+    );
+    expect(findNodeById(undoneVariant.document, "instance-1__text-1")?.content).toMatchObject({
+      type: "text",
+      value: "Custom headline"
+    });
+
+    const undoneText = undo(undoneVariant);
+    expect(findNodeById(undoneText.document, "instance-1__text-1")?.content).toMatchObject({
+      type: "text",
+      value: "Layo"
+    });
+    expect((findNodeById(undoneText.document, "instance-1")?.component_instance as any)?.overrides).toEqual([]);
+  });
+
+  test("preserves root text component instance overrides while switching variants", () => {
+    const document = sampleDocument();
+    const sourceText = structuredClone(document.pages[0].children[0].children[0]);
+    document.components = [
+      {
+        id: "component-text",
+        name: "Label",
+        source_node: sourceText,
+        variants: [
+          { id: "tone-default", name: "Default", properties: [{ name: "tone", value: "default" }] },
+          { id: "tone-accent", name: "Accent", properties: [{ name: "tone", value: "accent" }] }
+        ]
+      }
+    ];
+
+    const instance = executeEditorCommand(createEditorState(document), {
+      type: "create_component_instance",
+      parentId: "page-1",
+      definitionId: "component-text",
+      instanceId: "text-instance",
+      x: 520,
+      y: 220
+    });
+    const edited = executeEditorCommand(instance, {
+      type: "update_text",
+      nodeId: "text-instance",
+      value: "Custom label"
+    });
+    const switched = executeEditorCommand(edited, {
+      type: "set_component_instance_variant",
+      nodeId: "text-instance",
+      variantId: "tone-accent"
+    });
+
+    const instanceNode = findNodeById(switched.document, "text-instance");
+    expect(instanceNode?.content).toMatchObject({ type: "text", value: "Custom label" });
+    expect(instanceNode?.component_instance).toMatchObject({
+      variant_id: "tone-accent",
+      overrides: [{ node_id: "text-1", field: "text", value: "Custom label" }]
+    });
+
+    const undoneVariant = undo(switched);
+    expect((findNodeById(undoneVariant.document, "text-instance")?.component_instance as any)?.variant_id).toBe(
+      "tone-default"
+    );
+    expect(findNodeById(undoneVariant.document, "text-instance")?.content).toMatchObject({
+      type: "text",
+      value: "Custom label"
+    });
+
+    const undoneText = undo(undoneVariant);
+    expect(findNodeById(undoneText.document, "text-instance")?.content).toMatchObject({
+      type: "text",
+      value: "Layo"
+    });
+    expect((findNodeById(undoneText.document, "text-instance")?.component_instance as any)?.overrides).toEqual([]);
+  });
+
   test("sets component definition variants and resets invalid instance selections with undo and redo", () => {
     const document = sampleDocument();
     document.components = [

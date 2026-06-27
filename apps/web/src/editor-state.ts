@@ -2131,6 +2131,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         value: node.content.value
       };
       node.content = { ...node.content, value: command.value };
+      syncComponentInstanceTextOverride(next, command.nodeId, command.value);
       relayoutDocument(next);
 
       return { document: next, inverse };
@@ -4768,6 +4769,108 @@ function findInNode(node: RendererNode, nodeId: string): RendererNode | null {
   }
 
   return null;
+}
+
+function syncComponentInstanceTextOverride(document: RendererDocument, nodeId: string, value: string): void {
+  const owner = findComponentInstanceOwner(document, nodeId);
+  if (!owner) {
+    return;
+  }
+  if (!owner.instance.component_instance) {
+    return;
+  }
+
+  const sourceValue = findComponentSourceTextValue(document, owner.instance, owner.sourceNodeId);
+  if (sourceValue === null) {
+    return;
+  }
+
+  const existingOverrides = owner.instance.component_instance.overrides ?? [];
+  const nextOverrides = existingOverrides.filter(
+    (override) => !(override.node_id === owner.sourceNodeId && override.field === "text")
+  );
+  if (value !== sourceValue) {
+    nextOverrides.push({ node_id: owner.sourceNodeId, field: "text", value });
+  }
+
+  owner.instance.component_instance = {
+    ...owner.instance.component_instance,
+    overrides: nextOverrides
+  };
+}
+
+function findComponentInstanceOwner(
+  document: RendererDocument,
+  nodeId: string
+): { instance: RendererNode; sourceNodeId: string } | null {
+  for (const page of document.pages) {
+    for (const node of page.children) {
+      const found = findComponentInstanceOwnerInNode(document, node, nodeId, null);
+      if (found) {
+        return found;
+      }
+    }
+  }
+
+  return null;
+}
+
+function findComponentInstanceOwnerInNode(
+  document: RendererDocument,
+  node: RendererNode,
+  nodeId: string,
+  currentInstance: RendererNode | null
+): { instance: RendererNode; sourceNodeId: string } | null {
+  const nextInstance = node.component_instance ? node : currentInstance;
+  if (node.id === nodeId) {
+    if (node.component_instance) {
+      const sourceNodeId = findComponentSourceRootNodeId(document, node);
+      return sourceNodeId ? { instance: node, sourceNodeId } : null;
+    }
+    if (!nextInstance || nextInstance.id === nodeId) {
+      return null;
+    }
+    const sourceNodeId = sourceNodeIdFromInstanceNodeId(nextInstance.id, nodeId);
+    return sourceNodeId ? { instance: nextInstance, sourceNodeId } : null;
+  }
+
+  for (const child of node.children) {
+    const found = findComponentInstanceOwnerInNode(document, child, nodeId, nextInstance);
+    if (found) {
+      return found;
+    }
+  }
+
+  return null;
+}
+
+function sourceNodeIdFromInstanceNodeId(instanceId: string, nodeId: string): string | null {
+  const prefix = `${instanceId}__`;
+  if (!nodeId.startsWith(prefix)) {
+    return null;
+  }
+  const sourceNodeId = nodeId.slice(prefix.length);
+  return sourceNodeId ? sourceNodeId : null;
+}
+
+function findComponentSourceRootNodeId(document: RendererDocument, instance: RendererNode): string | null {
+  const definitionId = instance.component_instance?.definition_id;
+  const definition = (document.components ?? []).find((component) => component.id === definitionId);
+  return definition?.source_node.id ?? null;
+}
+
+function findComponentSourceTextValue(
+  document: RendererDocument,
+  instance: RendererNode,
+  sourceNodeId: string
+): string | null {
+  const definitionId = instance.component_instance?.definition_id;
+  const definition = (document.components ?? []).find((component) => component.id === definitionId);
+  if (!definition) {
+    return null;
+  }
+  const sourceNode = findInNode(definition.source_node, sourceNodeId);
+  return sourceNode?.content.type === "text" ? sourceNode.content.value : null;
 }
 
 function absolutePositionInNode(
