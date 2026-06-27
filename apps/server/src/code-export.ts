@@ -1,4 +1,5 @@
 import type {
+  CodeComponentMapping,
   ComponentDefinition,
   DesignFile,
   DesignToken,
@@ -60,6 +61,7 @@ export interface CodeStructureNode {
     detached: boolean;
     overrides: Array<{ nodeId: string; field: string; value: string }>;
   };
+  repoMapping?: CodeComponentMappingArtifact;
   layoutSpacingTokens?: {
     gap?: string | null;
     rowGap?: string | null;
@@ -95,6 +97,7 @@ export interface ElementImplementationSpec {
   slots: Array<{ name: string; sourceNodeIds: string[] }>;
   cssClassNames: string[];
   sourceNodeIds: string[];
+  repoMapping?: CodeComponentMappingArtifact;
 }
 
 export interface ComponentImplementationArtifact {
@@ -103,7 +106,27 @@ export interface ComponentImplementationArtifact {
   sourceNodeId: string;
   structure: CodeStructureNode;
   implementation: ElementImplementationSpec;
+  repoMapping?: CodeComponentMappingArtifact;
   variants: Array<{ id: string; name: string; properties: Array<{ name: string; value: string }> }>;
+}
+
+export interface CodeComponentMappingArtifact {
+  id: string;
+  componentId: string;
+  packageName?: string;
+  importPath: string;
+  exportName: string;
+  importMode: "named" | "default";
+  importStatement: string;
+  usage: string;
+  props: Array<{
+    name: string;
+    type: "string";
+    sourceNodeId: string;
+    sourceField: "text";
+    defaultValue: string;
+  }>;
+  docsUrl?: string;
 }
 
 export interface TokenCandidateSummary {
@@ -133,9 +156,17 @@ export function exportDesignToCode(
   const colorTokens = documentColorTokens(document);
   const spacingTokens = documentSpacingTokens(document);
   const tokenMap = new Map([...colorTokens, ...spacingTokens].map((token) => [token.id, token]));
-  const elements = roots.map((root) => exportElement(root, tokenMap));
+  const mappingByComponentId = new Map(
+    (document.code_mappings ?? []).map((mapping) => [mapping.component_id, mappingArtifactFor(mapping)])
+  );
+  const componentIdBySourceNodeId = new Map(
+    (document.components ?? []).map((component) => [component.source_node.id, component.id])
+  );
+  const elements = roots.map((root) => exportElement(root, tokenMap, mappingByComponentId, componentIdBySourceNodeId));
   const moduleBasePath = options.moduleBasePath ?? ".";
-  const components = (document.components ?? []).map((component) => exportComponent(component, tokenMap));
+  const components = (document.components ?? []).map((component) =>
+    exportComponent(component, tokenMap, mappingByComponentId, componentIdBySourceNodeId)
+  );
 
   return {
     css: [
@@ -167,12 +198,17 @@ export function exportDesignToCode(
   };
 }
 
-function exportElement(root: DesignNode, tokenMap: Map<string, DesignToken>): ElementCodeArtifact {
+function exportElement(
+  root: DesignNode,
+  tokenMap: Map<string, DesignToken>,
+  mappingByComponentId: Map<string, CodeComponentMappingArtifact>,
+  componentIdBySourceNodeId: Map<string, string>
+): ElementCodeArtifact {
   const className = classNameFor(root.id);
   const css = nodeCss(root, tokenMap).join("\n");
   const html = renderNode(root, 0);
-  const structure = structureFor(root, tokenMap);
-  const implementation = implementationFor(root);
+  const structure = structureFor(root, tokenMap, mappingByComponentId, componentIdBySourceNodeId);
+  const implementation = implementationFor(root, undefined, structure.repoMapping);
 
   return {
     id: root.id,
@@ -203,14 +239,18 @@ function exportElement(root: DesignNode, tokenMap: Map<string, DesignToken>): El
 
 function exportComponent(
   component: ComponentDefinition,
-  tokenMap: Map<string, DesignToken>
+  tokenMap: Map<string, DesignToken>,
+  mappingByComponentId: Map<string, CodeComponentMappingArtifact>,
+  componentIdBySourceNodeId: Map<string, string>
 ): ComponentImplementationArtifact {
+  const repoMapping = mappingByComponentId.get(component.id);
   return {
     id: component.id,
     name: component.name,
     sourceNodeId: component.source_node.id,
-    structure: structureFor(component.source_node, tokenMap),
-    implementation: implementationFor(component.source_node, component.name),
+    structure: structureFor(component.source_node, tokenMap, mappingByComponentId, componentIdBySourceNodeId),
+    implementation: implementationFor(component.source_node, component.name, repoMapping),
+    ...(repoMapping ? { repoMapping } : {}),
     variants: component.variants.map((variant) => ({
       id: variant.id,
       name: variant.name,
@@ -222,7 +262,59 @@ function exportComponent(
   };
 }
 
-function structureFor(node: DesignNode, tokenMap: Map<string, DesignToken>): CodeStructureNode {
+function repoMappingForNode(
+  node: DesignNode,
+  mappingByComponentId: Map<string, CodeComponentMappingArtifact>,
+  componentIdBySourceNodeId: Map<string, string>
+): CodeComponentMappingArtifact | undefined {
+  const componentId = node.component_instance?.definition_id ?? componentIdBySourceNodeId.get(node.id);
+  return componentId ? mappingByComponentId.get(componentId) : undefined;
+}
+
+function mappingArtifactFor(mapping: CodeComponentMapping): CodeComponentMappingArtifact {
+  const props = mapping.props.map((prop) => ({
+    name: prop.name,
+    type: prop.type,
+    sourceNodeId: prop.source_node_id,
+    sourceField: prop.source_field,
+    defaultValue: prop.default_value
+  }));
+  const artifact: CodeComponentMappingArtifact = {
+    id: mapping.id,
+    componentId: mapping.component_id,
+    ...(mapping.package_name ? { packageName: mapping.package_name } : {}),
+    importPath: mapping.import_path,
+    exportName: mapping.export_name,
+    importMode: mapping.import_mode,
+    importStatement: importStatementForMapping(mapping),
+    usage: usageForMapping(mapping.export_name, props),
+    props,
+    ...(mapping.docs_url ? { docsUrl: mapping.docs_url } : {})
+  };
+  return artifact;
+}
+
+function importStatementForMapping(mapping: CodeComponentMapping) {
+  if (mapping.import_mode === "default") {
+    return `import ${mapping.export_name} from "${mapping.import_path}";`;
+  }
+  return `import { ${mapping.export_name} } from "${mapping.import_path}";`;
+}
+
+function usageForMapping(exportName: string, props: CodeComponentMappingArtifact["props"]) {
+  if (props.length === 0) {
+    return `<${exportName} />`;
+  }
+  return `<${exportName} ${props.map((prop) => `${prop.name}={${prop.name}}`).join(" ")} />`;
+}
+
+function structureFor(
+  node: DesignNode,
+  tokenMap: Map<string, DesignToken>,
+  mappingByComponentId: Map<string, CodeComponentMappingArtifact>,
+  componentIdBySourceNodeId: Map<string, string>
+): CodeStructureNode {
+  const repoMapping = repoMappingForNode(node, mappingByComponentId, componentIdBySourceNodeId);
   const base: CodeStructureNode = {
     id: node.id,
     name: node.name,
@@ -244,8 +336,14 @@ function structureFor(node: DesignNode, tokenMap: Map<string, DesignToken>): Cod
     },
     annotations: handoffAnnotationsFor(node, tokenMap),
     content: contentFor(node),
-    children: node.children.filter(isNodeExportVisible).map((child) => structureFor(child, tokenMap))
+    children: node.children
+      .filter(isNodeExportVisible)
+      .map((child) => structureFor(child, tokenMap, mappingByComponentId, componentIdBySourceNodeId))
   };
+
+  if (repoMapping) {
+    base.repoMapping = repoMapping;
+  }
 
   if (node.component_instance) {
     base.componentRef = {
@@ -490,13 +588,18 @@ function contentFor(node: DesignNode): CodeStructureNode["content"] {
   return { type: "empty" };
 }
 
-function implementationFor(root: DesignNode, explicitName?: string): ElementImplementationSpec {
+function implementationFor(
+  root: DesignNode,
+  explicitName?: string,
+  repoMapping?: CodeComponentMappingArtifact
+): ElementImplementationSpec {
   return {
     componentName: componentNameFor(root, explicitName),
     suggestedProps: textPropsFor(root),
     slots: [],
     cssClassNames: collectNodeIds(root).map((nodeId) => classNameFor(nodeId)),
-    sourceNodeIds: collectNodeIds(root)
+    sourceNodeIds: collectNodeIds(root),
+    ...(repoMapping ? { repoMapping } : {})
   };
 }
 

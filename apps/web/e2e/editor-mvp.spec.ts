@@ -406,6 +406,73 @@ test("inspector dev panel shows selected layer handoff specs and code", async ({
   await expect(page.getByTestId("dev-panel-structure")).toContainText('"id": "frame-1"');
 });
 
+test("inspector dev panel shows repo code mappings for selected component instances", async ({ page }) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: "http://127.0.0.1:5173"
+  });
+  const { documentId } = await createProjectFromEmptyState(page);
+
+  const component = await page.request.post(`http://127.0.0.1:4317/files/${documentId}/components`, {
+    data: { nodeId: "frame-1", componentId: "component-card", name: "Card" }
+  });
+  expect(component.ok()).toBeTruthy();
+
+  const instance = await page.request.post(`http://127.0.0.1:4317/files/${documentId}/component-instances`, {
+    data: {
+      parentId: "page-1",
+      definitionId: "component-card",
+      instanceId: "instance-card",
+      x: 520,
+      y: 140
+    }
+  });
+  expect(instance.ok()).toBeTruthy();
+
+  const mapping = await page.request.put(`http://127.0.0.1:4317/files/${documentId}/code-mappings`, {
+    data: {
+      mappings: [
+        {
+          id: "mapping-card",
+          component_id: "component-card",
+          package_name: "@repo/ui",
+          import_path: "@repo/ui/card",
+          export_name: "Card",
+          import_mode: "named",
+          props: [
+            {
+              name: "title",
+              type: "string",
+              source_node_id: "text-1",
+              source_field: "text",
+              default_value: "Layo"
+            }
+          ],
+          docs_url: "https://repo.example/ui/card"
+        }
+      ]
+    }
+  });
+  expect(mapping.ok()).toBeTruthy();
+
+  await page.reload();
+  await openFilePanel(page);
+  await page.getByRole("button", { name: "Card 인스턴스" }).click();
+  await page.getByTestId("inspector-tab-dev").click();
+
+  const panel = page.getByTestId("dev-panel-code-mapping");
+  await expect(panel).toContainText("Code mapping");
+  await expect(panel).toContainText("@repo/ui/card");
+  await expect(panel).toContainText("import { Card }");
+  await expect(panel).toContainText("<Card title={title} />");
+  await expect(panel).toContainText("https://repo.example/ui/card");
+
+  await page.getByTestId("dev-panel-copy-code-mapping").click();
+  await expect(page.getByTestId("dev-panel-copy-status")).toContainText("코드 매핑 복사됨");
+  const clipboard = await page.evaluate(() => navigator.clipboard.readText());
+  expect(clipboard).toContain('import { Card } from "@repo/ui/card";');
+  expect(clipboard).toContain("<Card title={title} />");
+});
+
 test("inspector dev panel copies generated handoff snippets to the clipboard", async ({ page }) => {
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], {
     origin: "http://127.0.0.1:5173"

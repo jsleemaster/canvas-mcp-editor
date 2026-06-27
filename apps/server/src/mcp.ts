@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { FileStorage, type DesignFile, type DesignNode } from "./storage.js";
+import { FileStorage, type CodeComponentMapping, type DesignFile, type DesignNode } from "./storage.js";
 
 function countNodes(nodes: DesignNode[] = []): number {
   return nodes.reduce((total, node) => total + 1 + countNodes(node.children), 0);
@@ -120,6 +120,25 @@ const nodeExportPresetSchema = z.object({
   format: z.enum(["png", "jpeg", "webp", "svg", "pdf"]),
   scale: z.number().positive(),
   suffix: z.string().default("")
+});
+
+const codeComponentMappingPropSchema = z.object({
+  name: z.string().describe("Code prop name, for example title or label"),
+  type: z.literal("string"),
+  source_node_id: z.string().describe("Design text node id that supplies this prop"),
+  source_field: z.literal("text"),
+  default_value: z.string().describe("Default prop value from the design source")
+});
+
+const codeComponentMappingSchema = z.object({
+  id: z.string().describe("Stable mapping id"),
+  component_id: z.string().describe("Layo component definition id"),
+  package_name: z.string().optional().describe("Optional package display name"),
+  import_path: z.string().describe("Repository import path"),
+  export_name: z.string().describe("Code component export name"),
+  import_mode: z.enum(["named", "default"]).describe("Whether the import is named or default"),
+  props: z.array(codeComponentMappingPropSchema).default([]),
+  docs_url: z.string().optional().describe("Optional component documentation URL")
 });
 
 const agentCommandSchema = z.discriminatedUnion("type", [
@@ -1435,6 +1454,62 @@ export function createMcpServer(storage = new FileStorage()) {
             {
               fileId,
               components: await storage.listComponents(fileId)
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "list_code_component_mappings",
+    {
+      description: "List saved repo component mappings for a local design file.",
+      annotations: readOnlyToolAnnotations,
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files")
+      }
+    },
+    async ({ fileId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              mappings: await storage.listCodeComponentMappings(fileId)
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "set_code_component_mappings",
+    {
+      description: "Replace saved repo component mappings for a local design file.",
+      annotations: writeToolAnnotations,
+      inputSchema: {
+        fileId: z.string().describe("Design file id returned by list_files"),
+        mappings: z.array(codeComponentMappingSchema).describe("Repo component mappings to persist")
+      }
+    },
+    async ({ fileId, mappings }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              fileId,
+              mappings: await storage.setCodeComponentMappings(
+                fileId,
+                mappings as CodeComponentMapping[]
+              )
             },
             null,
             2

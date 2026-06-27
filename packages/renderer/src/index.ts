@@ -139,6 +139,25 @@ export interface ComponentInstance {
   detached: boolean;
 }
 
+export interface CodeComponentMappingProp {
+  name: string;
+  type: "string";
+  source_node_id: string;
+  source_field: "text";
+  default_value: string;
+}
+
+export interface CodeComponentMapping {
+  id: string;
+  component_id: string;
+  package_name?: string;
+  import_path: string;
+  export_name: string;
+  import_mode: "named" | "default";
+  props: CodeComponentMappingProp[];
+  docs_url?: string;
+}
+
 export interface DesignToken {
   id: string;
   name: string;
@@ -151,6 +170,7 @@ export interface RendererDocument {
   name: string;
   tokens?: DesignToken[];
   components?: ComponentDefinition[];
+  code_mappings?: CodeComponentMapping[];
   pages: Array<{ id: string; name: string; children: RendererNode[] }>;
 }
 

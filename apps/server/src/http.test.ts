@@ -978,6 +978,69 @@ describe("HTTP server", () => {
     expect(detached.json().node.kind).toBe("frame");
   });
 
+  test("serves repo component mappings and includes them in code export", async () => {
+    const server = await createServerWithDocument();
+
+    await server.inject({
+      method: "POST",
+      url: "/files/sample-file/components",
+      payload: { nodeId: "frame-1", componentId: "component-card", name: "Card" }
+    });
+
+    const saved = await server.inject({
+      method: "PUT",
+      url: "/files/sample-file/code-mappings",
+      payload: {
+        mappings: [
+          {
+            id: "mapping-card",
+            component_id: "component-card",
+            package_name: "@repo/ui",
+            import_path: "@repo/ui/card",
+            export_name: "Card",
+            import_mode: "named",
+            props: [
+              {
+                name: "title",
+                type: "string",
+                source_node_id: "text-1",
+                source_field: "text",
+                default_value: "Layo"
+              }
+            ],
+            docs_url: "https://repo.example/ui/card"
+          }
+        ]
+      }
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().mappings).toEqual([
+      expect.objectContaining({ id: "mapping-card", component_id: "component-card" })
+    ]);
+
+    const listed = await server.inject({ method: "GET", url: "/files/sample-file/code-mappings" });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().mappings[0]).toMatchObject({
+      id: "mapping-card",
+      import_path: "@repo/ui/card"
+    });
+
+    const exported = await server.inject({ method: "GET", url: "/files/sample-file/export/code" });
+    expect(exported.statusCode).toBe(200);
+    expect(exported.json().export.implementationSpec.components[0].repoMapping).toMatchObject({
+      componentId: "component-card",
+      importStatement: 'import { Card } from "@repo/ui/card";',
+      usage: "<Card title={title} />"
+    });
+    expect(exported.json().export.elements[0].structure.repoMapping).toMatchObject({
+      componentId: "component-card",
+      importPath: "@repo/ui/card"
+    });
+
+    const file = await server.inject({ method: "GET", url: "/files/sample-file" });
+    expect(file.json().file.code_mappings).toEqual(saved.json().mappings);
+  });
+
   test("serves agent inspect, find, command, validate, and change-summary routes", async () => {
     const server = await createServerWithDocument();
 

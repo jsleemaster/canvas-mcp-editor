@@ -1300,7 +1300,8 @@ button:disabled {
   background: var(--editor-color-control);
 }
 
-.dev-panel-annotations {
+.dev-panel-annotations,
+.dev-panel-code-mapping {
   display: grid;
   gap: var(--editor-space-xs);
   min-width: 0;
@@ -1314,6 +1315,21 @@ button:disabled {
   display: grid;
   gap: var(--editor-space-xxs);
   min-width: 0;
+}
+
+.dev-panel-code-mapping-list {
+  display: grid;
+  gap: var(--editor-space-xxs);
+  min-width: 0;
+  color: var(--editor-color-muted);
+  font-family: var(--editor-font-mono);
+  font-size: var(--editor-text-small-size);
+  line-height: var(--editor-text-small-line);
+}
+
+.dev-panel-code-mapping-list span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .dev-panel-annotation-row {

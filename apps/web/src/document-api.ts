@@ -256,6 +256,7 @@ export interface CodeStructureNode {
     detached: boolean;
     overrides: Array<{ nodeId: string; field: string; value: string }>;
   };
+  repoMapping?: CodeComponentMappingArtifact;
   layout?: unknown;
   layout_item?: unknown;
   constraints?: unknown;
@@ -277,6 +278,26 @@ export interface CodeElementImplementation {
   slots: Array<{ name: string; sourceNodeIds: string[] }>;
   cssClassNames: string[];
   sourceNodeIds: string[];
+  repoMapping?: CodeComponentMappingArtifact;
+}
+
+export interface CodeComponentMappingArtifact {
+  id: string;
+  componentId: string;
+  packageName?: string;
+  importPath: string;
+  exportName: string;
+  importMode: "named" | "default";
+  importStatement: string;
+  usage: string;
+  props: Array<{
+    name: string;
+    type: "string";
+    sourceNodeId: string;
+    sourceField: "text";
+    defaultValue: string;
+  }>;
+  docsUrl?: string;
 }
 
 export interface CodeElementArtifact {
