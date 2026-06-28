@@ -124,7 +124,7 @@ const nodeConstraintsSchema = z.object({
 const designTokenSchema = z.object({
   id: z.string(),
   name: z.string(),
-  type: z.enum(["color", "spacing", "typography"]),
+  type: z.enum(["color", "spacing", "typography", "shadow"]),
   value: z.string()
 });
 
@@ -184,7 +184,8 @@ const nodeStyleSchema = z.object({
   stroke: z.string().nullable().describe("CSS stroke color or null for no stroke"),
   stroke_width: z.number().min(0).describe("Stroke width in pixels"),
   opacity: z.number().min(0).max(1).describe("Layer opacity from 0 to 1"),
-  effect_shadow: z.string().nullable().optional().describe("Optional CSS box-shadow value")
+  effect_shadow: z.string().nullable().optional().describe("Optional CSS box-shadow value"),
+  effect_shadow_token: z.string().nullable().optional().describe("Optional shadow token binding")
 });
 
 const agentCommandSchema = z.discriminatedUnion("type", [
@@ -267,6 +268,11 @@ const agentCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("set_fill_style"),
     nodeId: z.string(),
     styleId: z.string()
+  }),
+  z.object({
+    type: z.literal("set_effect_shadow_token"),
+    nodeId: z.string(),
+    tokenId: z.string()
   }),
   z.object({
     type: z.literal("set_text_typography_token"),

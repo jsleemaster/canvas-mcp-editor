@@ -321,6 +321,50 @@ describe("editor state commands", () => {
     });
   });
 
+  test("applies effect shadow token bindings with undo and manual override clearing", () => {
+    const document = sampleDocument() as any;
+    document.tokens = [
+      {
+        id: "shadow-effects-card",
+        name: "Effects / Card",
+        type: "shadow",
+        value: "0px 18px 36px 0px rgba(15, 23, 42, 0.32)"
+      }
+    ];
+    const initial = createEditorState(document);
+
+    const bound = executeEditorCommand(initial, {
+      type: "set_effect_shadow_token",
+      nodeId: "text-1",
+      tokenId: "shadow-effects-card"
+    } as any);
+
+    expect(findNodeById(bound.document, "text-1")?.style).toMatchObject({
+      effect_shadow: "0px 18px 36px 0px rgba(15, 23, 42, 0.32)",
+      effect_shadow_token: "shadow-effects-card"
+    });
+    expect(findNodeById(undo(bound).document, "text-1")?.style).toEqual({
+      fill: "#111827",
+      stroke: null,
+      stroke_width: 0,
+      opacity: 1
+    });
+
+    const overridden = executeEditorCommand(bound, {
+      type: "set_node_style",
+      nodeId: "text-1",
+      style: {
+        ...(findNodeById(bound.document, "text-1")?.style as any),
+        effect_shadow: "0px 8px 20px 0px rgba(15, 23, 42, 0.2)"
+      }
+    });
+
+    expect(findNodeById(overridden.document, "text-1")?.style).toMatchObject({
+      effect_shadow: "0px 8px 20px 0px rgba(15, 23, 42, 0.2)",
+      effect_shadow_token: null
+    });
+  });
+
   test("applies reusable color and typography styles with undo and redo", () => {
     const document = sampleDocument() as any;
     document.styles = [

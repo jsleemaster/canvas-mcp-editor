@@ -1290,6 +1290,44 @@ describe("FileStorage", () => {
     expect(JSON.stringify(persisted)).not.toContain("color-brand-primary");
   });
 
+  test("agent commands create shadow tokens and bind node effect shadows", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+
+    const result = await storage.applyAgentCommands("sample-file", {
+      dryRun: false,
+      commands: [
+        {
+          type: "create_token",
+          token: {
+            id: "shadow-effects-card",
+            name: "Effects / Card",
+            type: "shadow",
+            value: "0px 18px 36px 0px rgba(15, 23, 42, 0.32)"
+          }
+        },
+        { type: "set_effect_shadow_token", nodeId: "text-1", tokenId: "shadow-effects-card" }
+      ] as any
+    });
+    const persisted = await storage.readFile("sample-file");
+    const text = persisted.pages[0].children[0].children.find((node) => node.id === "text-1");
+
+    expect(result.audit.commandTypes).toEqual(["create_token", "set_effect_shadow_token"]);
+    expect(result.validation.issueCount).toBe(0);
+    expect(persisted.tokens).toEqual([
+      {
+        id: "shadow-effects-card",
+        name: "Effects / Card",
+        type: "shadow",
+        value: "0px 18px 36px 0px rgba(15, 23, 42, 0.32)"
+      }
+    ]);
+    expect(text?.style).toMatchObject({
+      effect_shadow: "0px 18px 36px 0px rgba(15, 23, 42, 0.32)",
+      effect_shadow_token: "shadow-effects-card"
+    });
+  });
+
   test("agent commands create reusable styles and apply them to selected node fields", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
     const storage = await storageWithDocument(tempRoot);

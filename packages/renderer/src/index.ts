@@ -109,6 +109,7 @@ export interface RendererNode {
     stroke_width: number;
     opacity: number;
     effect_shadow?: string | null;
+    effect_shadow_token?: string | null;
   };
   content:
     | { type: "empty" }
@@ -199,7 +200,7 @@ export interface CodeComponentMapping {
 export interface DesignToken {
   id: string;
   name: string;
-  type: "color" | "spacing" | "typography";
+  type: "color" | "spacing" | "typography" | "shadow";
   value: string;
   set_id?: string | null;
 }

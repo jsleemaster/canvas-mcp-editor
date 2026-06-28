@@ -244,6 +244,53 @@ describe("DTCG color token import/export", () => {
     });
   });
 
+  test("imports and exports DTCG shadow composite tokens", () => {
+    const imported = importDesignTokensFromDtcg({
+      global: {
+        Effects: {
+          Card: {
+            $type: "shadow",
+            $value: {
+              x: "0px",
+              y: "18px",
+              blur: "36px",
+              spread: "0px",
+              color: "#0f172a",
+              opacity: 0.32
+            }
+          }
+        }
+      }
+    });
+
+    expect(imported).toEqual([
+      {
+        id: "shadow-effects-card",
+        name: "Effects / Card",
+        type: "shadow",
+        value: "0px 18px 36px 0px rgba(15, 23, 42, 0.32)"
+      }
+    ]);
+
+    expect(exportDesignTokensToDtcg(imported)).toMatchObject({
+      global: {
+        Effects: {
+          Card: {
+            $type: "shadow",
+            $value: {
+              x: "0px",
+              y: "18px",
+              blur: "36px",
+              spread: "0px",
+              color: "#0f172a",
+              opacity: 0.32
+            }
+          }
+        }
+      }
+    });
+  });
+
   test("imports and exports ordered token sets with active set metadata", () => {
     const imported = importDesignTokenDocumentFromDtcg({
       $metadata: {
