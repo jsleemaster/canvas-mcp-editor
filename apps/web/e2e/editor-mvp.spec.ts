@@ -1331,6 +1331,40 @@ test("inspector dev panel downloads the selected layer as pdf", async ({ page })
   await expect(page.getByTestId("dev-panel-asset-status")).toContainText("헤드라인 PDF 다운로드됨");
 });
 
+test("inspector dev panel downloads selected effect shadows in vector artifacts", async ({ page }) => {
+  await createProjectFromEmptyState(page);
+  const shadows = ["2px 3px 4px 0px rgba(15, 23, 42, 0.2)", "0px 0px 0px 2px rgba(59, 130, 246, 0.18)"];
+
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await page.getByTestId("inspector-effect-shadow-stack").fill(shadows.join("\n"));
+  await page.getByTestId("inspector-tab-dev").click();
+
+  const svgDownloadPromise = page.waitForEvent("download");
+  await page.getByTestId("dev-panel-download-svg").click();
+  const svgDownload = await svgDownloadPromise;
+  const svgPath = await svgDownload.path();
+  if (!svgPath) {
+    throw new Error("shadow svg download path missing");
+  }
+  const svg = await readFile(svgPath, "utf8");
+  expect(svg).toContain('filter="url(#layo-shadow-text-1)"');
+  expect(svg).toContain('flood-color="rgb(15, 23, 42)"');
+  expect(svg).toContain('flood-opacity="0.2"');
+  expect(svg).toContain('flood-color="rgb(59, 130, 246)"');
+
+  const pdfDownloadPromise = page.waitForEvent("download");
+  await page.getByTestId("dev-panel-download-pdf").click();
+  const pdfDownload = await pdfDownloadPromise;
+  const pdfPath = await pdfDownload.path();
+  if (!pdfPath) {
+    throw new Error("shadow pdf download path missing");
+  }
+  const pdfText = (await readFile(pdfPath)).toString("utf8");
+  expect(pdfText).toContain("/ExtGState << /Gs1");
+  expect(pdfText).toContain("/ca 0.2");
+  expect(pdfText).toContain("/ca 0.18");
+});
+
 test("inspector dev panel downloads selected frame artifacts with nested child layers", async ({ page }) => {
   await createProjectFromEmptyState(page);
 

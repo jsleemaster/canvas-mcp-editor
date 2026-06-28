@@ -24,6 +24,31 @@ interface PdfCommandEntry {
   commands: string[];
 }
 
+interface ParsedShadowColor {
+  svgColor: string;
+  opacity: number;
+  pdfRgb: [number, number, number] | null;
+}
+
+interface ParsedShadowLayer {
+  offsetX: number;
+  offsetY: number;
+  blur: number;
+  spread: number;
+  color: ParsedShadowColor;
+}
+
+interface PdfShadowEntry {
+  type: "shadow";
+  node: RendererNode;
+  layer: ParsedShadowLayer;
+  x: number;
+  y: number;
+  pageHeight: number;
+  graphicsStateName?: string;
+  graphicsStateId?: number;
+}
+
 interface PdfImageEntry {
   type: "image";
   node: RendererNode;
@@ -37,7 +62,14 @@ interface PdfImageEntry {
   fileSpecId?: number;
 }
 
-type PdfEntry = PdfCommandEntry | PdfImageEntry;
+type PdfEntry = PdfCommandEntry | PdfImageEntry | PdfShadowEntry;
+
+interface ArtifactBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
 
 function formatNumber(value: number) {
   const rounded = Math.round(value * 1000) / 1000;
@@ -75,6 +107,229 @@ function assetDataUrl(asset: NodeArtifactAsset) {
   return `data:${escapeSvgText(asset.mimeType)};base64,${normalizedBase64(asset.dataBase64)}`;
 }
 
+function splitCssShadowLayers(value: string) {
+  const layers: string[] = [];
+  let current = "";
+  let depth = 0;
+
+  for (const character of value) {
+    if (character === "(") {
+      depth += 1;
+    } else if (character === ")") {
+      depth = Math.max(0, depth - 1);
+    }
+
+    if (character === "," && depth === 0) {
+      if (current.trim()) {
+        layers.push(current.trim());
+      }
+      current = "";
+    } else {
+      current += character;
+    }
+  }
+
+  if (current.trim()) {
+    layers.push(current.trim());
+  }
+  return layers;
+}
+
+function shadowLayerValuesForNode(node: RendererNode) {
+  if (node.style.effect_shadows?.length) {
+    return node.style.effect_shadows.map((shadow) => shadow.trim()).filter(Boolean);
+  }
+  return node.style.effect_shadow ? splitCssShadowLayers(node.style.effect_shadow) : [];
+}
+
+function parseCssLength(value: string): number | null {
+  const match = value.trim().match(/^(-?\d+(?:\.\d+)?)(px)?$/i);
+  return match ? Number(match[1]) : null;
+}
+
+function clampUnit(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function parseShadowColor(value: string): ParsedShadowColor {
+  const rgbaMatch = value
+    .trim()
+    .match(/^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)(?:\s*,\s*(\d+(?:\.\d+)?))?\s*\)$/i);
+  if (rgbaMatch) {
+    const rgb: [number, number, number] = [
+      Math.max(0, Math.min(255, Number(rgbaMatch[1]))),
+      Math.max(0, Math.min(255, Number(rgbaMatch[2]))),
+      Math.max(0, Math.min(255, Number(rgbaMatch[3])))
+    ];
+    const opacity = rgbaMatch[4] === undefined ? 1 : clampUnit(Number(rgbaMatch[4]));
+    return { svgColor: `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`, opacity, pdfRgb: rgb };
+  }
+
+  const hexMatch = value.trim().match(/^#([0-9a-f]{3,8})$/i);
+  if (hexMatch) {
+    const hex = hexMatch[1];
+    const channels =
+      hex.length === 3 || hex.length === 4
+        ? hex.split("").map((channel) => Number.parseInt(`${channel}${channel}`, 16))
+        : [0, 2, 4, 6].map((index) => Number.parseInt(hex.slice(index, index + 2), 16));
+    const rgb: [number, number, number] = [channels[0] ?? 0, channels[1] ?? 0, channels[2] ?? 0];
+    const opacity = channels[3] === undefined ? 1 : clampUnit(channels[3] / 255);
+    return { svgColor: `#${hex.slice(0, hex.length === 4 ? 3 : 6)}`, opacity, pdfRgb: rgb };
+  }
+
+  return { svgColor: value.trim() || "rgb(15, 23, 42)", opacity: 1, pdfRgb: null };
+}
+
+function parseShadowLayer(value: string): ParsedShadowLayer | null {
+  const trimmed = value.trim();
+  if (!trimmed || /[;{}\n\r]/.test(trimmed) || /\binset\b/i.test(trimmed)) {
+    return null;
+  }
+
+  const colorMatch = trimmed.match(/(rgba?\([^)]+\)|#[0-9a-fA-F]{3,8}|[a-zA-Z]+)$/);
+  const colorText = colorMatch?.[1] ?? "rgba(15, 23, 42, 0.2)";
+  const lengthText = colorMatch ? trimmed.slice(0, colorMatch.index).trim() : trimmed;
+  const lengths = lengthText.split(/\s+/).filter(Boolean).map(parseCssLength);
+  if (lengths.length < 3 || lengths.slice(0, 3).some((length) => length === null)) {
+    return null;
+  }
+
+  return {
+    offsetX: lengths[0] ?? 0,
+    offsetY: lengths[1] ?? 0,
+    blur: Math.max(0, lengths[2] ?? 0),
+    spread: Math.max(0, lengths[3] ?? 0),
+    color: parseShadowColor(colorText)
+  };
+}
+
+function shadowLayersForNode(node: RendererNode) {
+  return shadowLayerValuesForNode(node).map(parseShadowLayer).filter((layer): layer is ParsedShadowLayer => Boolean(layer));
+}
+
+function shadowExpansion(layer: ParsedShadowLayer) {
+  return layer.blur * 2 + layer.spread;
+}
+
+function boundsForBox(width: number, height: number): ArtifactBounds {
+  return { minX: 0, minY: 0, maxX: width, maxY: height };
+}
+
+function mergeBounds(a: ArtifactBounds, b: ArtifactBounds): ArtifactBounds {
+  return {
+    minX: Math.min(a.minX, b.minX),
+    minY: Math.min(a.minY, b.minY),
+    maxX: Math.max(a.maxX, b.maxX),
+    maxY: Math.max(a.maxY, b.maxY)
+  };
+}
+
+function translateBounds(bounds: ArtifactBounds, x: number, y: number): ArtifactBounds {
+  return {
+    minX: bounds.minX + x,
+    minY: bounds.minY + y,
+    maxX: bounds.maxX + x,
+    maxY: bounds.maxY + y
+  };
+}
+
+function shadowBoundsForNode(node: RendererNode): ArtifactBounds | null {
+  const layers = shadowLayersForNode(node);
+  if (layers.length === 0 || node.kind === "group") {
+    return null;
+  }
+
+  const width = Math.max(1, Math.round(node.size.width));
+  const height = Math.max(1, Math.round(node.size.height));
+  return layers.reduce<ArtifactBounds>((bounds, layer) => {
+    const expansion = shadowExpansion(layer);
+    return mergeBounds(bounds, {
+      minX: layer.offsetX - expansion,
+      minY: layer.offsetY - expansion,
+      maxX: width + layer.offsetX + expansion,
+      maxY: height + layer.offsetY + expansion
+    });
+  }, boundsForBox(width, height));
+}
+
+function artifactBoundsForNode(node: RendererNode): ArtifactBounds {
+  const width = Math.max(1, Math.round(node.size.width));
+  const height = Math.max(1, Math.round(node.size.height));
+  let bounds = mergeBounds(boundsForBox(width, height), shadowBoundsForNode(node) ?? boundsForBox(width, height));
+
+  for (const child of node.children) {
+    bounds = mergeBounds(bounds, translateBounds(artifactBoundsForNode(child), child.transform.x, child.transform.y));
+  }
+
+  return bounds;
+}
+
+function exportBoundsForNode(node: RendererNode): ArtifactBounds {
+  const bounds = artifactBoundsForNode(node);
+  return {
+    minX: Math.floor(bounds.minX),
+    minY: Math.floor(bounds.minY),
+    maxX: Math.ceil(bounds.maxX),
+    maxY: Math.ceil(bounds.maxY)
+  };
+}
+
+function shadowFilterIdForNode(node: RendererNode) {
+  return `layo-shadow-${node.id.replace(/[^A-Za-z0-9_-]/g, "-")}`;
+}
+
+function svgShadowFilterAttribute(node: RendererNode) {
+  return shadowLayersForNode(node).length > 0 && node.kind !== "group" ? ` filter="url(#${shadowFilterIdForNode(node)})"` : "";
+}
+
+function svgShadowFilterLinesForNode(node: RendererNode, depth: number): string[] {
+  const layers = shadowLayersForNode(node);
+  if (layers.length === 0 || node.kind === "group") {
+    return [];
+  }
+
+  const width = Math.max(1, Math.round(node.size.width));
+  const height = Math.max(1, Math.round(node.size.height));
+  const bounds = layers.reduce<ArtifactBounds>((current, layer) => {
+    const expansion = shadowExpansion(layer);
+    return mergeBounds(current, {
+      minX: layer.offsetX - expansion,
+      minY: layer.offsetY - expansion,
+      maxX: width + layer.offsetX + expansion,
+      maxY: height + layer.offsetY + expansion
+    });
+  }, boundsForBox(width, height));
+
+  return [
+    indent(
+      `<filter id="${shadowFilterIdForNode(node)}" x="${formatNumber(Math.floor(bounds.minX))}" y="${formatNumber(
+        Math.floor(bounds.minY)
+      )}" width="${formatNumber(Math.ceil(bounds.maxX) - Math.floor(bounds.minX))}" height="${formatNumber(
+        Math.ceil(bounds.maxY) - Math.floor(bounds.minY)
+      )}" filterUnits="userSpaceOnUse">`,
+      depth
+    ),
+    ...layers.map((layer) =>
+      indent(
+        `<feDropShadow dx="${formatNumber(layer.offsetX)}" dy="${formatNumber(layer.offsetY)}" stdDeviation="${formatNumber(
+          layer.blur / 2
+        )}" flood-color="${escapeSvgText(layer.color.svgColor)}" flood-opacity="${formatNumber(layer.color.opacity)}" />`,
+        depth + 1
+      )
+    ),
+    indent("</filter>", depth)
+  ];
+}
+
+function svgShadowFilterLinesForTree(node: RendererNode, depth: number): string[] {
+  return [...svgShadowFilterLinesForNode(node, depth), ...node.children.flatMap((child) => svgShadowFilterLinesForTree(child, depth))];
+}
+
+function svgDefsForNode(node: RendererNode, depth: number): string[] {
+  const filterLines = svgShadowFilterLinesForTree(node, depth + 1);
+  return filterLines.length > 0 ? [indent("<defs>", depth), ...filterLines, indent("</defs>", depth)] : [];
+}
+
 function imageAssetForNode(node: RendererNode, options: NodeArtifactOptions) {
   if (node.content.type !== "image") {
     return undefined;
@@ -90,11 +345,12 @@ function svgImageForNode(node: RendererNode, asset: NodeArtifactAsset) {
   const width = Math.max(1, Math.round(node.size.width));
   const height = Math.max(1, Math.round(node.size.height));
   const opacity = svgOpacityAttribute(node.style.opacity);
+  const filter = svgShadowFilterAttribute(node);
   const fitMode = node.content.fit_mode ?? "fill";
   const preserveAspectRatio = fitMode === "fit" ? "xMidYMid meet" : "xMidYMid slice";
   return `<image ${svgNodeAttributes(node)} data-image-asset-id="${escapeSvgText(
     node.content.asset_id
-  )}" x="0" y="0" width="${width}" height="${height}" href="${assetDataUrl(asset)}" preserveAspectRatio="${preserveAspectRatio}"${opacity} />`;
+  )}" x="0" y="0" width="${width}" height="${height}" href="${assetDataUrl(asset)}" preserveAspectRatio="${preserveAspectRatio}"${opacity}${filter} />`;
 }
 
 function svgSelfForNode(node: RendererNode, options: NodeArtifactOptions) {
@@ -102,12 +358,13 @@ function svgSelfForNode(node: RendererNode, options: NodeArtifactOptions) {
   const height = Math.max(1, Math.round(node.size.height));
   const fill = escapeSvgText(node.style.fill);
   const opacity = svgOpacityAttribute(node.style.opacity);
+  const filter = svgShadowFilterAttribute(node);
 
   if (node.content.type === "text") {
     const fontSize = Math.max(1, Math.round(node.content.font_size));
     return `<text ${svgNodeAttributes(node)} x="0" y="${fontSize}" fill="${fill}" font-family="${escapeSvgText(
       node.content.font_family
-    )}" font-size="${fontSize}"${opacity}>${escapeSvgText(node.content.value)}</text>`;
+    )}" font-size="${fontSize}"${opacity}${filter}>${escapeSvgText(node.content.value)}</text>`;
   }
 
   const imageAsset = imageAssetForNode(node, options);
@@ -122,7 +379,7 @@ function svgSelfForNode(node: RendererNode, options: NodeArtifactOptions) {
   const assetAttribute = node.content.type === "image" ? ` data-image-asset-id="${escapeSvgText(node.content.asset_id)}"` : "";
   return `<rect ${svgNodeAttributes(node)}${assetAttribute} x="0" y="0" width="${width}" height="${height}" rx="0" fill="${fill}" stroke="${
     node.style.stroke ? escapeSvgText(node.style.stroke) : "none"
-  }" stroke-width="${Math.max(0, Math.round(node.style.stroke_width))}"${opacity} />`;
+  }" stroke-width="${Math.max(0, Math.round(node.style.stroke_width))}"${opacity}${filter} />`;
 }
 
 function indent(line: string, depth: number) {
@@ -165,15 +422,19 @@ export function imageAssetIdsForNode(node: RendererNode) {
 }
 
 export function svgForNode(node: RendererNode, options: NodeArtifactOptions = {}) {
-  const width = Math.max(1, Math.round(node.size.width));
-  const height = Math.max(1, Math.round(node.size.height));
+  const bounds = exportBoundsForNode(node);
+  const width = Math.max(1, bounds.maxX - bounds.minX);
+  const height = Math.max(1, bounds.maxY - bounds.minY);
   const nodeId = escapeSvgText(node.id);
   const nodeName = escapeSvgText(node.name);
   const title = `<title>${nodeName}</title>`;
 
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-node-id="${nodeId}" data-node-name="${nodeName}" role="img" aria-label="${nodeName}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${formatNumber(
+      bounds.minX
+    )} ${formatNumber(bounds.minY)} ${width} ${height}" data-node-id="${nodeId}" data-node-name="${nodeName}" role="img" aria-label="${nodeName}">`,
     `  ${title}`,
+    ...svgDefsForNode(node, 1),
     ...svgLinesForNode(node, options, 1, true),
     "</svg>",
     ""
@@ -198,6 +459,16 @@ function pdfColorOperands(fill: string) {
     .map((index) => {
       const channel = Number.parseInt(hex.slice(index, index + 2), 16) / 255;
       return formatNumber(Number(channel.toFixed(3)));
+    })
+    .join(" ");
+}
+
+function pdfRgbOperands(rgb: [number, number, number] | null) {
+  const color = rgb ?? [15, 23, 42];
+  return color
+    .map((channel) => {
+      const value = Math.max(0, Math.min(255, channel)) / 255;
+      return formatNumber(Number(value.toFixed(3)));
     })
     .join(" ");
 }
@@ -237,6 +508,43 @@ function pdfTextCommands(node: RendererNode, pageHeight: number, x: number, y: n
     `(${pdfEscapeString(node.content.value)}) Tj`,
     "ET"
   ];
+}
+
+function pdfShadowCommands(entry: PdfShadowEntry) {
+  const graphicsState = entry.graphicsStateName ? `/${entry.graphicsStateName} gs` : "";
+
+  if (entry.node.content.type === "text") {
+    const fontSize = Math.max(1, Math.round(entry.node.content.font_size));
+    const x = entry.x + entry.layer.offsetX;
+    const y = entry.y + entry.layer.offsetY;
+    const pdfY = entry.pageHeight - y - fontSize;
+    return [
+      "q",
+      graphicsState,
+      "BT",
+      `/F1 ${fontSize} Tf`,
+      `${pdfRgbOperands(entry.layer.color.pdfRgb)} rg`,
+      `${formatNumber(x)} ${formatNumber(Math.max(0, pdfY))} Td`,
+      `(${pdfEscapeString(entry.node.content.value)}) Tj`,
+      "ET",
+      "Q"
+    ].filter(Boolean);
+  }
+
+  const expansion = shadowExpansion(entry.layer);
+  const width = Math.max(1, Math.round(entry.node.size.width + expansion * 2));
+  const height = Math.max(1, Math.round(entry.node.size.height + expansion * 2));
+  const x = entry.x + entry.layer.offsetX - expansion;
+  const y = entry.y + entry.layer.offsetY - expansion;
+  const pdfY = entry.pageHeight - y - height;
+  return [
+    "q",
+    graphicsState,
+    `${pdfRgbOperands(entry.layer.color.pdfRgb)} rg`,
+    `${formatNumber(x)} ${formatNumber(pdfY)} ${width} ${height} re`,
+    "f",
+    "Q"
+  ].filter(Boolean);
 }
 
 function bytesFromBase64(value: string) {
@@ -451,6 +759,12 @@ function collectPdfEntries(
   const y = isRoot ? originY : originY + node.transform.y;
   const imageAsset = imageAssetForNode(node, options);
 
+  if (node.kind !== "group") {
+    for (const layer of shadowLayersForNode(node)) {
+      entries.push({ type: "shadow", node, layer, x, y, pageHeight });
+    }
+  }
+
   if (node.content.type === "text") {
     entries.push({ type: "commands", commands: pdfTextCommands(node, pageHeight, x, y) });
   } else if (imageAsset) {
@@ -487,7 +801,15 @@ function pdfImageCommands(entry: PdfImageEntry) {
 
 function contentForPdfEntries(entries: PdfEntry[]) {
   return [
-    ...entries.flatMap((entry) => (entry.type === "commands" ? entry.commands : pdfImageCommands(entry))),
+    ...entries.flatMap((entry) => {
+      if (entry.type === "commands") {
+        return entry.commands;
+      }
+      if (entry.type === "shadow") {
+        return pdfShadowCommands(entry);
+      }
+      return pdfImageCommands(entry);
+    }),
     ""
   ].join("\n");
 }
@@ -540,12 +862,13 @@ function buildPdf(objects: PdfObject[]) {
 }
 
 export function pdfForNode(node: RendererNode, options: NodeArtifactOptions = {}) {
-  const width = Math.max(1, Math.round(node.size.width));
-  const height = Math.max(1, Math.round(node.size.height));
+  const bounds = exportBoundsForNode(node);
+  const width = Math.max(1, bounds.maxX - bounds.minX);
+  const height = Math.max(1, bounds.maxY - bounds.minY);
   const escapedName = pdfEscapeString(node.name);
   const escapedNodeId = pdfEscapeString(node.id);
   const entries: PdfEntry[] = [];
-  collectPdfEntries(node, options, height, 0, 0, entries, true);
+  collectPdfEntries(node, options, height, -bounds.minX, -bounds.minY, entries, true);
 
   const objects: PdfObject[] = [];
   const catalogId = addPdfObject(objects, "");
@@ -604,6 +927,15 @@ export function pdfForNode(node: RendererNode, options: NodeArtifactOptions = {}
     }
   });
 
+  const shadowEntries = entries.filter((entry): entry is PdfShadowEntry => entry.type === "shadow");
+  shadowEntries.forEach((entry, index) => {
+    entry.graphicsStateName = `Gs${index + 1}`;
+    entry.graphicsStateId = addPdfObject(
+      objects,
+      `<< /Type /ExtGState /ca ${formatNumber(entry.layer.color.opacity)} /CA ${formatNumber(entry.layer.color.opacity)} >>`
+    );
+  });
+
   const content = contentForPdfEntries(entries);
   const contentBytes = new TextEncoder().encode(content);
   const embeddedFileNames = imageEntries
@@ -614,13 +946,17 @@ export function pdfForNode(node: RendererNode, options: NodeArtifactOptions = {}
     .filter((entry) => entry.xObjectName && entry.xObjectId)
     .map((entry) => `/${entry.xObjectName} ${entry.xObjectId} 0 R`);
   const xObjectClause = xObjectEntries.length > 0 ? ` /XObject << ${xObjectEntries.join(" ")} >>` : "";
+  const extGStateEntries = shadowEntries
+    .filter((entry) => entry.graphicsStateName && entry.graphicsStateId)
+    .map((entry) => `/${entry.graphicsStateName} ${entry.graphicsStateId} 0 R`);
+  const extGStateClause = extGStateEntries.length > 0 ? ` /ExtGState << ${extGStateEntries.join(" ")} >>` : "";
 
   setPdfObject(objects, catalogId, `<< /Type /Catalog /Pages ${pagesId} 0 R${namesClause} >>`);
   setPdfObject(objects, pagesId, `<< /Type /Pages /Kids [${pageId} 0 R] /Count 1 >>`);
   setPdfObject(
     objects,
     pageId,
-    `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${width} ${height}] /Resources << /Font << /F1 ${fontId} 0 R >>${xObjectClause} >> /Contents ${contentId} 0 R >>`
+    `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${width} ${height}] /Resources << /Font << /F1 ${fontId} 0 R >>${xObjectClause}${extGStateClause} >> /Contents ${contentId} 0 R >>`
   );
   setPdfObject(objects, contentId, [`<< /Length ${contentBytes.length} >>\nstream\n`, contentBytes, "endstream"]);
   setPdfObject(objects, infoId, `<< /Title (${escapedName}) /Subject (${escapedNodeId}) /Creator (Layo) >>`);
