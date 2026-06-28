@@ -67,7 +67,20 @@ agent safety, and failure loop.
   `pnpm typecheck`, `pnpm --filter @layo/web build`,
   `cargo test -p editor-core`, `pnpm test`, `pnpm test:e2e`,
   and `git diff --check`.
-- [ ] PR merge and post-merge cleanup evidence.
+- [x] PR merge and post-merge cleanup evidence.
+
+## Merge And Cleanup Evidence
+
+- PR #188, `https://github.com/jsleemaster/layo/pull/188`, was squash-merged
+  into `main` as `8d5c608d540f9fd6eec25cc8bb10ddf73853c3ee`.
+- Local `main` was fast-forwarded from `d3f9616` to `8d5c608`.
+- The feature worktree at
+  `/Users/leeo/jsleemaster/layo/.worktrees/penpot-team-scoped-registry` was
+  removed.
+- The local and remote `codex/penpot-team-scoped-registry` branches were
+  deleted.
+- Post-merge cleanup checks showed local `main`, a clean status, a single
+  remaining repo worktree, and no remote head for the deleted feature branch.
 
 ## Remaining Gaps
 
