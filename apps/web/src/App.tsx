@@ -1376,6 +1376,21 @@ async function persistTextTypographyToken(fileId: string, nodeId: string, tokenI
   }
 }
 
+async function persistEffectShadowToken(fileId: string, nodeId: string, tokenId: string) {
+  const response = await fetch(apiUrl(`/files/${fileId}/agent/commands`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dryRun: false,
+      commands: [{ type: "set_effect_shadow_token", nodeId, tokenId }]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`그림자 토큰 저장 실패: ${response.status} ${response.statusText}`.trim());
+  }
+}
+
 async function persistCreateFillStyle(fileId: string, nodeId: string, style: DesignStyle) {
   const response = await fetch(apiUrl(`/files/${fileId}/agent/commands`), {
     method: "POST",
@@ -5131,6 +5146,7 @@ function Inspector({
   onFillChange,
   onNodeStyleChange,
   onFillStyleChange,
+  onEffectShadowTokenChange,
   onCreateFillStyle,
   onRenameStyle,
   onDuplicateStyle,
@@ -5205,6 +5221,7 @@ function Inspector({
   onFillChange: (nodeId: string, fill: string) => void;
   onNodeStyleChange: (nodeId: string, style: RendererNode["style"]) => void;
   onFillStyleChange: (nodeId: string, styleId: string) => void;
+  onEffectShadowTokenChange: (nodeId: string, tokenId: string) => void;
   onCreateFillStyle: (nodeId: string, style: DesignStyle) => void;
   onRenameStyle: (styleId: string, name: string) => void;
   onDuplicateStyle: (styleId: string, newStyleId: string, name: string) => void;
@@ -5397,7 +5414,11 @@ function Inspector({
     } else {
       delete nextStyle.effect_shadow;
     }
+    nextStyle.effect_shadow_token = null;
     onNodeStyleChange(selectedNode.id, nextStyle);
+  };
+  const updateEffectShadowToken = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    onEffectShadowTokenChange(selectedNode.id, event.currentTarget.value);
   };
   const layout: NodeLayout = selectedNode.layout
     ? {
@@ -5434,6 +5455,12 @@ function Inspector({
     : null;
   const spacingTokens = activeDocumentTokens.filter((token) => token.type === "spacing");
   const typographyTokens = activeDocumentTokens.filter((token) => token.type === "typography");
+  const shadowTokens = activeDocumentTokens.filter((token) => token.type === "shadow");
+  const effectShadowToken = selectedNode.style.effect_shadow_token
+    ? shadowTokens.find((token) => token.id === selectedNode.style.effect_shadow_token) ??
+      documentTokens.find((token) => token.id === selectedNode.style.effect_shadow_token && token.type === "shadow") ??
+      null
+    : null;
   const selectedTextContent = selectedNode.content.type === "text" ? selectedNode.content : null;
   const typographyStyle =
     selectedTextContent?.typography_style
@@ -6263,6 +6290,26 @@ function Inspector({
           onChange={updateEffectShadow}
         />
       </label>
+      <label className="stacked-field">
+        그림자 토큰
+        <select
+          data-testid="inspector-effect-shadow-token"
+          value={selectedNode.style.effect_shadow_token ?? ""}
+          onChange={updateEffectShadowToken}
+        >
+          <option value="">토큰 없음</option>
+          {shadowTokens.map((token) => (
+            <option key={token.id} value={token.id}>
+              {token.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {selectedNode.style.effect_shadow_token ? (
+        <div className="inspector-token-readout" data-testid="inspector-effect-shadow-token-readout">
+          토큰 {effectShadowToken?.name ?? selectedNode.style.effect_shadow_token}
+        </div>
+      ) : null}
       <button type="button" className="inspector-compact-button" onClick={() => setPendingStyleKind("color")}>
         색상 스타일 저장
       </button>
@@ -9277,6 +9324,31 @@ export function App() {
       })
       .catch((error) => {
         const message = error instanceof Error ? error.message : "텍스트 타이포그래피 토큰을 저장하지 못했습니다";
+        setProjectStatus(message);
+      });
+  };
+
+  const updateEffectShadowToken = (nodeId: string, tokenId: string) => {
+    if (!tokenId) {
+      const node = editor ? findNodeById(editor.document, nodeId) : null;
+      if (!node) {
+        return;
+      }
+      updateNodeStyle(nodeId, { ...node.style, effect_shadow_token: null });
+      return;
+    }
+
+    dispatch({ type: "set_effect_shadow_token", nodeId, tokenId });
+    if (!currentProject) {
+      return;
+    }
+
+    void persistEffectShadowToken(currentProject.currentDocumentId, nodeId, tokenId)
+      .then(() => {
+        setCodeExportRevision((current) => current + 1);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "그림자 토큰을 저장하지 못했습니다";
         setProjectStatus(message);
       });
   };
@@ -13434,6 +13506,7 @@ export function App() {
         onFillChange={(nodeId, fill) => dispatch({ type: "set_fill", nodeId, fill })}
         onNodeStyleChange={updateNodeStyle}
         onFillStyleChange={updateFillStyle}
+        onEffectShadowTokenChange={updateEffectShadowToken}
         onCreateFillStyle={createFillStyle}
         onRenameStyle={renameStyle}
         onDuplicateStyle={duplicateStyle}

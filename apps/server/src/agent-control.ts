@@ -114,6 +114,7 @@ export type AgentCommand =
   | { type: "set_token_theme_enabled"; tokenThemeId: string; enabled: boolean }
   | { type: "set_fill_token"; nodeId: string; tokenId: string }
   | { type: "set_fill_style"; nodeId: string; styleId: string }
+  | { type: "set_effect_shadow_token"; nodeId: string; tokenId: string }
   | { type: "set_text_typography_token"; nodeId: string; tokenId: string }
   | { type: "set_text_typography_style"; nodeId: string; styleId: string }
   | {
@@ -321,10 +322,16 @@ export function validateDocument(document: DesignFile): DocumentValidation {
       });
     }
     tokenTypes.set(token.id, token.type);
-    if (token.type !== "color" && token.type !== "spacing" && token.type !== "typography") {
+    if (token.type !== "color" && token.type !== "spacing" && token.type !== "typography" && token.type !== "shadow") {
       issues.push({
         code: "invalid_token_type",
         message: `unsupported token type: ${token.id}`
+      });
+    }
+    if (token.type === "shadow" && !isSafeShadowValue(token.value)) {
+      issues.push({
+        code: "invalid_shadow_token_value",
+        message: `shadow token value is invalid: ${token.id}`
       });
     }
     if (token.type === "typography") {
@@ -668,6 +675,7 @@ function validateNode(
   }
 
   validateFillStyleReference(node, path, styleTypes, issues);
+  validateEffectShadowTokenReference(node, path, tokenTypes, issues);
   validateLayoutSpacingTokenReferences(node, path, tokenTypes, issues);
   validateTextTypographyTokenReference(node, path, tokenTypes, issues);
   validateTextTypographyStyleReference(node, path, styleTypes, issues);
@@ -702,6 +710,34 @@ function validateNode(
 
   for (const child of node.children) {
     validateNode(child, [...path, child.id], ids, componentIds, tokenTypes, styleTypes, issues);
+  }
+}
+
+function validateEffectShadowTokenReference(
+  node: DesignNode,
+  path: string[],
+  tokenTypes: Map<string, DesignToken["type"]>,
+  issues: DocumentValidationIssue[]
+) {
+  const tokenId = node.style.effect_shadow_token;
+  if (!tokenId) {
+    return;
+  }
+  const tokenType = tokenTypes.get(tokenId);
+  if (!tokenType) {
+    issues.push({
+      code: "missing_effect_shadow_token",
+      message: `node references missing effect shadow token: ${tokenId}`,
+      nodeId: node.id,
+      path
+    });
+  } else if (tokenType !== "shadow") {
+    issues.push({
+      code: "invalid_effect_shadow_token_type",
+      message: `node effect shadow token is not shadow: ${tokenId}`,
+      nodeId: node.id,
+      path
+    });
   }
 }
 
@@ -1183,6 +1219,12 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
       node.style = { ...node.style, fill: token.value, fill_token: command.tokenId, fill_style: null };
       return node.id;
     }
+    case "set_effect_shadow_token": {
+      const node = requireNode(document, command.nodeId);
+      const token = requireShadowToken(document, command.tokenId);
+      node.style = { ...node.style, effect_shadow: token.value, effect_shadow_token: command.tokenId };
+      return node.id;
+    }
     case "set_fill_style": {
       const node = requireNode(document, command.nodeId);
       const style = requireColorStyle(document, command.styleId);
@@ -1521,6 +1563,24 @@ function requireTypographyToken(document: DesignFile, tokenId: string): DesignTo
   return token;
 }
 
+function requireShadowToken(document: DesignFile, tokenId: string): DesignToken {
+  const token = createActiveDesignTokenReferenceMap(
+    document.tokens ?? [],
+    document.token_sets ?? [],
+    document.token_themes ?? []
+  ).get(tokenId);
+  if (!token) {
+    throw new Error(`token not found: ${tokenId}`);
+  }
+  if (token.type !== "shadow") {
+    throw new Error(`token is not a shadow token: ${tokenId}`);
+  }
+  if (!isSafeShadowValue(token.value)) {
+    throw new Error(`shadow token value is invalid: ${tokenId}`);
+  }
+  return token;
+}
+
 function requireTypographyStyle(document: DesignFile, styleId: string): DesignStyle {
   const style = requireStyle(document, styleId);
   if (style.type !== "typography") {
@@ -1613,6 +1673,13 @@ function materializeNodeTokenBindings(node: DesignNode, tokenMap: Map<string, De
     const token = tokenMap.get(node.style.fill_token);
     if (token?.type === "color") {
       node.style = { ...node.style, fill: token.value };
+    }
+  }
+
+  if (node.style.effect_shadow_token) {
+    const token = tokenMap.get(node.style.effect_shadow_token);
+    if (token?.type === "shadow" && isSafeShadowValue(token.value)) {
+      node.style = { ...node.style, effect_shadow: token.value };
     }
   }
 
@@ -1939,7 +2006,11 @@ function normalizeAgentNodeStyle(style: DesignNode["style"]): DesignNode["style"
     opacity: style.opacity,
     ...(typeof style.effect_shadow === "string" && style.effect_shadow.trim()
       ? { effect_shadow: style.effect_shadow.trim() }
-      : {})
+      : {}),
+    effect_shadow_token:
+      typeof style.effect_shadow_token === "string" && style.effect_shadow_token.trim()
+        ? style.effect_shadow_token.trim()
+        : null
   };
 }
 
@@ -1948,6 +2019,11 @@ function syncComponentInstanceOverridesForAgentCommand(document: DesignFile, com
     syncComponentInstanceStyleOverrides(document, command.nodeId, { fill: command.fill }, ["fill"]);
   } else if (command.type === "set_node_style") {
     syncComponentInstanceStyleOverrides(document, command.nodeId, command.style);
+  } else if (command.type === "set_effect_shadow_token") {
+    const node = findNodeById(document, command.nodeId);
+    syncComponentInstanceStyleOverrides(document, command.nodeId, { effect_shadow: node?.style.effect_shadow }, [
+      "effect_shadow"
+    ]);
   } else if (command.type === "update_geometry") {
     syncComponentInstanceGeometryOverrides(document, command.nodeId, {
       x: command.x,
@@ -1956,6 +2032,11 @@ function syncComponentInstanceOverridesForAgentCommand(document: DesignFile, com
       height: command.height
     });
   }
+}
+
+function isSafeShadowValue(value: string): boolean {
+  const trimmed = value.trim();
+  return Boolean(trimmed) && !/[;{}\n\r]/.test(trimmed);
 }
 
 function syncComponentInstanceStyleOverrides(

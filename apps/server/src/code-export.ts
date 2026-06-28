@@ -57,6 +57,7 @@ export interface CodeStructureNode {
     strokeWidth: number;
     opacity: number;
     effectShadow?: string;
+    effectShadowToken?: string;
   };
   annotations: CodeHandoffAnnotation[];
   content:
@@ -168,6 +169,7 @@ export interface TokenExportSummary {
   colors: DesignToken[];
   spacing: DesignToken[];
   typography: DesignToken[];
+  shadows: DesignToken[];
 }
 
 export interface CodeImplementationSpec {
@@ -191,6 +193,7 @@ export function exportDesignToCode(
   const colorTokens = documentColorTokens(activeTokens);
   const spacingTokens = documentSpacingTokens(activeTokens);
   const typographyTokens = documentTypographyTokens(activeTokens);
+  const shadowTokens = documentShadowTokens(activeTokens);
   const tokenMap = createActiveDesignTokenReferenceMap(
     document.tokens ?? [],
     document.token_sets ?? [],
@@ -217,6 +220,7 @@ export function exportDesignToCode(
       ...colorTokens.map((token) => `  --${cssTokenName(token.id)}: ${token.value};`),
       ...spacingTokens.map((token) => `  --${cssTokenName(token.id)}: ${cssSpacingTokenValue(token)};`),
       ...typographyTokens.flatMap(cssTypographyTokenVariables),
+      ...shadowTokens.map((token) => `  --${cssTokenName(token.id)}: ${token.value};`),
       "  position: relative;",
       "  width: 100%;",
       "  min-height: 100vh;",
@@ -235,7 +239,8 @@ export function exportDesignToCode(
         ...(document.token_themes?.length ? { tokenThemes: document.token_themes } : {}),
         colors: colorTokens,
         spacing: spacingTokens,
-        typography: typographyTokens
+        typography: typographyTokens,
+        shadows: shadowTokens
       },
       tokenCandidates: collectTokenCandidates([
         ...roots,
@@ -414,7 +419,8 @@ function structureFor(
       stroke: node.style.stroke,
       strokeWidth: node.style.stroke_width,
       opacity: node.style.opacity,
-      ...(node.style.effect_shadow ? { effectShadow: node.style.effect_shadow } : {})
+      ...(node.style.effect_shadow ? { effectShadow: node.style.effect_shadow } : {}),
+      ...(node.style.effect_shadow_token ? { effectShadowToken: node.style.effect_shadow_token } : {})
     },
     annotations: handoffAnnotationsFor(node, tokenMap),
     content: contentFor(node),
@@ -513,6 +519,7 @@ function handoffAnnotationsFor(node: DesignNode, tokenMap: Map<string, DesignTok
 
 function styleAnnotationFor(node: DesignNode, tokenMap: Map<string, DesignToken>): CodeHandoffAnnotation {
   const token = node.style.fill_token ? tokenMap.get(node.style.fill_token) : undefined;
+  const shadowToken = node.style.effect_shadow_token ? tokenMap.get(node.style.effect_shadow_token) : undefined;
   const fill = resolvedFill(node, tokenMap);
   const fillStyle = node.style.fill_style;
 
@@ -525,6 +532,8 @@ function styleAnnotationFor(node: DesignNode, tokenMap: Map<string, DesignToken>
     detail:
       token && token.type === "color"
         ? `fill token ${token.id} maps to var(--${cssTokenName(token.id)})`
+        : shadowToken && shadowToken.type === "shadow"
+          ? `shadow token ${shadowToken.id} maps to var(--${cssTokenName(shadowToken.id)})`
         : fillStyle
           ? `fill style ${fillStyle} materialized to ${fill}`
         : node.style.stroke
@@ -804,7 +813,7 @@ function nodeCss(node: DesignNode, tokenMap: Map<string, DesignToken>): string[]
   if (node.transform.rotation !== 0) {
     lines.push(`  transform: rotate(${formatNumber(node.transform.rotation)}deg);`);
   }
-  const effectShadow = cssEffectShadowValue(node);
+  const effectShadow = cssEffectShadowValue(node, tokenMap);
   if (effectShadow) {
     lines.push(`  box-shadow: ${effectShadow};`);
   }
@@ -858,6 +867,10 @@ function documentTypographyTokens(tokens: DesignToken[]): DesignToken[] {
   return tokens.filter((token) => token.type === "typography");
 }
 
+function documentShadowTokens(tokens: DesignToken[]): DesignToken[] {
+  return tokens.filter((token) => token.type === "shadow");
+}
+
 function resolvedFill(node: DesignNode, tokenMap: Map<string, DesignToken>): string {
   const token = node.style.fill_token ? tokenMap.get(node.style.fill_token) : undefined;
   return token?.type === "color" ? token.value : node.style.fill;
@@ -871,10 +884,14 @@ function cssFillValue(node: DesignNode, tokenMap: Map<string, DesignToken>): str
   return `var(--${cssTokenName(token.id)}, ${token.value})`;
 }
 
-function cssEffectShadowValue(node: DesignNode): string | null {
+function cssEffectShadowValue(node: DesignNode, tokenMap: Map<string, DesignToken>): string | null {
   const value = node.style.effect_shadow?.trim();
   if (!value || /[;{}\n\r]/.test(value)) {
     return null;
+  }
+  const token = node.style.effect_shadow_token ? tokenMap.get(node.style.effect_shadow_token) : undefined;
+  if (token?.type === "shadow" && !/[;{}\n\r]/.test(token.value)) {
+    return `var(--${cssTokenName(token.id)}, ${value})`;
   }
   return value;
 }

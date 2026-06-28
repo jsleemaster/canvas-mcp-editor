@@ -3,7 +3,7 @@ import type { DesignToken, DesignTokenSet, DesignTokenTheme } from "./storage.js
 type JsonRecord = Record<string, unknown>;
 
 const DTCG_TOKEN_SET = "global";
-const SUPPORTED_TOKEN_TYPES = new Set(["color", "spacing", "dimension", "typography"]);
+const SUPPORTED_TOKEN_TYPES = new Set(["color", "spacing", "dimension", "typography", "shadow"]);
 
 export interface ImportedDesignTokenDocument {
   tokens: DesignToken[];
@@ -47,7 +47,7 @@ export function exportDesignTokensToDtcg(
     }
     cursor[path[path.length - 1]] = {
       $type: token.type === "spacing" ? "dimension" : token.type,
-      $value: token.type === "typography" ? typographyTokenValueToDtcg(token.value) : token.value
+      $value: tokenValueToDtcg(token)
     };
   }
 
@@ -211,7 +211,7 @@ function writeTokenToDtcgSet(tokenSet: JsonRecord, token: DesignToken) {
   }
   cursor[path[path.length - 1]] = {
     $type: token.type === "spacing" ? "dimension" : token.type,
-    $value: token.type === "typography" ? typographyTokenValueToDtcg(token.value) : token.value
+    $value: tokenValueToDtcg(token)
   };
 }
 
@@ -329,6 +329,9 @@ function normalizeTokenType(input: string | null): DesignToken["type"] | null {
   if (input === "typography") {
     return "typography";
   }
+  if (input === "shadow") {
+    return "shadow";
+  }
   return null;
 }
 
@@ -345,6 +348,9 @@ function normalizeTokenValue(tokenType: DesignToken["type"] | null, value: unkno
   }
   if (tokenType === "typography") {
     return normalizeTypographyTokenValue(value);
+  }
+  if (tokenType === "shadow") {
+    return normalizeShadowTokenValue(value);
   }
   return null;
 }
@@ -392,6 +398,155 @@ function typographyTokenValueToDtcg(value: string): unknown {
   } catch {
     return value;
   }
+}
+
+function tokenValueToDtcg(token: DesignToken): unknown {
+  if (token.type === "typography") {
+    return typographyTokenValueToDtcg(token.value);
+  }
+  if (token.type === "shadow") {
+    return shadowTokenValueToDtcg(token.value);
+  }
+  return token.value;
+}
+
+function normalizeShadowTokenValue(value: unknown): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed && !/[;{}\n\r]/.test(trimmed) ? trimmed : null;
+  }
+  if (!isRecord(value)) {
+    return null;
+  }
+  const x = normalizeShadowLength(value.x);
+  const y = normalizeShadowLength(value.y);
+  const blur = normalizeShadowLength(value.blur);
+  const spread = normalizeShadowLength(value.spread ?? "0px");
+  const color = normalizeShadowColor(value.color, value.opacity);
+  if (!x || !y || !blur || !spread || !color) {
+    return null;
+  }
+  return `${x} ${y} ${blur} ${spread} ${color}`;
+}
+
+function normalizeShadowLength(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return `${value}px`;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return /^-?\d+(?:\.\d+)?(?:px|rem|em|%)?$/i.test(trimmed) ? trimmed : null;
+}
+
+function normalizeShadowColor(color: unknown, opacity: unknown): string | null {
+  if (typeof color !== "string") {
+    return null;
+  }
+  const trimmed = color.trim();
+  const alpha = opacity === undefined ? 1 : Number(opacity);
+  if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) {
+    return null;
+  }
+  const rgb = hexToRgb(trimmed);
+  if (rgb) {
+    return alpha >= 1 ? rgbToHex(rgb) : `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${formatAlpha(alpha)})`;
+  }
+  if (/^rgba?\(/i.test(trimmed)) {
+    return trimmed;
+  }
+  return null;
+}
+
+function shadowTokenValueToDtcg(value: string): unknown {
+  const parsed = parseCssBoxShadow(value);
+  if (!parsed) {
+    return value;
+  }
+  return parsed;
+}
+
+function parseCssBoxShadow(value: string): JsonRecord | null {
+  const trimmed = value.trim();
+  if (!trimmed || /[;{}\n\r]/.test(trimmed)) {
+    return null;
+  }
+
+  const rgbaMatch = trimmed.match(/^(.*?)\s+rgba\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*([01]?(?:\.\d+)?)\s*\)$/i);
+  if (rgbaMatch) {
+    const lengths = rgbaMatch[1].trim().split(/\s+/);
+    if (lengths.length >= 3 && lengths.every((length) => normalizeShadowLength(length))) {
+      const rgb = {
+        r: clampColor(Number(rgbaMatch[2])),
+        g: clampColor(Number(rgbaMatch[3])),
+        b: clampColor(Number(rgbaMatch[4]))
+      };
+      return {
+        x: lengths[0],
+        y: lengths[1],
+        blur: lengths[2],
+        spread: lengths[3] ?? "0px",
+        color: rgbToHex(rgb),
+        opacity: Number(rgbaMatch[5])
+      };
+    }
+  }
+
+  const parts = trimmed.split(/\s+/);
+  if (parts.length >= 4) {
+    const color = parts.at(-1);
+    const lengths = parts.slice(0, -1);
+    if (color && lengths.length >= 3 && lengths.every((length) => normalizeShadowLength(length))) {
+      const rgb = hexToRgb(color);
+      if (rgb) {
+        return {
+          x: lengths[0],
+          y: lengths[1],
+          blur: lengths[2],
+          spread: lengths[3] ?? "0px",
+          color: rgbToHex(rgb),
+          opacity: 1
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function hexToRgb(value: string): { r: number; g: number; b: number } | null {
+  const match = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (!match) {
+    return null;
+  }
+  const hex = match[1];
+  if (hex.length === 3) {
+    return {
+      r: parseInt(hex[0] + hex[0], 16),
+      g: parseInt(hex[1] + hex[1], 16),
+      b: parseInt(hex[2] + hex[2], 16)
+    };
+  }
+  return {
+    r: parseInt(hex.slice(0, 2), 16),
+    g: parseInt(hex.slice(2, 4), 16),
+    b: parseInt(hex.slice(4, 6), 16)
+  };
+}
+
+function rgbToHex(rgb: { r: number; g: number; b: number }): string {
+  return `#${[rgb.r, rgb.g, rgb.b]
+    .map((part) => clampColor(part).toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+function clampColor(value: number): number {
+  return Math.min(255, Math.max(0, Math.round(Number.isFinite(value) ? value : 0)));
+}
+
+function formatAlpha(value: number): string {
+  return String(Number(value.toFixed(3)));
 }
 
 function inheritedTokenType(node: JsonRecord): string | null {

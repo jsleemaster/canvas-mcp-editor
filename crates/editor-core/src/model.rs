@@ -62,6 +62,7 @@ pub enum DesignTokenType {
     Color,
     Spacing,
     Typography,
+    Shadow,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
@@ -613,6 +614,8 @@ pub struct Style {
     pub opacity: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effect_shadow: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effect_shadow_token: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
@@ -697,6 +700,7 @@ impl DesignFile {
                             stroke_width: 0.0,
                             opacity: 1.0,
                             effect_shadow: None,
+                            effect_shadow_token: None,
                         },
                         content: NodeContent::Text {
                             value: "Layo".to_string(),
@@ -724,6 +728,7 @@ impl DesignFile {
                         stroke_width: 1.0,
                         opacity: 1.0,
                         effect_shadow: None,
+                        effect_shadow_token: None,
                     },
                     content: NodeContent::Empty,
                 }],

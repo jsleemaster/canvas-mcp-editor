@@ -169,6 +169,11 @@ export type EditorCommand =
       styleId: string;
     }
   | {
+      type: "set_effect_shadow_token";
+      nodeId: string;
+      tokenId: string;
+    }
+  | {
       type: "set_token_set_enabled";
       tokenSetId: string;
       enabled: boolean;
@@ -577,6 +582,11 @@ function findTypographyToken(document: RendererDocument, tokenId: string): Desig
   return token?.type === "typography" ? token : null;
 }
 
+function findShadowToken(document: RendererDocument, tokenId: string): DesignToken | null {
+  const token = activeDesignTokenReferenceMap(document).get(tokenId);
+  return token?.type === "shadow" && isSafeShadowValue(token.value) ? token : null;
+}
+
 function findTypographyStyle(document: RendererDocument, styleId: string): DesignStyle | null {
   const style = (document.styles ?? []).find((candidate) => candidate.id === styleId);
   return style?.type === "typography" ? style : null;
@@ -602,6 +612,11 @@ function parseTypographyValue(source: Pick<DesignToken | DesignStyle, "value">):
 
 function parseTypographyToken(token: DesignToken): { fontFamily: string; fontSize: number; lineHeight?: number } | null {
   return parseTypographyValue(token);
+}
+
+function isSafeShadowValue(value: string): boolean {
+  const trimmed = value.trim();
+  return Boolean(trimmed) && !/[;{}\n\r]/.test(trimmed);
 }
 
 function activeDesignTokenReferenceMap(document: RendererDocument): Map<string, DesignToken> {
@@ -773,6 +788,12 @@ function materializeNodeTokenBindings(node: RendererNode, tokenMap: Map<string, 
     const token = tokenMap.get(node.style.fill_token);
     if (token?.type === "color") {
       node.style = { ...node.style, fill: token.value };
+    }
+  }
+  if (node.style.effect_shadow_token) {
+    const token = tokenMap.get(node.style.effect_shadow_token);
+    if (token?.type === "shadow" && isSafeShadowValue(token.value)) {
+      node.style = { ...node.style, effect_shadow: token.value };
     }
   }
   if (node.content.type === "text" && node.content.typography_token) {
@@ -1987,6 +2008,31 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         }
       };
     }
+    case "set_effect_shadow_token": {
+      const node = findNodeById(next, command.nodeId);
+      const token = findShadowToken(next, command.tokenId);
+      if (!node || !token || isNodeLocked(node)) {
+        return { document, inverse: null };
+      }
+
+      const previousStyle = { ...node.style };
+      if (previousStyle.effect_shadow === token.value && previousStyle.effect_shadow_token === command.tokenId) {
+        return { document, inverse: null };
+      }
+
+      node.style = { ...node.style, effect_shadow: token.value, effect_shadow_token: command.tokenId };
+      relayoutDocument(next);
+      syncComponentInstanceStyleOverride(next, command.nodeId, "effect_shadow", token.value);
+
+      return {
+        document: next,
+        inverse: {
+          type: "set_node_style",
+          nodeId: command.nodeId,
+          style: previousStyle
+        }
+      };
+    }
     case "set_token_set_enabled": {
       const tokenSet = (next.token_sets ?? []).find((candidate) => candidate.id === command.tokenSetId);
       if (!tokenSet) {
@@ -2190,6 +2236,15 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       }
 
       const previousStyle = { ...node.style };
+      const nextStyle = { ...command.style };
+      if (
+        previousStyle.effect_shadow_token &&
+        (previousStyle.effect_shadow ?? null) !== (command.style.effect_shadow ?? null) &&
+        (command.style.effect_shadow_token ?? null) === previousStyle.effect_shadow_token
+      ) {
+        nextStyle.effect_shadow_token = null;
+      }
+
       if (
         previousStyle.fill === command.style.fill &&
         previousStyle.fill_token === command.style.fill_token &&
@@ -2197,12 +2252,13 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         previousStyle.stroke === command.style.stroke &&
         previousStyle.stroke_width === command.style.stroke_width &&
         previousStyle.opacity === command.style.opacity &&
-        (previousStyle.effect_shadow ?? null) === (command.style.effect_shadow ?? null)
+        (previousStyle.effect_shadow ?? null) === (nextStyle.effect_shadow ?? null) &&
+        (previousStyle.effect_shadow_token ?? null) === (nextStyle.effect_shadow_token ?? null)
       ) {
         return { document, inverse: null };
       }
 
-      node.style = { ...command.style };
+      node.style = nextStyle;
       relayoutDocument(next);
       syncComponentInstanceStyleOverrides(next, command.nodeId, node.style);
 

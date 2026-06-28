@@ -3318,6 +3318,60 @@ test("inspector shows fill token binding from agent-applied color tokens", async
   await expect(page.getByTestId("inspector-fill-token")).toContainText("Brand / Primary");
 });
 
+test("right inspector binds imported shadow tokens to effect shadows", async ({ page }) => {
+  const { documentId } = await createProjectFromEmptyState(page);
+  const importedTokenJson = JSON.stringify(
+    {
+      global: {
+        Effects: {
+          Card: {
+            $type: "shadow",
+            $value: {
+              x: "0px",
+              y: "18px",
+              blur: "36px",
+              spread: "0px",
+              color: "#0f172a",
+              opacity: 0.32
+            }
+          }
+        }
+      }
+    },
+    null,
+    2
+  );
+
+  await page.getByTestId("dtcg-token-json").fill(importedTokenJson);
+  await page.getByRole("button", { name: "토큰 가져오기" }).click();
+  await expect(page.getByTestId("dtcg-token-status")).toContainText("1개 토큰 가져옴");
+
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await page.getByTestId("inspector-effect-shadow-token").selectOption("shadow-effects-card");
+  await expect(page.getByTestId("inspector-effect-shadow")).toHaveValue(
+    "0px 18px 36px 0px rgba(15, 23, 42, 0.32)"
+  );
+  await expect(page.getByTestId("inspector-effect-shadow-token-readout")).toContainText("Effects / Card");
+
+  await expect
+    .poll(async () => {
+      const fileResponse = await page.request.get(`http://127.0.0.1:4317/files/${documentId}`);
+      expect(fileResponse.ok()).toBeTruthy();
+      const filePayload = await fileResponse.json();
+      const textNode = filePayload.file.pages[0].children[0].children.find((node: any) => node.id === "text-1");
+      return textNode?.style;
+    })
+    .toMatchObject({
+      effect_shadow: "0px 18px 36px 0px rgba(15, 23, 42, 0.32)",
+      effect_shadow_token: "shadow-effects-card"
+    });
+
+  await page.reload();
+  await openFilePanel(page);
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await expect(page.getByTestId("inspector-effect-shadow-token")).toHaveValue("shadow-effects-card");
+});
+
 test("right inspector creates and applies reusable styles", async ({ page }) => {
   const { documentId } = await createProjectFromEmptyState(page);
 
