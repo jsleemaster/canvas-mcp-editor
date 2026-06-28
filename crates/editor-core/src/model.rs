@@ -616,6 +616,8 @@ pub struct Style {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effect_shadow: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effect_shadows: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effect_shadow_token: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effect_shadow_style: Option<String>,
@@ -703,6 +705,7 @@ impl DesignFile {
                             stroke_width: 0.0,
                             opacity: 1.0,
                             effect_shadow: None,
+                            effect_shadows: None,
                             effect_shadow_token: None,
                             effect_shadow_style: None,
                         },
@@ -732,6 +735,7 @@ impl DesignFile {
                         stroke_width: 1.0,
                         opacity: 1.0,
                         effect_shadow: None,
+                        effect_shadows: None,
                         effect_shadow_token: None,
                         effect_shadow_style: None,
                     },

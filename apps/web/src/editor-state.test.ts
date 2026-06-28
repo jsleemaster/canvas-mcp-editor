@@ -408,6 +408,50 @@ describe("editor state commands", () => {
     });
   });
 
+  test("applies multi effect shadow stacks with undo redo and manual override clearing", () => {
+    const shadows = [
+      "0px 1px 2px 0px rgba(15, 23, 42, 0.18)",
+      "0px 18px 36px 0px rgba(15, 23, 42, 0.32)"
+    ];
+    const initial = createEditorState(sampleDocument());
+
+    const stacked = executeEditorCommand(initial, {
+      type: "set_effect_shadows",
+      nodeId: "text-1",
+      shadows
+    } as any);
+
+    expect((findNodeById(stacked.document, "text-1")?.style as any)).toMatchObject({
+      effect_shadow: shadows.join(", "),
+      effect_shadows: shadows,
+      effect_shadow_token: null,
+      effect_shadow_style: null
+    });
+
+    const undone = undo(stacked);
+    expect((findNodeById(undone.document, "text-1")?.style as any).effect_shadows).toBeUndefined();
+
+    const redone = redo(undone);
+    expect((findNodeById(redone.document, "text-1")?.style as any)).toMatchObject({
+      effect_shadow: shadows.join(", "),
+      effect_shadows: shadows
+    });
+
+    const overridden = executeEditorCommand(redone, {
+      type: "set_node_style",
+      nodeId: "text-1",
+      style: {
+        ...(findNodeById(redone.document, "text-1")?.style as any),
+        effect_shadow: "0px 8px 20px 0px rgba(15, 23, 42, 0.2)"
+      }
+    });
+
+    expect((findNodeById(overridden.document, "text-1")?.style as any)).toMatchObject({
+      effect_shadow: "0px 8px 20px 0px rgba(15, 23, 42, 0.2)",
+      effect_shadows: null
+    });
+  });
+
   test("applies reusable color and typography styles with undo and redo", () => {
     const document = sampleDocument() as any;
     document.styles = [

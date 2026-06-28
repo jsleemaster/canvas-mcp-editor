@@ -135,6 +135,32 @@ describe("code export", () => {
     );
   });
 
+  test("exports multi effect shadow stacks as CSS and implementation metadata", () => {
+    const fixture = tossFixture() as any;
+    const shadows = [
+      "0px 1px 2px 0px rgba(15, 23, 42, 0.18)",
+      "0px 18px 36px 0px rgba(15, 23, 42, 0.32)"
+    ];
+    fixture.pages[0].children[0].style.effect_shadows = shadows;
+
+    const result = exportDesignToCode(fixture);
+    const button = result.elements.find((element) => element.id === "tds-button-primary");
+
+    expect(result.css).toContain(`box-shadow: ${shadows.join(", ")};`);
+    expect(button?.structure.style).toMatchObject({
+      effectShadow: shadows.join(", "),
+      effectShadows: shadows
+    });
+    expect(button?.structure.annotations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "tds-button-primary-style",
+          detail: "2 effect shadow layers map to box-shadow"
+        })
+      ])
+    );
+  });
+
   test("exports effect shadow token bindings as CSS variables and implementation metadata", () => {
     const fixture = tossFixture() as any;
     fixture.tokens = [

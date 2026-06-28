@@ -55,10 +55,12 @@ export interface CodeStructureNode {
     fillStyle?: string;
     stroke: string | null;
     strokeWidth: number;
-    opacity: number;
-    effectShadow?: string;
-    effectShadowToken?: string;
-  };
+	    opacity: number;
+	    effectShadow?: string;
+	    effectShadows?: string[];
+	    effectShadowToken?: string;
+	    effectShadowStyle?: string;
+	  };
   annotations: CodeHandoffAnnotation[];
   content:
     | { type: "empty" }
@@ -400,6 +402,8 @@ function structureFor(
   componentIdBySourceNodeId: Map<string, string>
 ): CodeStructureNode {
   const repoMapping = repoMappingForNode(node, mappingByComponentId, componentById, componentIdBySourceNodeId);
+  const effectShadow = resolvedEffectShadow(node);
+  const effectShadows = effectShadowStack(node);
   const base: CodeStructureNode = {
     id: node.id,
     name: node.name,
@@ -419,7 +423,8 @@ function structureFor(
       stroke: node.style.stroke,
       strokeWidth: node.style.stroke_width,
       opacity: node.style.opacity,
-      ...(node.style.effect_shadow ? { effectShadow: node.style.effect_shadow } : {}),
+      ...(effectShadow ? { effectShadow } : {}),
+      ...(effectShadows.length ? { effectShadows } : {}),
       ...(node.style.effect_shadow_token ? { effectShadowToken: node.style.effect_shadow_token } : {}),
       ...(node.style.effect_shadow_style ? { effectShadowStyle: node.style.effect_shadow_style } : {})
     },
@@ -524,15 +529,19 @@ function styleAnnotationFor(node: DesignNode, tokenMap: Map<string, DesignToken>
   const fill = resolvedFill(node, tokenMap);
   const fillStyle = node.style.fill_style;
   const effectShadowStyle = node.style.effect_shadow_style;
+  const shadows = effectShadowStack(node);
+  const effectShadow = resolvedEffectShadow(node);
 
   return {
     id: `${node.id}-style`,
     label: "스타일",
     value: `Fill ${fill} · opacity ${formatNumber(node.style.opacity)}${
-      node.style.effect_shadow ? ` · Shadow ${node.style.effect_shadow}` : ""
+      effectShadow ? ` · Shadow ${effectShadow}` : ""
     }`,
     detail:
-      token && token.type === "color"
+      shadows.length > 1
+        ? `${shadows.length} effect shadow layers map to box-shadow`
+        : token && token.type === "color"
         ? `fill token ${token.id} maps to var(--${cssTokenName(token.id)})`
         : shadowToken && shadowToken.type === "shadow"
           ? `shadow token ${shadowToken.id} maps to var(--${cssTokenName(shadowToken.id)})`
@@ -889,7 +898,7 @@ function cssFillValue(node: DesignNode, tokenMap: Map<string, DesignToken>): str
 }
 
 function cssEffectShadowValue(node: DesignNode, tokenMap: Map<string, DesignToken>): string | null {
-  const value = node.style.effect_shadow?.trim();
+  const value = resolvedEffectShadow(node);
   if (!value || /[;{}\n\r]/.test(value)) {
     return null;
   }
@@ -898,6 +907,22 @@ function cssEffectShadowValue(node: DesignNode, tokenMap: Map<string, DesignToke
     return `var(--${cssTokenName(token.id)}, ${value})`;
   }
   return value;
+}
+
+function resolvedEffectShadow(node: DesignNode): string | null {
+  const shadows = effectShadowStack(node);
+  if (shadows.length) {
+    return shadows.join(", ");
+  }
+  return node.style.effect_shadow?.trim() || null;
+}
+
+function effectShadowStack(node: DesignNode): string[] {
+  const shadows = node.style.effect_shadows;
+  if (!Array.isArray(shadows)) {
+    return [];
+  }
+  return shadows.map((shadow) => shadow.trim()).filter((shadow) => Boolean(shadow) && !/[;{}\n\r]/.test(shadow));
 }
 
 function cssLayoutSpacingValue(

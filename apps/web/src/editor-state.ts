@@ -180,6 +180,11 @@ export type EditorCommand =
       styleId: string;
     }
   | {
+      type: "set_effect_shadows";
+      nodeId: string;
+      shadows: string[];
+    }
+  | {
       type: "set_token_set_enabled";
       tokenSetId: string;
       enabled: boolean;
@@ -630,6 +635,29 @@ function isSafeShadowValue(value: string): boolean {
   return Boolean(trimmed) && !/[;{}\n\r]/.test(trimmed);
 }
 
+function normalizeEffectShadowStack(shadows: string[] | null | undefined): string[] {
+  if (!Array.isArray(shadows)) {
+    return [];
+  }
+  return shadows.map((shadow) => shadow.trim()).filter((shadow) => isSafeShadowValue(shadow)).slice(0, 8);
+}
+
+function effectShadowValueFromStack(shadows: string[]): string {
+  return shadows.join(", ");
+}
+
+function sameEffectShadowStack(
+  before: string[] | null | undefined,
+  after: string[] | null | undefined
+): boolean {
+  const beforeStack = before ?? null;
+  const afterStack = after ?? null;
+  if (beforeStack === null || afterStack === null) {
+    return beforeStack === afterStack;
+  }
+  return beforeStack.length === afterStack.length && beforeStack.every((shadow, index) => shadow === afterStack[index]);
+}
+
 function activeDesignTokenReferenceMap(document: RendererDocument): Map<string, DesignToken> {
   const tokens = document.tokens ?? [];
   const tokenSets = document.token_sets ?? [];
@@ -743,7 +771,7 @@ function materializeNodeStyleBindings(node: RendererNode, styleMap: Map<string, 
   if (node.style.effect_shadow_style) {
     const style = styleMap.get(node.style.effect_shadow_style);
     if (style?.type === "effect" && isSafeShadowValue(style.value)) {
-      node.style = { ...node.style, effect_shadow: style.value };
+      node.style = { ...node.style, effect_shadow: style.value, effect_shadows: [style.value] };
     }
   }
   if (node.content.type === "text" && node.content.typography_style) {
@@ -817,7 +845,7 @@ function materializeNodeTokenBindings(node: RendererNode, tokenMap: Map<string, 
   if (node.style.effect_shadow_token) {
     const token = tokenMap.get(node.style.effect_shadow_token);
     if (token?.type === "shadow" && isSafeShadowValue(token.value)) {
-      node.style = { ...node.style, effect_shadow: token.value };
+      node.style = { ...node.style, effect_shadow: token.value, effect_shadows: [token.value] };
     }
   }
   if (node.content.type === "text" && node.content.typography_token) {
@@ -2044,7 +2072,13 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         return { document, inverse: null };
       }
 
-      node.style = { ...node.style, effect_shadow: token.value, effect_shadow_token: command.tokenId, effect_shadow_style: null };
+      node.style = {
+        ...node.style,
+        effect_shadow: token.value,
+        effect_shadows: [token.value],
+        effect_shadow_token: command.tokenId,
+        effect_shadow_style: null
+      };
       relayoutDocument(next);
       syncComponentInstanceStyleOverride(next, command.nodeId, "effect_shadow", token.value);
 
@@ -2069,9 +2103,55 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         return { document, inverse: null };
       }
 
-      node.style = { ...node.style, effect_shadow: style.value, effect_shadow_token: null, effect_shadow_style: command.styleId };
+      node.style = {
+        ...node.style,
+        effect_shadow: style.value,
+        effect_shadows: [style.value],
+        effect_shadow_token: null,
+        effect_shadow_style: command.styleId
+      };
       relayoutDocument(next);
       syncComponentInstanceStyleOverride(next, command.nodeId, "effect_shadow", style.value);
+
+      return {
+        document: next,
+        inverse: {
+          type: "set_node_style",
+          nodeId: command.nodeId,
+          style: previousStyle
+        }
+      };
+    }
+    case "set_effect_shadows": {
+      const node = findNodeById(next, command.nodeId);
+      if (!node || isNodeLocked(node)) {
+        return { document, inverse: null };
+      }
+
+      const shadows = normalizeEffectShadowStack(command.shadows);
+      if (!shadows.length || shadows.length !== command.shadows.length) {
+        return { document, inverse: null };
+      }
+      const effectShadow = effectShadowValueFromStack(shadows);
+      const previousStyle = { ...node.style };
+      if (
+        previousStyle.effect_shadow === effectShadow &&
+        sameEffectShadowStack(previousStyle.effect_shadows, shadows) &&
+        !previousStyle.effect_shadow_token &&
+        !previousStyle.effect_shadow_style
+      ) {
+        return { document, inverse: null };
+      }
+
+      node.style = {
+        ...node.style,
+        effect_shadow: effectShadow,
+        effect_shadows: shadows,
+        effect_shadow_token: null,
+        effect_shadow_style: null
+      };
+      relayoutDocument(next);
+      syncComponentInstanceStyleOverride(next, command.nodeId, "effect_shadow", effectShadow);
 
       return {
         document: next,
@@ -2300,6 +2380,13 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       ) {
         nextStyle.effect_shadow_style = null;
       }
+      if (
+        previousStyle.effect_shadows &&
+        (previousStyle.effect_shadow ?? null) !== (command.style.effect_shadow ?? null) &&
+        sameEffectShadowStack(command.style.effect_shadows, previousStyle.effect_shadows)
+      ) {
+        nextStyle.effect_shadows = null;
+      }
 
       if (
         previousStyle.fill === command.style.fill &&
@@ -2309,6 +2396,7 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         previousStyle.stroke_width === command.style.stroke_width &&
         previousStyle.opacity === command.style.opacity &&
         (previousStyle.effect_shadow ?? null) === (nextStyle.effect_shadow ?? null) &&
+        sameEffectShadowStack(previousStyle.effect_shadows, nextStyle.effect_shadows) &&
         (previousStyle.effect_shadow_token ?? null) === (nextStyle.effect_shadow_token ?? null) &&
         (previousStyle.effect_shadow_style ?? null) === (nextStyle.effect_shadow_style ?? null)
       ) {
