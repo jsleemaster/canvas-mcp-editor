@@ -73,6 +73,24 @@ const svgImageAsset: NodeArtifactAsset & { pdfPreviewPngBase64: string } = {
   pdfPreviewPngBase64: pixelPngBase64
 };
 
+const shadowedCard: RendererNode = {
+  id: "shadow-card",
+  kind: "rectangle",
+  name: "Shadow card",
+  transform: { x: 0, y: 0, rotation: 0 },
+  size: { width: 120, height: 50 },
+  style: {
+    fill: "#ffffff",
+    stroke: "#94a3b8",
+    stroke_width: 1,
+    opacity: 1,
+    effect_shadow: "2px 3px 4px 0px rgba(15, 23, 42, 0.2), 0px 0px 0px 2px rgba(59, 130, 246, 0.18)",
+    effect_shadows: ["2px 3px 4px 0px rgba(15, 23, 42, 0.2)", "0px 0px 0px 2px rgba(59, 130, 246, 0.18)"]
+  },
+  content: { type: "empty" },
+  children: []
+};
+
 describe("node artifact exports", () => {
   test("renders selected frame SVG with nested child layers", () => {
     const svg = svgForNode(nestedFrame);
@@ -99,6 +117,49 @@ describe("node artifact exports", () => {
     expect(pdfText).toContain("(Nested headline) Tj");
     expect(pdfText).toContain("0.859 0.918 0.996 rg");
     expect(pdfText).toContain("24 28 96 48 re");
+  });
+
+  test("renders effect shadow stacks in selected-layer SVG artifacts", () => {
+    const svg = svgForNode(shadowedCard);
+
+    expect(svg).toContain('viewBox="-6 -5 136 66"');
+    expect(svg).toContain('<defs>');
+    expect(svg).toContain('id="layo-shadow-shadow-card"');
+    expect(svg).toContain('filter="url(#layo-shadow-shadow-card)"');
+    expect(svg).toContain('dx="2"');
+    expect(svg).toContain('dy="3"');
+    expect(svg).toContain('stdDeviation="2"');
+    expect(svg).toContain('flood-color="rgb(15, 23, 42)"');
+    expect(svg).toContain('flood-opacity="0.2"');
+    expect(svg).toContain('flood-color="rgb(59, 130, 246)"');
+    expect(svg).toContain('flood-opacity="0.18"');
+  });
+
+  test("renders child effect shadow filters inside a single SVG defs block", () => {
+    const frameWithShadowedChild: RendererNode = {
+      ...nestedFrame,
+      children: [{ ...shadowedCard, transform: { x: 24, y: 84, rotation: 0 } }]
+    };
+    const svg = svgForNode(frameWithShadowedChild);
+
+    expect(svg.match(/<defs>/g)).toHaveLength(1);
+    expect(svg.match(/<\/defs>/g)).toHaveLength(1);
+    expect(svg).toContain('id="layo-shadow-shadow-card"');
+    expect(svg).toContain('transform="translate(24 84)"');
+    expect(svg).toContain('filter="url(#layo-shadow-shadow-card)"');
+  });
+
+  test("renders effect shadow stacks in selected-layer PDF artifacts", () => {
+    const pdf = pdfForNode(shadowedCard);
+    const pdfText = new TextDecoder().decode(pdf);
+
+    expect(pdfText).toContain("/MediaBox [0 0 136 66]");
+    expect(pdfText).toContain("/ExtGState << /Gs1");
+    expect(pdfText).toContain("/ca 0.2");
+    expect(pdfText).toContain("/ca 0.18");
+    expect(pdfText).toContain("/Gs1 gs");
+    expect(pdfText).toContain("0 0 136 66 re");
+    expect(pdfText).toContain("6 11 120 50 re");
   });
 
   test("collects image asset ids from nested nodes", () => {
