@@ -376,7 +376,7 @@ test("file panel exports a shared library archive and imports reusable component
   ]);
 });
 
-test("file panel publishes a shared library registry item and imports it into another project", async ({ page }) => {
+test("file panel publishes imports and updates a shared library registry item", async ({ page }) => {
   const { documentId } = await createProjectFromEmptyState(page);
   const commands = await page.request.post(`http://127.0.0.1:4317/files/${documentId}/agent/commands`, {
     data: {
@@ -420,6 +420,34 @@ test("file panel publishes a shared library registry item and imports it into an
   await page.getByTestId("library-registry-prefix").fill("team");
   await page.getByRole("button", { name: "검토한 게시 라이브러리 가져오기" }).click();
   await expect(page.getByTestId("library-registry-status")).toContainText("게시 라이브러리 가져옴");
+  await expect(page.getByTestId("library-registry-updates")).toContainText("적용할 업데이트 없음");
+
+  const updateCommands = await page.request.post(`http://127.0.0.1:4317/files/${documentId}/agent/commands`, {
+    data: {
+      dryRun: false,
+      commands: [
+        {
+          type: "create_rectangle",
+          parentId: "frame-1",
+          id: "library-badge",
+          name: "Library Badge",
+          width: 80,
+          height: 32,
+          fill: "#2563eb"
+        },
+        { type: "create_component", nodeId: "library-badge", componentId: "component-badge", name: "Badge" }
+      ]
+    }
+  });
+  expect(updateCommands.ok()).toBeTruthy();
+  const republished = await page.request.post("http://127.0.0.1:4317/libraries", {
+    data: { fileId: documentId, libraryId: documentId, name: "Team Kit" }
+  });
+  expect(republished.ok()).toBeTruthy();
+
+  await expect(page.getByTestId("library-registry-updates")).toContainText("Team Kit 업데이트 가능");
+  await page.getByTestId(`library-registry-update-${documentId}`).click();
+  await expect(page.getByTestId("library-registry-status")).toContainText("Team Kit 업데이트 적용됨");
 
   const targetProjectId = await page.getByTestId("project-switcher").inputValue();
   const projectResponse = await page.request.get(`http://127.0.0.1:4317/projects/${targetProjectId}`);
@@ -428,7 +456,10 @@ test("file panel publishes a shared library registry item and imports it into an
   const response = await page.request.get(`http://127.0.0.1:4317/files/${targetDocumentId}`);
   expect(response.ok()).toBeTruthy();
   const payload = await response.json();
-  expect(payload.file.components).toEqual([expect.objectContaining({ id: "team-component-card", name: "Card" })]);
+  expect(payload.file.components).toEqual([
+    expect.objectContaining({ id: "team-component-card", name: "Card" }),
+    expect.objectContaining({ id: "team-component-badge", name: "Badge" })
+  ]);
   expect(payload.file.tokens).toEqual([
     expect.objectContaining({ id: "color-brand-primary", value: "#2563eb" })
   ]);

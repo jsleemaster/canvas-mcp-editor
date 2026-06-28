@@ -10,6 +10,8 @@ import {
   importLibraryArchive,
   importLibraryRegistryItem,
   listLibraryRegistry,
+  listLibraryRegistrySubscriptions,
+  listLibraryRegistryUpdates,
   listCommentActivity,
   listCommentNotifications,
   listCommentThreads,
@@ -28,7 +30,8 @@ import {
   setFileVersionPinned,
   publishLibraryToRegistry,
   subscribeToCommentEvents,
-  summarizeDocumentChanges
+  summarizeDocumentChanges,
+  updateLibraryRegistryItem
 } from "./document-api";
 
 describe("parseDocumentPayload", () => {
@@ -528,6 +531,68 @@ describe("file version API helpers", () => {
         });
       }
 
+      if (pathname === "/files/target-file/libraries/subscriptions") {
+        return jsonResponse({
+          subscriptions: [
+            {
+              fileId: "target-file",
+              libraryId: "team-kit",
+              libraryName: "Team Kit",
+              sourceFileId: "document-1",
+              sourceName: "Source",
+              idPrefix: "team",
+              componentCount: 1,
+              tokenCount: 1,
+              assetCount: 0,
+              componentIdMap: { "component-card": "team-component-card" },
+              tokenIdMap: { "color-brand-primary": "color-brand-primary" },
+              importedAt: "2026-06-28T00:00:01.000Z",
+              importedRegistryUpdatedAt: "2026-06-28T00:00:00.000Z"
+            }
+          ]
+        });
+      }
+
+      if (pathname === "/files/target-file/libraries/updates") {
+        return jsonResponse({
+          updates: [
+            {
+              fileId: "target-file",
+              libraryId: "team-kit",
+              libraryName: "Team Kit",
+              sourceFileId: "document-1",
+              sourceName: "Source",
+              componentCount: 2,
+              tokenCount: 1,
+              assetCount: 0,
+              importedRegistryUpdatedAt: "2026-06-28T00:00:00.000Z",
+              registryUpdatedAt: "2026-06-28T00:05:00.000Z"
+            }
+          ]
+        });
+      }
+
+      if (pathname === "/files/target-file/import/library/registry/update" && init?.method === "POST") {
+        expect(JSON.parse(String(init.body))).toEqual({ libraryId: "team-kit" });
+        return jsonResponse({
+          imported: {
+            libraryId: "team-kit",
+            libraryName: "Team Kit",
+            fileId: "target-file",
+            originalFileId: "document-1",
+            originalName: "Source",
+            componentCount: 2,
+            tokenCount: 1,
+            assetCount: 0,
+            componentIdMap: {
+              "component-card": "team-component-card",
+              "component-badge": "team-component-badge"
+            },
+            tokenIdMap: { "color-brand-primary": "color-brand-primary" }
+          }
+        });
+      }
+
       return new Response("not found", { status: 404 });
     };
 
@@ -554,11 +619,28 @@ describe("file version API helpers", () => {
       fileId: "target-file",
       componentCount: 1
     });
+    await expect(listLibraryRegistrySubscriptions("target-file", fetcher as typeof fetch)).resolves.toEqual([
+      expect.objectContaining({ libraryId: "team-kit", importedRegistryUpdatedAt: "2026-06-28T00:00:00.000Z" })
+    ]);
+    await expect(listLibraryRegistryUpdates("target-file", fetcher as typeof fetch)).resolves.toEqual([
+      expect.objectContaining({ libraryId: "team-kit", componentCount: 2 })
+    ]);
+    await expect(updateLibraryRegistryItem("target-file", "team-kit", fetcher as typeof fetch)).resolves.toMatchObject({
+      libraryId: "team-kit",
+      componentCount: 2,
+      componentIdMap: {
+        "component-card": "team-component-card",
+        "component-badge": "team-component-badge"
+      }
+    });
     expect(calls.map((call) => [call.url, call.init?.method ?? "GET"])).toEqual([
       [expect.stringContaining("/libraries"), "POST"],
       [expect.stringContaining("/libraries"), "GET"],
       [expect.stringContaining("/files/target-file/import/library/registry/review"), "POST"],
-      [expect.stringContaining("/files/target-file/import/library/registry"), "POST"]
+      [expect.stringContaining("/files/target-file/import/library/registry"), "POST"],
+      [expect.stringContaining("/files/target-file/libraries/subscriptions"), "GET"],
+      [expect.stringContaining("/files/target-file/libraries/updates"), "GET"],
+      [expect.stringContaining("/files/target-file/import/library/registry/update"), "POST"]
     ]);
   });
 

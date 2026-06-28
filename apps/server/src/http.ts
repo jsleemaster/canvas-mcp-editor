@@ -274,6 +274,27 @@ export function createHttpServer(storage = new FileStorage(), options: HttpServe
     };
   });
 
+  server.get<{ Params: { fileId: string } }>("/files/:fileId/libraries/subscriptions", async (request) => {
+    return {
+      subscriptions: await storage.listLibraryRegistrySubscriptions(request.params.fileId)
+    };
+  });
+
+  server.get<{ Params: { fileId: string } }>("/files/:fileId/libraries/updates", async (request) => {
+    return {
+      updates: await storage.listLibraryRegistryUpdates(request.params.fileId)
+    };
+  });
+
+  server.post<{
+    Params: { fileId: string };
+    Body: { libraryId: string };
+  }>("/files/:fileId/import/library/registry/update", async (request) => {
+    return {
+      imported: await storage.updateLibraryRegistryItem(request.params.fileId, request.body.libraryId)
+    };
+  });
+
   server.get<{ Params: { fileId: string } }>("/files/:fileId", async (request) => {
     return { file: await storage.readFile(request.params.fileId) };
   });

@@ -546,6 +546,129 @@ describe("HTTP server", () => {
     });
   });
 
+  test("reports and applies registry library updates for subscribed files", async () => {
+    const server = await createServerWithDocument();
+    await server.inject({
+      method: "POST",
+      url: "/files/sample-file/agent/commands",
+      payload: {
+        dryRun: false,
+        commands: [
+          {
+            type: "create_token",
+            token: { id: "color-brand-primary", name: "Brand / Primary", type: "color", value: "#2563eb" }
+          },
+          {
+            type: "create_rectangle",
+            parentId: "frame-1",
+            id: "library-card",
+            name: "Library Card",
+            width: 160,
+            height: 96,
+            fill: "#ffffff"
+          },
+          { type: "set_fill_token", nodeId: "library-card", tokenId: "color-brand-primary" },
+          { type: "create_component", nodeId: "library-card", componentId: "component-card", name: "Card" }
+        ]
+      }
+    });
+    const firstPublish = await server.inject({
+      method: "POST",
+      url: "/libraries",
+      payload: { fileId: "sample-file", libraryId: "team-kit", name: "Team Kit" }
+    });
+    await server.inject({
+      method: "POST",
+      url: "/projects",
+      payload: { projectId: "target-project", name: "대상 프로젝트", documentId: "target-file", documentName: "대상 문서" }
+    });
+    const imported = await server.inject({
+      method: "POST",
+      url: "/files/target-file/import/library/registry",
+      payload: { libraryId: "team-kit", idPrefix: "team" }
+    });
+    expect(imported.statusCode).toBe(200);
+
+    const subscriptions = await server.inject({
+      method: "GET",
+      url: "/files/target-file/libraries/subscriptions"
+    });
+    expect(subscriptions.statusCode).toBe(200);
+    expect(subscriptions.json().subscriptions).toEqual([
+      expect.objectContaining({
+        fileId: "target-file",
+        libraryId: "team-kit",
+        importedRegistryUpdatedAt: firstPublish.json().library.updatedAt,
+        componentIdMap: { "component-card": "team-component-card" }
+      })
+    ]);
+    const noUpdates = await server.inject({ method: "GET", url: "/files/target-file/libraries/updates" });
+    expect(noUpdates.statusCode).toBe(200);
+    expect(noUpdates.json().updates).toEqual([]);
+
+    await server.inject({
+      method: "POST",
+      url: "/files/sample-file/agent/commands",
+      payload: {
+        dryRun: false,
+        commands: [
+          {
+            type: "create_rectangle",
+            parentId: "frame-1",
+            id: "library-badge",
+            name: "Library Badge",
+            width: 80,
+            height: 32,
+            fill: "#2563eb"
+          },
+          { type: "create_component", nodeId: "library-badge", componentId: "component-badge", name: "Badge" }
+        ]
+      }
+    });
+    const secondPublish = await server.inject({
+      method: "POST",
+      url: "/libraries",
+      payload: { fileId: "sample-file", libraryId: "team-kit", name: "Team Kit" }
+    });
+
+    const updates = await server.inject({ method: "GET", url: "/files/target-file/libraries/updates" });
+    expect(updates.statusCode).toBe(200);
+    expect(updates.json().updates).toEqual([
+      expect.objectContaining({
+        fileId: "target-file",
+        libraryId: "team-kit",
+        libraryName: "Team Kit",
+        importedRegistryUpdatedAt: firstPublish.json().library.updatedAt,
+        registryUpdatedAt: secondPublish.json().library.updatedAt,
+        componentCount: 2,
+        tokenCount: 1
+      })
+    ]);
+
+    const applied = await server.inject({
+      method: "POST",
+      url: "/files/target-file/import/library/registry/update",
+      payload: { libraryId: "team-kit" }
+    });
+    expect(applied.statusCode).toBe(200);
+    expect(applied.json().imported).toMatchObject({
+      libraryId: "team-kit",
+      libraryName: "Team Kit",
+      componentCount: 2,
+      componentIdMap: {
+        "component-card": "team-component-card",
+        "component-badge": "team-component-badge"
+      }
+    });
+    const afterApply = await server.inject({ method: "GET", url: "/files/target-file/libraries/updates" });
+    expect(afterApply.json().updates).toEqual([]);
+    const file = await server.inject({ method: "GET", url: "/files/target-file" });
+    expect(file.json().file.components.map((component: { id: string }) => component.id)).toEqual([
+      "team-component-card",
+      "team-component-badge"
+    ]);
+  });
+
   test("exports reviews and imports project archives", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
     const sourceServer = createHttpServer(new FileStorage(path.join(tempRoot, "source")));
