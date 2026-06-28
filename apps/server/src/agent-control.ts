@@ -74,7 +74,7 @@ export interface CanvasInspection {
 export interface StyleUsage {
   nodeId: string;
   nodeName: string;
-  property: "fill_style" | "typography_style";
+  property: "fill_style" | "typography_style" | "effect_shadow_style";
 }
 
 export type StyleInspection = DesignStyle & {
@@ -115,6 +115,7 @@ export type AgentCommand =
   | { type: "set_fill_token"; nodeId: string; tokenId: string }
   | { type: "set_fill_style"; nodeId: string; styleId: string }
   | { type: "set_effect_shadow_token"; nodeId: string; tokenId: string }
+  | { type: "set_effect_shadow_style"; nodeId: string; styleId: string }
   | { type: "set_text_typography_token"; nodeId: string; tokenId: string }
   | { type: "set_text_typography_style"; nodeId: string; styleId: string }
   | {
@@ -406,7 +407,7 @@ export function validateDocument(document: DesignFile): DocumentValidation {
       });
     }
     styleTypes.set(style.id, style.type);
-    if (style.type !== "color" && style.type !== "typography") {
+    if (style.type !== "color" && style.type !== "typography" && style.type !== "effect") {
       issues.push({
         code: "invalid_style_type",
         message: `unsupported style type: ${style.id}`
@@ -433,6 +434,12 @@ export function validateDocument(document: DesignFile): DocumentValidation {
           message: `typography style value is invalid: ${style.id}`
         });
       }
+    }
+    if (style.type === "effect" && !isSafeShadowValue(style.value)) {
+      issues.push({
+        code: "invalid_effect_style_value",
+        message: `effect style value is invalid: ${style.id}`
+      });
     }
   }
 
@@ -611,6 +618,14 @@ function collectStyleUsage(node: DesignNode, usageByStyle: Map<string, StyleUsag
     });
   }
 
+  if (node.style.effect_shadow_style) {
+    appendStyleUsage(usageByStyle, node.style.effect_shadow_style, {
+      nodeId: node.id,
+      nodeName: node.name,
+      property: "effect_shadow_style"
+    });
+  }
+
   if (node.content.type === "text" && node.content.typography_style) {
     appendStyleUsage(usageByStyle, node.content.typography_style, {
       nodeId: node.id,
@@ -676,6 +691,7 @@ function validateNode(
 
   validateFillStyleReference(node, path, styleTypes, issues);
   validateEffectShadowTokenReference(node, path, tokenTypes, issues);
+  validateEffectShadowStyleReference(node, path, styleTypes, issues);
   validateLayoutSpacingTokenReferences(node, path, tokenTypes, issues);
   validateTextTypographyTokenReference(node, path, tokenTypes, issues);
   validateTextTypographyStyleReference(node, path, styleTypes, issues);
@@ -800,6 +816,34 @@ function validateLayoutSpacingTokenReferences(
         path
       });
     }
+  }
+}
+
+function validateEffectShadowStyleReference(
+  node: DesignNode,
+  path: string[],
+  styleTypes: Map<string, DesignStyle["type"]>,
+  issues: DocumentValidationIssue[]
+) {
+  const styleId = node.style.effect_shadow_style;
+  if (!styleId) {
+    return;
+  }
+  const styleType = styleTypes.get(styleId);
+  if (!styleType) {
+    issues.push({
+      code: "missing_effect_shadow_style",
+      message: `node references missing effect shadow style: ${styleId}`,
+      nodeId: node.id,
+      path
+    });
+  } else if (styleType !== "effect") {
+    issues.push({
+      code: "invalid_effect_shadow_style_type",
+      message: `node effect shadow style is not effect: ${styleId}`,
+      nodeId: node.id,
+      path
+    });
   }
 }
 
@@ -1222,7 +1266,13 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
     case "set_effect_shadow_token": {
       const node = requireNode(document, command.nodeId);
       const token = requireShadowToken(document, command.tokenId);
-      node.style = { ...node.style, effect_shadow: token.value, effect_shadow_token: command.tokenId };
+      node.style = { ...node.style, effect_shadow: token.value, effect_shadow_token: command.tokenId, effect_shadow_style: null };
+      return node.id;
+    }
+    case "set_effect_shadow_style": {
+      const node = requireNode(document, command.nodeId);
+      const style = requireEffectStyle(document, command.styleId);
+      node.style = { ...node.style, effect_shadow: style.value, effect_shadow_token: null, effect_shadow_style: command.styleId };
       return node.id;
     }
     case "set_fill_style": {
@@ -1533,6 +1583,17 @@ function requireColorStyle(document: DesignFile, styleId: string): DesignStyle {
   return style;
 }
 
+function requireEffectStyle(document: DesignFile, styleId: string): DesignStyle {
+  const style = requireStyle(document, styleId);
+  if (style.type !== "effect") {
+    throw new Error(`style is not an effect style: ${styleId}`);
+  }
+  if (!isSafeShadowValue(style.value)) {
+    throw new Error(`effect style value is invalid: ${styleId}`);
+  }
+  return style;
+}
+
 function requireSpacingToken(document: DesignFile, tokenId: string): DesignToken {
   const token = createActiveDesignTokenReferenceMap(
     document.tokens ?? [],
@@ -1615,6 +1676,13 @@ function materializeNodeStyleBindings(node: DesignNode, styleMap: Map<string, De
     }
   }
 
+  if (node.style.effect_shadow_style) {
+    const style = styleMap.get(node.style.effect_shadow_style);
+    if (style?.type === "effect" && isSafeShadowValue(style.value)) {
+      node.style = { ...node.style, effect_shadow: style.value };
+    }
+  }
+
   if (node.content.type === "text" && node.content.typography_style) {
     const style = styleMap.get(node.content.typography_style);
     if (style?.type === "typography") {
@@ -1643,6 +1711,10 @@ function clearStyleBindings(document: DesignFile, styleId: string): void {
 function clearNodeStyleBindings(node: DesignNode, styleId: string): void {
   if (node.style.fill_style === styleId) {
     node.style = { ...node.style, fill_style: null };
+  }
+
+  if (node.style.effect_shadow_style === styleId) {
+    node.style = { ...node.style, effect_shadow_style: null };
   }
 
   if (node.content.type === "text" && node.content.typography_style === styleId) {
@@ -2010,6 +2082,10 @@ function normalizeAgentNodeStyle(style: DesignNode["style"]): DesignNode["style"
     effect_shadow_token:
       typeof style.effect_shadow_token === "string" && style.effect_shadow_token.trim()
         ? style.effect_shadow_token.trim()
+        : null,
+    effect_shadow_style:
+      typeof style.effect_shadow_style === "string" && style.effect_shadow_style.trim()
+        ? style.effect_shadow_style.trim()
         : null
   };
 }
@@ -2020,6 +2096,11 @@ function syncComponentInstanceOverridesForAgentCommand(document: DesignFile, com
   } else if (command.type === "set_node_style") {
     syncComponentInstanceStyleOverrides(document, command.nodeId, command.style);
   } else if (command.type === "set_effect_shadow_token") {
+    const node = findNodeById(document, command.nodeId);
+    syncComponentInstanceStyleOverrides(document, command.nodeId, { effect_shadow: node?.style.effect_shadow }, [
+      "effect_shadow"
+    ]);
+  } else if (command.type === "set_effect_shadow_style") {
     const node = findNodeById(document, command.nodeId);
     syncComponentInstanceStyleOverrides(document, command.nodeId, { effect_shadow: node?.style.effect_shadow }, [
       "effect_shadow"

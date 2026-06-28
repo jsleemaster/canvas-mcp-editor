@@ -179,6 +179,38 @@ describe("code export", () => {
     );
   });
 
+  test("exports reusable effect style bindings as implementation metadata", () => {
+    const fixture = tossFixture() as any;
+    fixture.styles = [
+      {
+        id: "style-effect-card-raised",
+        name: "Effects / Card Raised",
+        type: "effect",
+        value: "0px 18px 36px 0px rgba(15, 23, 42, 0.32)"
+      }
+    ];
+    fixture.pages[0].children[0].style.effect_shadow = "0px 18px 36px 0px rgba(15, 23, 42, 0.32)";
+    fixture.pages[0].children[0].style.effect_shadow_style = "style-effect-card-raised";
+
+    const result = exportDesignToCode(fixture);
+    const button = result.elements.find((element) => element.id === "tds-button-primary");
+
+    expect(result.implementationSpec.styles).toEqual(fixture.styles);
+    expect(result.css).toContain("box-shadow: 0px 18px 36px 0px rgba(15, 23, 42, 0.32);");
+    expect(button?.structure.style).toMatchObject({
+      effectShadow: "0px 18px 36px 0px rgba(15, 23, 42, 0.32)",
+      effectShadowStyle: "style-effect-card-raised"
+    });
+    expect(button?.structure.annotations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "tds-button-primary-style",
+          detail: "effect style style-effect-card-raised controls box-shadow"
+        })
+      ])
+    );
+  });
+
   test("exports spacing token bindings as CSS variables and implementation metadata", () => {
     const fixture = tossFixture() as any;
     fixture.tokens = [

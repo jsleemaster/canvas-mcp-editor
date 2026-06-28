@@ -3372,6 +3372,50 @@ test("right inspector binds imported shadow tokens to effect shadows", async ({ 
   await expect(page.getByTestId("inspector-effect-shadow-token")).toHaveValue("shadow-effects-card");
 });
 
+test("right inspector creates and applies reusable effect styles", async ({ page }) => {
+  const { documentId } = await createProjectFromEmptyState(page);
+
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await page.getByTestId("inspector-effect-shadow").fill("0px 18px 36px 0px rgba(15, 23, 42, 0.32)");
+  await page.getByRole("button", { name: "효과 스타일 저장" }).click();
+  await page.getByTestId("style-name-input").fill("Effects / Card Raised");
+  await page.getByRole("button", { name: "스타일 생성" }).click();
+
+  await expect(page.getByTestId("inspector-effect-shadow-style")).toHaveValue("style-effect-effects-card-raised");
+  await expect(page.getByTestId("inspector-effect-shadow-style-readout")).toContainText("Effects / Card Raised");
+
+  await expect
+    .poll(async () => {
+      const fileResponse = await page.request.get(`http://127.0.0.1:4317/files/${documentId}`);
+      expect(fileResponse.ok()).toBeTruthy();
+      const filePayload = await fileResponse.json();
+      const textNode = filePayload.file.pages[0].children[0].children.find((node: any) => node.id === "text-1");
+      return {
+        styles: filePayload.file.styles,
+        style: textNode?.style
+      };
+    })
+    .toMatchObject({
+      styles: [
+        {
+          id: "style-effect-effects-card-raised",
+          name: "Effects / Card Raised",
+          type: "effect",
+          value: "0px 18px 36px 0px rgba(15, 23, 42, 0.32)"
+        }
+      ],
+      style: {
+        effect_shadow: "0px 18px 36px 0px rgba(15, 23, 42, 0.32)",
+        effect_shadow_style: "style-effect-effects-card-raised"
+      }
+    });
+
+  await page.reload();
+  await openFilePanel(page);
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await expect(page.getByTestId("inspector-effect-shadow-style")).toHaveValue("style-effect-effects-card-raised");
+});
+
 test("right inspector creates and applies reusable styles", async ({ page }) => {
   const { documentId } = await createProjectFromEmptyState(page);
 

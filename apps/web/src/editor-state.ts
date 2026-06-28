@@ -115,6 +115,7 @@ const nullComponentOverrideValue = "__layo_component_override_null__";
 interface StyleBindingSnapshot {
   nodeId: string;
   fillStyle?: string | null;
+  effectShadowStyle?: string | null;
   typographyStyle?: string | null;
 }
 
@@ -172,6 +173,11 @@ export type EditorCommand =
       type: "set_effect_shadow_token";
       nodeId: string;
       tokenId: string;
+    }
+  | {
+      type: "set_effect_shadow_style";
+      nodeId: string;
+      styleId: string;
     }
   | {
       type: "set_token_set_enabled";
@@ -577,6 +583,11 @@ function findColorStyle(document: RendererDocument, styleId: string): DesignStyl
   return style?.type === "color" ? style : null;
 }
 
+function findEffectStyle(document: RendererDocument, styleId: string): DesignStyle | null {
+  const style = (document.styles ?? []).find((candidate) => candidate.id === styleId);
+  return style?.type === "effect" && isSafeShadowValue(style.value) ? style : null;
+}
+
 function findTypographyToken(document: RendererDocument, tokenId: string): DesignToken | null {
   const token = activeDesignTokenReferenceMap(document).get(tokenId);
   return token?.type === "typography" ? token : null;
@@ -729,6 +740,12 @@ function materializeNodeStyleBindings(node: RendererNode, styleMap: Map<string, 
       node.style = { ...node.style, fill: style.value };
     }
   }
+  if (node.style.effect_shadow_style) {
+    const style = styleMap.get(node.style.effect_shadow_style);
+    if (style?.type === "effect" && isSafeShadowValue(style.value)) {
+      node.style = { ...node.style, effect_shadow: style.value };
+    }
+  }
   if (node.content.type === "text" && node.content.typography_style) {
     const style = styleMap.get(node.content.typography_style);
     const typography = style?.type === "typography" ? parseTypographyValue(style) : null;
@@ -751,6 +768,7 @@ function collectStyleBindingSnapshots(document: RendererDocument): StyleBindingS
     snapshots.push({
       nodeId: node.id,
       fillStyle: node.style.fill_style ?? null,
+      effectShadowStyle: node.style.effect_shadow_style ?? null,
       typographyStyle: node.content.type === "text" ? node.content.typography_style ?? null : null
     });
   });
@@ -766,6 +784,9 @@ function applyStyleBindingSnapshots(document: RendererDocument, snapshots: Style
     if (snapshot.fillStyle !== undefined) {
       node.style = { ...node.style, fill_style: snapshot.fillStyle };
     }
+    if (snapshot.effectShadowStyle !== undefined) {
+      node.style = { ...node.style, effect_shadow_style: snapshot.effectShadowStyle };
+    }
     if (snapshot.typographyStyle !== undefined && node.content.type === "text") {
       node.content = { ...node.content, typography_style: snapshot.typographyStyle };
     }
@@ -776,6 +797,9 @@ function clearStyleBindings(document: RendererDocument, styleId: string): void {
   forEachNode(document, (node) => {
     if (node.style.fill_style === styleId) {
       node.style = { ...node.style, fill_style: null };
+    }
+    if (node.style.effect_shadow_style === styleId) {
+      node.style = { ...node.style, effect_shadow_style: null };
     }
     if (node.content.type === "text" && node.content.typography_style === styleId) {
       node.content = { ...node.content, typography_style: null };
@@ -2016,13 +2040,38 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       }
 
       const previousStyle = { ...node.style };
-      if (previousStyle.effect_shadow === token.value && previousStyle.effect_shadow_token === command.tokenId) {
+      if (previousStyle.effect_shadow === token.value && previousStyle.effect_shadow_token === command.tokenId && !previousStyle.effect_shadow_style) {
         return { document, inverse: null };
       }
 
-      node.style = { ...node.style, effect_shadow: token.value, effect_shadow_token: command.tokenId };
+      node.style = { ...node.style, effect_shadow: token.value, effect_shadow_token: command.tokenId, effect_shadow_style: null };
       relayoutDocument(next);
       syncComponentInstanceStyleOverride(next, command.nodeId, "effect_shadow", token.value);
+
+      return {
+        document: next,
+        inverse: {
+          type: "set_node_style",
+          nodeId: command.nodeId,
+          style: previousStyle
+        }
+      };
+    }
+    case "set_effect_shadow_style": {
+      const node = findNodeById(next, command.nodeId);
+      const style = findEffectStyle(next, command.styleId);
+      if (!node || !style || isNodeLocked(node)) {
+        return { document, inverse: null };
+      }
+
+      const previousStyle = { ...node.style };
+      if (previousStyle.effect_shadow === style.value && previousStyle.effect_shadow_style === command.styleId && !previousStyle.effect_shadow_token) {
+        return { document, inverse: null };
+      }
+
+      node.style = { ...node.style, effect_shadow: style.value, effect_shadow_token: null, effect_shadow_style: command.styleId };
+      relayoutDocument(next);
+      syncComponentInstanceStyleOverride(next, command.nodeId, "effect_shadow", style.value);
 
       return {
         document: next,
@@ -2244,6 +2293,13 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
       ) {
         nextStyle.effect_shadow_token = null;
       }
+      if (
+        previousStyle.effect_shadow_style &&
+        (previousStyle.effect_shadow ?? null) !== (command.style.effect_shadow ?? null) &&
+        (command.style.effect_shadow_style ?? null) === previousStyle.effect_shadow_style
+      ) {
+        nextStyle.effect_shadow_style = null;
+      }
 
       if (
         previousStyle.fill === command.style.fill &&
@@ -2253,7 +2309,8 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         previousStyle.stroke_width === command.style.stroke_width &&
         previousStyle.opacity === command.style.opacity &&
         (previousStyle.effect_shadow ?? null) === (nextStyle.effect_shadow ?? null) &&
-        (previousStyle.effect_shadow_token ?? null) === (nextStyle.effect_shadow_token ?? null)
+        (previousStyle.effect_shadow_token ?? null) === (nextStyle.effect_shadow_token ?? null) &&
+        (previousStyle.effect_shadow_style ?? null) === (nextStyle.effect_shadow_style ?? null)
       ) {
         return { document, inverse: null };
       }

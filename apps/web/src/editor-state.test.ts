@@ -365,6 +365,49 @@ describe("editor state commands", () => {
     });
   });
 
+  test("applies reusable effect styles with undo and manual override clearing", () => {
+    const document = sampleDocument() as any;
+    document.styles = [
+      {
+        id: "style-effect-card-raised",
+        name: "Effects / Card Raised",
+        type: "effect",
+        value: "0px 18px 36px 0px rgba(15, 23, 42, 0.32)"
+      }
+    ];
+    const initial = createEditorState(document);
+
+    const styled = executeEditorCommand(initial, {
+      type: "set_effect_shadow_style",
+      nodeId: "text-1",
+      styleId: "style-effect-card-raised"
+    } as any);
+
+    expect(findNodeById(styled.document, "text-1")?.style).toMatchObject({
+      effect_shadow: "0px 18px 36px 0px rgba(15, 23, 42, 0.32)",
+      effect_shadow_style: "style-effect-card-raised"
+    });
+    expect(findNodeById(undo(styled).document, "text-1")?.style.effect_shadow_style).toBeUndefined();
+    expect(findNodeById(redo(undo(styled)).document, "text-1")?.style).toMatchObject({
+      effect_shadow: "0px 18px 36px 0px rgba(15, 23, 42, 0.32)",
+      effect_shadow_style: "style-effect-card-raised"
+    });
+
+    const overridden = executeEditorCommand(styled, {
+      type: "set_node_style",
+      nodeId: "text-1",
+      style: {
+        ...(findNodeById(styled.document, "text-1")?.style as any),
+        effect_shadow: "0px 8px 20px 0px rgba(15, 23, 42, 0.2)"
+      }
+    });
+
+    expect(findNodeById(overridden.document, "text-1")?.style).toMatchObject({
+      effect_shadow: "0px 8px 20px 0px rgba(15, 23, 42, 0.2)",
+      effect_shadow_style: null
+    });
+  });
+
   test("applies reusable color and typography styles with undo and redo", () => {
     const document = sampleDocument() as any;
     document.styles = [
