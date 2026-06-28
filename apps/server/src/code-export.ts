@@ -420,7 +420,8 @@ function structureFor(
       strokeWidth: node.style.stroke_width,
       opacity: node.style.opacity,
       ...(node.style.effect_shadow ? { effectShadow: node.style.effect_shadow } : {}),
-      ...(node.style.effect_shadow_token ? { effectShadowToken: node.style.effect_shadow_token } : {})
+      ...(node.style.effect_shadow_token ? { effectShadowToken: node.style.effect_shadow_token } : {}),
+      ...(node.style.effect_shadow_style ? { effectShadowStyle: node.style.effect_shadow_style } : {})
     },
     annotations: handoffAnnotationsFor(node, tokenMap),
     content: contentFor(node),
@@ -522,6 +523,7 @@ function styleAnnotationFor(node: DesignNode, tokenMap: Map<string, DesignToken>
   const shadowToken = node.style.effect_shadow_token ? tokenMap.get(node.style.effect_shadow_token) : undefined;
   const fill = resolvedFill(node, tokenMap);
   const fillStyle = node.style.fill_style;
+  const effectShadowStyle = node.style.effect_shadow_style;
 
   return {
     id: `${node.id}-style`,
@@ -534,6 +536,8 @@ function styleAnnotationFor(node: DesignNode, tokenMap: Map<string, DesignToken>
         ? `fill token ${token.id} maps to var(--${cssTokenName(token.id)})`
         : shadowToken && shadowToken.type === "shadow"
           ? `shadow token ${shadowToken.id} maps to var(--${cssTokenName(shadowToken.id)})`
+        : effectShadowStyle
+          ? `effect style ${effectShadowStyle} controls box-shadow`
         : fillStyle
           ? `fill style ${fillStyle} materialized to ${fill}`
         : node.style.stroke

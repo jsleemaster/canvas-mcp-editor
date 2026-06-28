@@ -110,6 +110,7 @@ export interface RendererNode {
     opacity: number;
     effect_shadow?: string | null;
     effect_shadow_token?: string | null;
+    effect_shadow_style?: string | null;
   };
   content:
     | { type: "empty" }
@@ -222,7 +223,7 @@ export interface DesignTokenTheme {
 export interface DesignStyle {
   id: string;
   name: string;
-  type: "color" | "typography";
+  type: "color" | "typography" | "effect";
   value: string;
 }
 

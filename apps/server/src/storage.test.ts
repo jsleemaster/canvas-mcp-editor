@@ -1328,6 +1328,48 @@ describe("FileStorage", () => {
     });
   });
 
+  test("agent commands create reusable effect styles and bind node effect shadows", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+
+    const result = await storage.applyAgentCommands("sample-file", {
+      dryRun: false,
+      commands: [
+        {
+          type: "create_style",
+          style: {
+            id: "style-effect-card-raised",
+            name: "Effects / Card Raised",
+            type: "effect",
+            value: "0px 18px 36px 0px rgba(15, 23, 42, 0.32)"
+          }
+        },
+        {
+          type: "set_effect_shadow_style",
+          nodeId: "text-1",
+          styleId: "style-effect-card-raised"
+        }
+      ] as any
+    });
+    const persisted = await storage.readFile("sample-file");
+    const text = persisted.pages[0].children[0].children.find((node) => node.id === "text-1");
+
+    expect(result.audit.commandTypes).toEqual(["create_style", "set_effect_shadow_style"]);
+    expect(result.validation.issueCount).toBe(0);
+    expect(persisted.styles).toEqual([
+      {
+        id: "style-effect-card-raised",
+        name: "Effects / Card Raised",
+        type: "effect",
+        value: "0px 18px 36px 0px rgba(15, 23, 42, 0.32)"
+      }
+    ]);
+    expect(text?.style).toMatchObject({
+      effect_shadow: "0px 18px 36px 0px rgba(15, 23, 42, 0.32)",
+      effect_shadow_style: "style-effect-card-raised"
+    });
+  });
+
   test("agent commands create reusable styles and apply them to selected node fields", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
     const storage = await storageWithDocument(tempRoot);

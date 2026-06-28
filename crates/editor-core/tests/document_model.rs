@@ -813,6 +813,61 @@ fn shadow_token_binding_round_trips_through_json() {
 }
 
 #[test]
+fn effect_style_binding_round_trips_through_json() {
+    let raw = r##"
+    {
+      "id": "effect-style-file",
+      "name": "Effect Style File",
+      "version": 1,
+      "styles": [
+        {
+          "id": "style-effect-card-raised",
+          "name": "Effects / Card Raised",
+          "type": "effect",
+          "value": "0px 18px 36px 0px rgba(15, 23, 42, 0.32)"
+        }
+      ],
+      "components": [],
+      "pages": [
+        {
+          "id": "page-1",
+          "name": "Page 1",
+          "children": [
+            {
+              "id": "card-1",
+              "kind": "frame",
+              "name": "Card",
+              "transform": { "x": 0, "y": 0, "rotation": 0 },
+              "size": { "width": 320, "height": 180 },
+              "style": {
+                "fill": "#ffffff",
+                "stroke": null,
+                "stroke_width": 0,
+                "opacity": 1,
+                "effect_shadow": "0px 18px 36px 0px rgba(15, 23, 42, 0.32)",
+                "effect_shadow_style": "style-effect-card-raised"
+              },
+              "content": { "type": "empty" },
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+    "##;
+
+    let parsed: DesignFile = serde_json::from_str(raw).unwrap();
+    let json = serde_json::to_string(&parsed).unwrap();
+
+    assert_eq!(parsed.styles[0].style_type, editor_core::DesignStyleType::Effect);
+    assert_eq!(
+        parsed.pages[0].children[0].style.effect_shadow_style.as_deref(),
+        Some("style-effect-card-raised")
+    );
+    assert!(json.contains("\"effect_shadow_style\":\"style-effect-card-raised\""));
+}
+
+#[test]
 fn token_sets_round_trip_through_json() {
     let raw = r##"
     {

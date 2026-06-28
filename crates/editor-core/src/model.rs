@@ -81,6 +81,7 @@ pub struct DesignStyle {
 pub enum DesignStyleType {
     Color,
     Typography,
+    Effect,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
@@ -616,6 +617,8 @@ pub struct Style {
     pub effect_shadow: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effect_shadow_token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effect_shadow_style: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
@@ -701,6 +704,7 @@ impl DesignFile {
                             opacity: 1.0,
                             effect_shadow: None,
                             effect_shadow_token: None,
+                            effect_shadow_style: None,
                         },
                         content: NodeContent::Text {
                             value: "Layo".to_string(),
@@ -729,6 +733,7 @@ impl DesignFile {
                         opacity: 1.0,
                         effect_shadow: None,
                         effect_shadow_token: None,
+                        effect_shadow_style: None,
                     },
                     content: NodeContent::Empty,
                 }],

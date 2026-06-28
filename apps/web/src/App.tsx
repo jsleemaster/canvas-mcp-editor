@@ -1391,6 +1391,39 @@ async function persistEffectShadowToken(fileId: string, nodeId: string, tokenId:
   }
 }
 
+async function persistCreateEffectStyle(fileId: string, nodeId: string, style: DesignStyle) {
+  const response = await fetch(apiUrl(`/files/${fileId}/agent/commands`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dryRun: false,
+      commands: [
+        { type: "create_style", style },
+        { type: "set_effect_shadow_style", nodeId, styleId: style.id }
+      ]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`효과 스타일 저장 실패: ${response.status} ${response.statusText}`.trim());
+  }
+}
+
+async function persistEffectShadowStyle(fileId: string, nodeId: string, styleId: string) {
+  const response = await fetch(apiUrl(`/files/${fileId}/agent/commands`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dryRun: false,
+      commands: [{ type: "set_effect_shadow_style", nodeId, styleId }]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`효과 스타일 적용 실패: ${response.status} ${response.statusText}`.trim());
+  }
+}
+
 async function persistCreateFillStyle(fileId: string, nodeId: string, style: DesignStyle) {
   const response = await fetch(apiUrl(`/files/${fileId}/agent/commands`), {
     method: "POST",
@@ -4796,7 +4829,7 @@ function uniqueStyleCopyName(styles: DesignStyle[], sourceName: string) {
 
 function uniqueStyleCopyId(styles: DesignStyle[], styleType: DesignStyle["type"], styleName: string) {
   const existingIds = new Set(styles.map((style) => style.id));
-  const prefix = styleType === "color" ? "style-color" : "style-typography";
+  const prefix = styleIdPrefix(styleType);
   const baseId = `${prefix}-${safeTestId(styleName)}`;
   let candidate = baseId;
   let suffix = 2;
@@ -4805,6 +4838,26 @@ function uniqueStyleCopyId(styles: DesignStyle[], styleType: DesignStyle["type"]
     suffix += 1;
   }
   return candidate;
+}
+
+function styleIdPrefix(styleType: DesignStyle["type"]) {
+  if (styleType === "color") {
+    return "style-color";
+  }
+  if (styleType === "typography") {
+    return "style-typography";
+  }
+  return "style-effect";
+}
+
+function styleTypeLabel(styleType: DesignStyle["type"]) {
+  if (styleType === "color") {
+    return "색상";
+  }
+  if (styleType === "typography") {
+    return "타이포";
+  }
+  return "효과";
 }
 
 function countStyleUsage(document: RendererDocument | null): Record<string, number> {
@@ -4824,6 +4877,9 @@ function countStyleUsage(document: RendererDocument | null): Record<string, numb
 function countNodeStyleUsage(node: RendererNode, counts: Record<string, number>) {
   if (node.style.fill_style) {
     counts[node.style.fill_style] = (counts[node.style.fill_style] ?? 0) + 1;
+  }
+  if (node.style.effect_shadow_style) {
+    counts[node.style.effect_shadow_style] = (counts[node.style.effect_shadow_style] ?? 0) + 1;
   }
   if (node.content.type === "text" && node.content.typography_style) {
     counts[node.content.typography_style] = (counts[node.content.typography_style] ?? 0) + 1;
@@ -5147,7 +5203,9 @@ function Inspector({
   onNodeStyleChange,
   onFillStyleChange,
   onEffectShadowTokenChange,
+  onEffectShadowStyleChange,
   onCreateFillStyle,
+  onCreateEffectStyle,
   onRenameStyle,
   onDuplicateStyle,
   onDeleteStyle,
@@ -5222,7 +5280,9 @@ function Inspector({
   onNodeStyleChange: (nodeId: string, style: RendererNode["style"]) => void;
   onFillStyleChange: (nodeId: string, styleId: string) => void;
   onEffectShadowTokenChange: (nodeId: string, tokenId: string) => void;
+  onEffectShadowStyleChange: (nodeId: string, styleId: string) => void;
   onCreateFillStyle: (nodeId: string, style: DesignStyle) => void;
+  onCreateEffectStyle: (nodeId: string, style: DesignStyle) => void;
   onRenameStyle: (styleId: string, name: string) => void;
   onDuplicateStyle: (styleId: string, newStyleId: string, name: string) => void;
   onDeleteStyle: (styleId: string) => void;
@@ -5283,11 +5343,11 @@ function Inspector({
   onExportPresetsChange: (nodeId: string, presets: NodeExportPreset[]) => void;
   onTabChange: (tab: InspectorTab) => void;
 }) {
-  const [pendingStyleKind, setPendingStyleKind] = useState<"color" | "typography" | null>(null);
+  const [pendingStyleKind, setPendingStyleKind] = useState<DesignStyle["type"] | null>(null);
   const [styleNameDraft, setStyleNameDraft] = useState("");
   const [styleRenameDrafts, setStyleRenameDrafts] = useState<Record<string, string>>({});
   const [styleSearchQuery, setStyleSearchQuery] = useState("");
-  const [styleTypeFilter, setStyleTypeFilter] = useState<"all" | "color" | "typography">("all");
+  const [styleTypeFilter, setStyleTypeFilter] = useState<"all" | DesignStyle["type"]>("all");
   const [styleSort, setStyleSort] = useState<"az" | "za" | "usage_desc">("az");
 
   useEffect(() => {
@@ -5415,10 +5475,19 @@ function Inspector({
       delete nextStyle.effect_shadow;
     }
     nextStyle.effect_shadow_token = null;
+    nextStyle.effect_shadow_style = null;
     onNodeStyleChange(selectedNode.id, nextStyle);
   };
   const updateEffectShadowToken = (event: React.ChangeEvent<HTMLSelectElement>) => {
     onEffectShadowTokenChange(selectedNode.id, event.currentTarget.value);
+  };
+  const updateEffectShadowStyle = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const styleId = event.currentTarget.value;
+    if (styleId) {
+      onEffectShadowStyleChange(selectedNode.id, styleId);
+      return;
+    }
+    onNodeStyleChange(selectedNode.id, { ...selectedNode.style, effect_shadow_style: null });
   };
   const layout: NodeLayout = selectedNode.layout
     ? {
@@ -5445,6 +5514,7 @@ function Inspector({
   const activeDocumentTokens = resolveActiveDesignTokens(documentTokens, documentTokenSets, documentTokenThemes);
   const colorStyles = documentStyles.filter((style) => style.type === "color");
   const typographyStyles = documentStyles.filter((style) => style.type === "typography");
+  const effectStyles = documentStyles.filter((style) => style.type === "effect");
   const fillToken = selectedNode.style.fill_token
     ? activeDocumentTokens.find((token) => token.id === selectedNode.style.fill_token && token.type === "color") ??
       documentTokens.find((token) => token.id === selectedNode.style.fill_token && token.type === "color") ??
@@ -5461,6 +5531,9 @@ function Inspector({
       documentTokens.find((token) => token.id === selectedNode.style.effect_shadow_token && token.type === "shadow") ??
       null
     : null;
+  const effectShadowStyle = selectedNode.style.effect_shadow_style
+    ? effectStyles.find((style) => style.id === selectedNode.style.effect_shadow_style) ?? null
+    : null;
   const selectedTextContent = selectedNode.content.type === "text" ? selectedNode.content : null;
   const typographyStyle =
     selectedTextContent?.typography_style
@@ -5471,13 +5544,20 @@ function Inspector({
     if (!name || !pendingStyleKind) {
       return;
     }
-    const id = `style-${pendingStyleKind === "color" ? "color" : "typography"}-${safeTestId(name)}`;
+    const id = `${styleIdPrefix(pendingStyleKind)}-${safeTestId(name)}`;
     if (pendingStyleKind === "color") {
       onCreateFillStyle(selectedNode.id, {
         id,
         name,
         type: "color",
         value: selectedNode.style.fill
+      });
+    } else if (pendingStyleKind === "effect" && selectedNode.style.effect_shadow) {
+      onCreateEffectStyle(selectedNode.id, {
+        id,
+        name,
+        type: "effect",
+        value: selectedNode.style.effect_shadow
       });
     } else if (selectedTextContent) {
       onCreateTypographyStyle(selectedNode.id, {
@@ -5555,11 +5635,12 @@ function Inspector({
           aria-label="스타일 유형"
           data-testid="style-type-filter"
           value={styleTypeFilter}
-          onChange={(event) => setStyleTypeFilter(event.currentTarget.value as "all" | "color" | "typography")}
+          onChange={(event) => setStyleTypeFilter(event.currentTarget.value as "all" | DesignStyle["type"])}
         >
           <option value="all">전체</option>
           <option value="color">색상</option>
           <option value="typography">타이포</option>
+          <option value="effect">효과</option>
         </select>
         <select
           aria-label="스타일 정렬"
@@ -5588,7 +5669,7 @@ function Inspector({
                         <div className="style-management-meta">
                           <strong>{style.name}</strong>
                           <span data-testid={`style-usage-count-${styleTestId}`}>
-                            {style.type === "color" ? "색상" : "타이포"} · {usageCount}곳
+                            {styleTypeLabel(style.type)} · {usageCount}곳
                           </span>
                         </div>
                         <input
@@ -6308,6 +6389,42 @@ function Inspector({
       {selectedNode.style.effect_shadow_token ? (
         <div className="inspector-token-readout" data-testid="inspector-effect-shadow-token-readout">
           토큰 {effectShadowToken?.name ?? selectedNode.style.effect_shadow_token}
+        </div>
+      ) : null}
+      <label className="stacked-field">
+        그림자 스타일
+        <select
+          data-testid="inspector-effect-shadow-style"
+          value={selectedNode.style.effect_shadow_style ?? ""}
+          onChange={updateEffectShadowStyle}
+        >
+          <option value="">스타일 없음</option>
+          {effectStyles.map((style) => (
+            <option key={style.id} value={style.id}>
+              {style.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {effectShadowStyle ? (
+        <div className="inspector-token-readout" data-testid="inspector-effect-shadow-style-readout">
+          스타일 {effectShadowStyle.name}
+        </div>
+      ) : null}
+      <button type="button" className="inspector-compact-button" onClick={() => setPendingStyleKind("effect")}>
+        효과 스타일 저장
+      </button>
+      {pendingStyleKind === "effect" ? (
+        <div className="style-create-row">
+          <input
+            data-testid="style-name-input"
+            value={styleNameDraft}
+            placeholder="Effects / Card Raised"
+            onChange={(event) => setStyleNameDraft(event.currentTarget.value)}
+          />
+          <button type="button" className="inspector-compact-button" onClick={createStyleFromDraft}>
+            스타일 생성
+          </button>
         </div>
       ) : null}
       <button type="button" className="inspector-compact-button" onClick={() => setPendingStyleKind("color")}>
@@ -9349,6 +9466,49 @@ export function App() {
       })
       .catch((error) => {
         const message = error instanceof Error ? error.message : "그림자 토큰을 저장하지 못했습니다";
+        setProjectStatus(message);
+      });
+  };
+
+  const createEffectStyle = (nodeId: string, style: DesignStyle) => {
+    dispatch({ type: "create_style", style });
+    dispatch({ type: "set_effect_shadow_style", nodeId, styleId: style.id });
+    if (!currentProject) {
+      return;
+    }
+
+    void persistCreateEffectStyle(currentProject.currentDocumentId, nodeId, style)
+      .then(() => {
+        setProjectStatus("효과 스타일 저장됨");
+        setCodeExportRevision((current) => current + 1);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "효과 스타일을 저장하지 못했습니다";
+        setProjectStatus(message);
+      });
+  };
+
+  const updateEffectShadowStyle = (nodeId: string, styleId: string) => {
+    if (!styleId) {
+      const node = editor ? findNodeById(editor.document, nodeId) : null;
+      if (!node) {
+        return;
+      }
+      updateNodeStyle(nodeId, { ...node.style, effect_shadow_style: null });
+      return;
+    }
+
+    dispatch({ type: "set_effect_shadow_style", nodeId, styleId });
+    if (!currentProject) {
+      return;
+    }
+
+    void persistEffectShadowStyle(currentProject.currentDocumentId, nodeId, styleId)
+      .then(() => {
+        setCodeExportRevision((current) => current + 1);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "효과 스타일을 적용하지 못했습니다";
         setProjectStatus(message);
       });
   };
@@ -13507,7 +13667,9 @@ export function App() {
         onNodeStyleChange={updateNodeStyle}
         onFillStyleChange={updateFillStyle}
         onEffectShadowTokenChange={updateEffectShadowToken}
+        onEffectShadowStyleChange={updateEffectShadowStyle}
         onCreateFillStyle={createFillStyle}
+        onCreateEffectStyle={createEffectStyle}
         onRenameStyle={renameStyle}
         onDuplicateStyle={duplicateStyle}
         onDeleteStyle={deleteStyle}
