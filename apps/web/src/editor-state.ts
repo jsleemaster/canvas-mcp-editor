@@ -94,14 +94,15 @@ export type GeometryPatch = Partial<{
   height: number;
 }>;
 
-type ComponentInstanceStyleOverrideField = "fill" | "stroke" | "stroke_width" | "opacity";
+type ComponentInstanceStyleOverrideField = "fill" | "stroke" | "stroke_width" | "opacity" | "effect_shadow";
 type ComponentInstanceGeometryOverrideField = "x" | "y" | "width" | "height";
 
 const componentInstanceStyleOverrideFields: ComponentInstanceStyleOverrideField[] = [
   "fill",
   "stroke",
   "stroke_width",
-  "opacity"
+  "opacity",
+  "effect_shadow"
 ];
 const componentInstanceGeometryOverrideFields: ComponentInstanceGeometryOverrideField[] = [
   "x",
@@ -2195,7 +2196,8 @@ function applyCommand(document: RendererDocument, command: EditorCommand): Comma
         previousStyle.fill_style === command.style.fill_style &&
         previousStyle.stroke === command.style.stroke &&
         previousStyle.stroke_width === command.style.stroke_width &&
-        previousStyle.opacity === command.style.opacity
+        previousStyle.opacity === command.style.opacity &&
+        (previousStyle.effect_shadow ?? null) === (command.style.effect_shadow ?? null)
       ) {
         return { document, inverse: null };
       }
@@ -5146,6 +5148,11 @@ function applyComponentInstanceOverrides(instance: RendererNode, sourceRootNodeI
       if (Number.isFinite(value)) {
         target.style = { ...target.style, [override.field]: value };
       }
+    } else if (override.field === "effect_shadow") {
+      target.style = {
+        ...target.style,
+        effect_shadow: override.value === nullComponentOverrideValue ? null : override.value
+      };
     } else if (override.field === "x" || override.field === "y") {
       const value = Number(override.value);
       if (Number.isFinite(value)) {
@@ -5243,7 +5250,13 @@ function findComponentSourceStyleValue(
     return undefined;
   }
   const node = findInNode(sourceNode, sourceNodeId);
-  return node ? node.style[field] : undefined;
+  if (!node) {
+    return undefined;
+  }
+  if (field === "effect_shadow") {
+    return node.style.effect_shadow ?? null;
+  }
+  return node.style[field];
 }
 
 function findComponentSourceGeometryValue(

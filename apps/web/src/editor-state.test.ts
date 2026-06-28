@@ -268,14 +268,16 @@ describe("editor state commands", () => {
       fill: "#f97316",
       stroke: "#7c2d12",
       stroke_width: 2,
-      opacity: 0.7
+      opacity: 0.7,
+      effect_shadow: "0 12px 28px rgba(15, 23, 42, 0.24)"
     });
 
     expect(findNodeById(styled.document, "text-1")?.style).toEqual({
       fill: "#f97316",
       stroke: "#7c2d12",
       stroke_width: 2,
-      opacity: 0.7
+      opacity: 0.7,
+      effect_shadow: "0 12px 28px rgba(15, 23, 42, 0.24)"
     });
     expect(findNodeById(undo(styled).document, "text-1")?.style).toEqual({
       fill: "#111827",
@@ -3821,6 +3823,76 @@ describe("editor state commands", () => {
         { node_id: "text-1", field: "y", value: "68" },
         { node_id: "text-1", field: "width", value: "310" },
         { node_id: "text-1", field: "height", value: "72" }
+      ])
+    );
+  });
+
+  test("variant source tree switches preserve compatible effect shadow overrides", () => {
+    const document = sampleDocument();
+    const primarySource = structuredClone(document.pages[0].children[0]);
+    primarySource.children[0].style = {
+      ...primarySource.children[0].style,
+      effect_shadow: "0 4px 10px rgba(15, 23, 42, 0.16)"
+    };
+    const secondarySource = structuredClone(document.pages[0].children[0]);
+    secondarySource.children[0].style = {
+      ...secondarySource.children[0].style,
+      effect_shadow: "0 1px 2px rgba(15, 23, 42, 0.08)"
+    };
+    document.components = [
+      {
+        id: "component-1",
+        name: "Card",
+        source_node: structuredClone(document.pages[0].children[0]),
+        variants: [
+          {
+            id: "variant-primary",
+            name: "Primary",
+            properties: [{ name: "surface", value: "raised" }],
+            source_node: primarySource
+          },
+          {
+            id: "variant-secondary",
+            name: "Secondary",
+            properties: [{ name: "surface", value: "flat" }],
+            source_node: secondarySource
+          }
+        ]
+      } as any
+    ];
+
+    const instance = executeEditorCommand(createEditorState(document), {
+      type: "create_component_instance",
+      parentId: "page-1",
+      definitionId: "component-1",
+      instanceId: "instance-1",
+      x: 520,
+      y: 140
+    });
+    const shadowed = executeEditorCommand(instance, {
+      type: "set_node_style",
+      nodeId: "instance-1__text-1",
+      style: {
+        ...findNodeById(instance.document, "instance-1__text-1")!.style,
+        effect_shadow: "0 18px 36px rgba(15, 23, 42, 0.32)"
+      }
+    });
+    const switched = executeEditorCommand(shadowed, {
+      type: "set_component_instance_variant",
+      nodeId: "instance-1",
+      variantId: "variant-secondary"
+    });
+
+    expect(findNodeById(switched.document, "instance-1__text-1")?.style.effect_shadow).toBe(
+      "0 18px 36px rgba(15, 23, 42, 0.32)"
+    );
+    expect(findNodeById(switched.document, "instance-1")?.component_instance?.overrides).toEqual(
+      expect.arrayContaining([
+        {
+          node_id: "text-1",
+          field: "effect_shadow",
+          value: "0 18px 36px rgba(15, 23, 42, 0.32)"
+        }
       ])
     );
   });

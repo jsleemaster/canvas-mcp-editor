@@ -721,6 +721,47 @@ fn color_token_metadata_round_trips_through_json() {
 }
 
 #[test]
+fn effect_shadow_metadata_round_trips_through_json() {
+    let raw = r##"
+    {
+      "id": "effect-file",
+      "name": "Effect File",
+      "version": 1,
+      "components": [],
+      "pages": [
+        {
+          "id": "page-1",
+          "name": "페이지 1",
+          "children": [
+            {
+              "id": "card-1",
+              "kind": "frame",
+              "name": "Card",
+              "transform": { "x": 0, "y": 0, "rotation": 0 },
+              "size": { "width": 320, "height": 180 },
+              "style": {
+                "fill": "#ffffff",
+                "stroke": null,
+                "stroke_width": 0,
+                "opacity": 1,
+                "effect_shadow": "0 18px 36px rgba(15, 23, 42, 0.32)"
+              },
+              "content": { "type": "empty" },
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+    "##;
+
+    let parsed: DesignFile = serde_json::from_str(raw).unwrap();
+    let json = serde_json::to_string(&parsed).unwrap();
+
+    assert!(json.contains("\"effect_shadow\":\"0 18px 36px rgba(15, 23, 42, 0.32)\""));
+}
+
+#[test]
 fn token_sets_round_trip_through_json() {
     let raw = r##"
     {

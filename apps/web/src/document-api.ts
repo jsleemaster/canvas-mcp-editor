@@ -245,6 +245,7 @@ export interface CodeStructureNode {
     stroke: string | null;
     strokeWidth: number;
     opacity: number;
+    effectShadow?: string;
   };
   annotations: CodeHandoffAnnotation[];
   content:

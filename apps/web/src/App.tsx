@@ -204,6 +204,33 @@ function numericInputValue(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
+function parseCssLength(value: string): number | null {
+  const match = value.trim().match(/^(-?\d+(?:\.\d+)?)(px)?$/i);
+  return match ? Number(match[1]) : null;
+}
+
+function konvaShadowProps(effectShadow: string | null | undefined): Record<string, number | string> {
+  const value = effectShadow?.trim();
+  if (!value || /[;{}\n\r]/.test(value)) {
+    return {};
+  }
+
+  const colorMatch = value.match(/(rgba?\([^)]+\)|#[0-9a-fA-F]{3,8}|[a-zA-Z]+)$/);
+  const color = colorMatch?.[1] ?? "rgba(15, 23, 42, 0.2)";
+  const lengthText = colorMatch ? value.slice(0, colorMatch.index).trim() : value;
+  const lengths = lengthText.split(/\s+/).map(parseCssLength);
+  if (lengths.length < 3 || lengths.slice(0, 3).some((length) => length === null)) {
+    return {};
+  }
+
+  return {
+    shadowOffsetX: lengths[0] ?? 0,
+    shadowOffsetY: lengths[1] ?? 0,
+    shadowBlur: Math.max(0, lengths[2] ?? 0),
+    shadowColor: color
+  };
+}
+
 function optionalNumericInputValue(value: number | undefined) {
   return value === undefined ? "" : numericInputValue(value);
 }
@@ -1235,6 +1262,21 @@ async function persistNodeLayout(fileId: string, nodeId: string, layout: NodeLay
 
   if (!response.ok) {
     throw new Error(`레이아웃 저장 실패: ${response.status} ${response.statusText}`.trim());
+  }
+}
+
+async function persistNodeStyle(fileId: string, nodeId: string, style: RendererNode["style"]) {
+  const response = await fetch(apiUrl(`/files/${fileId}/agent/commands`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dryRun: false,
+      commands: [{ type: "set_node_style", nodeId, style }]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`스타일 저장 실패: ${response.status} ${response.statusText}`.trim());
   }
 }
 
@@ -3270,6 +3312,7 @@ function renderNode({
     onTextEditStart(node.id);
   };
 
+  const shadowProps = konvaShadowProps(node.style.effect_shadow);
   const body =
     node.kind === "group" ? null : node.kind === "image" && node.content.type === "image" ? (
       <CanvasImageBody
@@ -3289,6 +3332,7 @@ function renderNode({
         fontSize={node.content.font_size}
         fontFamily={node.content.font_family}
         fill={node.style.fill}
+        {...shadowProps}
       />
     ) : (
       <Rect
@@ -3299,6 +3343,7 @@ function renderNode({
         strokeWidth={node.style.stroke_width}
         opacity={node.style.opacity}
         cornerRadius={node.kind === "frame" ? editorKonvaTokens.radius.frame : editorKonvaTokens.radius.none}
+        {...shadowProps}
       />
     );
 
@@ -5084,6 +5129,7 @@ function Inspector({
   canDistribute,
   onGeometryChange,
   onFillChange,
+  onNodeStyleChange,
   onFillStyleChange,
   onCreateFillStyle,
   onRenameStyle,
@@ -5157,6 +5203,7 @@ function Inspector({
   canDistribute: boolean;
   onGeometryChange: (nodeId: string, patch: GeometryPatch) => void;
   onFillChange: (nodeId: string, fill: string) => void;
+  onNodeStyleChange: (nodeId: string, style: RendererNode["style"]) => void;
   onFillStyleChange: (nodeId: string, styleId: string) => void;
   onCreateFillStyle: (nodeId: string, style: DesignStyle) => void;
   onRenameStyle: (styleId: string, name: string) => void;
@@ -5341,6 +5388,16 @@ function Inspector({
     if (Number.isFinite(nextValue)) {
       onGeometryChange(selectedNode.id, { [patchKey]: nextValue });
     }
+  };
+  const updateEffectShadow = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const nextStyle = { ...selectedNode.style };
+    const value = event.currentTarget.value.trim();
+    if (value) {
+      nextStyle.effect_shadow = value;
+    } else {
+      delete nextStyle.effect_shadow;
+    }
+    onNodeStyleChange(selectedNode.id, nextStyle);
   };
   const layout: NodeLayout = selectedNode.layout
     ? {
@@ -6196,6 +6253,16 @@ function Inspector({
           스타일 {fillStyle.name}
         </div>
       ) : null}
+      <label className="stacked-field">
+        그림자
+        <input
+          data-testid="inspector-effect-shadow"
+          type="text"
+          value={selectedNode.style.effect_shadow ?? ""}
+          placeholder="0 12px 28px rgba(15, 23, 42, 0.24)"
+          onChange={updateEffectShadow}
+        />
+      </label>
       <button type="button" className="inspector-compact-button" onClick={() => setPendingStyleKind("color")}>
         색상 스타일 저장
       </button>
@@ -9163,6 +9230,23 @@ export function App() {
       const message = error instanceof Error ? error.message : "텍스트를 저장하지 못했습니다";
       setProjectStatus(message);
     });
+  };
+
+  const updateNodeStyle = (nodeId: string, style: RendererNode["style"]) => {
+    dispatch({ type: "set_node_style", nodeId, style });
+    if (!currentProject) {
+      return;
+    }
+
+    void persistNodeStyle(currentProject.currentDocumentId, nodeId, style)
+      .then(() => {
+        setProjectStatus("스타일 저장됨");
+        setCodeExportRevision((current) => current + 1);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "스타일을 저장하지 못했습니다";
+        setProjectStatus(message);
+      });
   };
 
   const updateTextWritingMode = (nodeId: string, writingMode: TextWritingMode) => {
@@ -13348,6 +13432,7 @@ export function App() {
         onTabChange={setInspectorTab}
         onGeometryChange={updateGeometry}
         onFillChange={(nodeId, fill) => dispatch({ type: "set_fill", nodeId, fill })}
+        onNodeStyleChange={updateNodeStyle}
         onFillStyleChange={updateFillStyle}
         onCreateFillStyle={createFillStyle}
         onRenameStyle={renameStyle}

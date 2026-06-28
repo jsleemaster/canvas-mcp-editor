@@ -172,7 +172,7 @@ export type AgentCommand =
     }
   | { type: "detach_instance"; nodeId: string };
 
-type ComponentInstanceStyleOverrideField = "fill" | "stroke" | "stroke_width" | "opacity";
+type ComponentInstanceStyleOverrideField = "fill" | "stroke" | "stroke_width" | "opacity" | "effect_shadow";
 type ComponentInstanceGeometryOverrideField = "x" | "y" | "width" | "height";
 type GeometryPatch = Partial<{ x: number; y: number; width: number; height: number }>;
 
@@ -180,7 +180,8 @@ const componentInstanceStyleOverrideFields: ComponentInstanceStyleOverrideField[
   "fill",
   "stroke",
   "stroke_width",
-  "opacity"
+  "opacity",
+  "effect_shadow"
 ];
 const componentInstanceGeometryOverrideFields: ComponentInstanceGeometryOverrideField[] = [
   "x",
@@ -1935,7 +1936,10 @@ function normalizeAgentNodeStyle(style: DesignNode["style"]): DesignNode["style"
     fill_style: style.fill_style ?? null,
     stroke: style.stroke ?? null,
     stroke_width: style.stroke_width,
-    opacity: style.opacity
+    opacity: style.opacity,
+    ...(typeof style.effect_shadow === "string" && style.effect_shadow.trim()
+      ? { effect_shadow: style.effect_shadow.trim() }
+      : {})
   };
 }
 
@@ -2122,7 +2126,13 @@ function findComponentSourceStyleValue(
     return undefined;
   }
   const node = findInNode(sourceNode, sourceNodeId);
-  return node ? node.style[field] : undefined;
+  if (!node) {
+    return undefined;
+  }
+  if (field === "effect_shadow") {
+    return node.style.effect_shadow ?? null;
+  }
+  return node.style[field];
 }
 
 function findComponentSourceGeometryValue(
