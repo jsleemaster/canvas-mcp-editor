@@ -235,6 +235,35 @@ export interface LibraryRegistryEntry {
   updatedAt: string;
 }
 
+export interface LibraryRegistrySubscription {
+  fileId: string;
+  libraryId: string;
+  libraryName: string;
+  sourceFileId: string;
+  sourceName: string;
+  idPrefix?: string;
+  componentCount: number;
+  tokenCount: number;
+  assetCount: number;
+  componentIdMap: Record<string, string>;
+  tokenIdMap: Record<string, string>;
+  importedAt: string;
+  importedRegistryUpdatedAt: string;
+}
+
+export interface LibraryRegistryUpdateNotification {
+  fileId: string;
+  libraryId: string;
+  libraryName: string;
+  sourceFileId: string;
+  sourceName: string;
+  componentCount: number;
+  tokenCount: number;
+  assetCount: number;
+  importedRegistryUpdatedAt: string;
+  registryUpdatedAt: string;
+}
+
 export interface PublishLibraryRegistryInput {
   libraryId?: string;
   name?: string;
@@ -515,6 +544,38 @@ export async function importLibraryRegistryItem(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input)
+  });
+  const payload = await readDocumentJson(response);
+  return (payload as { imported: ImportedLibraryRegistryItem }).imported;
+}
+
+export async function listLibraryRegistrySubscriptions(
+  fileId: string,
+  fetcher: typeof fetch = fetch
+): Promise<LibraryRegistrySubscription[]> {
+  const response = await fetcher(apiUrl(`/files/${fileId}/libraries/subscriptions`));
+  const payload = await readDocumentJson(response);
+  return (payload as { subscriptions: LibraryRegistrySubscription[] }).subscriptions;
+}
+
+export async function listLibraryRegistryUpdates(
+  fileId: string,
+  fetcher: typeof fetch = fetch
+): Promise<LibraryRegistryUpdateNotification[]> {
+  const response = await fetcher(apiUrl(`/files/${fileId}/libraries/updates`));
+  const payload = await readDocumentJson(response);
+  return (payload as { updates: LibraryRegistryUpdateNotification[] }).updates;
+}
+
+export async function updateLibraryRegistryItem(
+  fileId: string,
+  libraryId: string,
+  fetcher: typeof fetch = fetch
+): Promise<ImportedLibraryRegistryItem> {
+  const response = await fetcher(apiUrl(`/files/${fileId}/import/library/registry/update`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ libraryId })
   });
   const payload = await readDocumentJson(response);
   return (payload as { imported: ImportedLibraryRegistryItem }).imported;

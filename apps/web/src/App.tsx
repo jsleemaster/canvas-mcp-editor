@@ -54,6 +54,7 @@ import {
   importLibraryRegistryItem,
   importDesignTokensDtcg,
   listLibraryRegistry,
+  listLibraryRegistryUpdates,
   listCommentActivity,
   listCommentNotifications,
   listCommentThreads,
@@ -73,6 +74,7 @@ import {
   publishLibraryToRegistry,
   subscribeToCommentEvents,
   summarizeDocumentChanges,
+  updateLibraryRegistryItem,
   type CommentActivityFeed,
   type CommentMentionTarget,
   type CommentNotificationSummary,
@@ -84,7 +86,8 @@ import {
   type FileVersionSummary,
   type LibraryArchiveReview,
   type LibraryRegistryEntry,
-  type LibraryRegistryReview
+  type LibraryRegistryReview,
+  type LibraryRegistryUpdateNotification
 } from "./document-api";
 import { editorKonvaTokens } from "./design-tokens";
 import { imageAssetIdsForNode, pdfForNode, svgForNode, type NodeArtifactAsset } from "./node-artifacts";
@@ -7518,6 +7521,7 @@ export function App() {
   const [libraryRegistryName, setLibraryRegistryName] = useState("");
   const [libraryRegistryPrefix, setLibraryRegistryPrefix] = useState("team");
   const [libraryRegistryReview, setLibraryRegistryReview] = useState<LibraryRegistryReviewState | null>(null);
+  const [libraryRegistryUpdates, setLibraryRegistryUpdates] = useState<LibraryRegistryUpdateNotification[]>([]);
   const [libraryRegistryStatus, setLibraryRegistryStatus] = useState("게시 라이브러리 대기 중");
   const [projectArchiveReview, setProjectArchiveReview] = useState<ProjectArchiveReviewState | null>(null);
   const [projectArchiveImportName, setProjectArchiveImportName] = useState("");
@@ -7756,9 +7760,27 @@ export function App() {
     editorRef.current = editor;
   }, [editor]);
 
-  const refreshLibraryRegistry = async (status?: string) => {
+  const refreshLibraryRegistryUpdates = async (fileId?: string) => {
+    if (!fileId) {
+      setLibraryRegistryUpdates([]);
+      return [];
+    }
     try {
-      const libraries = await listLibraryRegistry();
+      const updates = await listLibraryRegistryUpdates(fileId);
+      setLibraryRegistryUpdates(updates);
+      return updates;
+    } catch {
+      setLibraryRegistryUpdates([]);
+      return [];
+    }
+  };
+
+  const refreshLibraryRegistry = async (status?: string, fileId = currentProject?.currentDocumentId) => {
+    try {
+      const [libraries] = await Promise.all([
+        listLibraryRegistry(),
+        refreshLibraryRegistryUpdates(fileId)
+      ]);
       setLibraryRegistry(libraries);
       setLibraryRegistryStatus(
         status ?? (libraries.length > 0 ? `게시 라이브러리 ${libraries.length}개` : "게시 라이브러리 없음")
@@ -7766,9 +7788,22 @@ export function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "게시 라이브러리를 불러오지 못했습니다";
       setLibraryRegistry([]);
+      setLibraryRegistryUpdates([]);
       setLibraryRegistryStatus(message);
     }
   };
+
+  useEffect(() => {
+    const fileId = currentProject?.currentDocumentId;
+    if (!fileId) {
+      setLibraryRegistryUpdates([]);
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      void refreshLibraryRegistryUpdates(fileId);
+    }, COMMENT_LIVE_REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
+  }, [currentProject?.currentDocumentId]);
 
   const loadProjectDocument = async (project: ProjectManifest, projectList = projects) => {
     const response = await fetch(apiUrl(`/files/${project.currentDocumentId}`));
@@ -7789,7 +7824,7 @@ export function App() {
     void refreshCommentThreads(project.currentDocumentId);
     void refreshCommentNotifications();
     void refreshCommentActivity();
-    await refreshLibraryRegistry();
+    await refreshLibraryRegistry(undefined, project.currentDocumentId);
   };
 
   useEffect(() => {
@@ -7843,7 +7878,7 @@ export function App() {
         void refreshCommentThreads(selectedProject.currentDocumentId);
         void refreshCommentNotifications();
         void refreshCommentActivity();
-        void refreshLibraryRegistry();
+        void refreshLibraryRegistry(undefined, selectedProject.currentDocumentId);
       } catch {
         if (!cancelled) {
           setProjectStatus("로컬 서버를 시작하면 프로젝트를 불러옵니다");
@@ -11239,6 +11274,27 @@ export function App() {
     }
   };
 
+  const applyLibraryRegistryUpdate = async (libraryId: string) => {
+    if (!currentProject) {
+      setLibraryRegistryStatus("프로젝트 없음");
+      return;
+    }
+
+    try {
+      setLibraryRegistryStatus("게시 라이브러리 업데이트 적용 중");
+      const imported = await updateLibraryRegistryItem(currentProject.currentDocumentId, libraryId);
+      await loadProjectDocument(currentProject, projects);
+      setLibraryRegistryStatus(
+        `${imported.libraryName} 업데이트 적용됨 · 컴포넌트 ${imported.componentCount}개 · 토큰 ${imported.tokenCount}개`
+      );
+      setProjectStatus("게시 라이브러리 업데이트 적용됨");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "게시 라이브러리 업데이트를 적용하지 못했습니다";
+      setLibraryRegistryStatus(message);
+      setProjectStatus(message);
+    }
+  };
+
   const exportCurrentProjectArchive = async () => {
     if (!currentProject) {
       setProjectArchiveStatus("프로젝트 없음");
@@ -12763,6 +12819,29 @@ export function App() {
                         ))
                       ) : (
                         <span>게시된 라이브러리 없음</span>
+                      )}
+                    </div>
+                    <div
+                      className="file-archive-review-body library-registry-updates"
+                      data-testid="library-registry-updates"
+                    >
+                      {libraryRegistryUpdates.length > 0 ? (
+                        libraryRegistryUpdates.map((update) => (
+                          <span key={`${update.fileId}-${update.libraryId}`}>
+                            <strong>{update.libraryName}</strong> 업데이트 가능 · 컴포넌트{" "}
+                            {update.componentCount}개 · 토큰 {update.tokenCount}개
+                            <button
+                              type="button"
+                              className="inspector-compact-button"
+                              data-testid={`library-registry-update-${update.libraryId}`}
+                              onClick={() => void applyLibraryRegistryUpdate(update.libraryId)}
+                            >
+                              업데이트 적용
+                            </button>
+                          </span>
+                        ))
+                      ) : (
+                        <span>적용할 업데이트 없음</span>
                       )}
                     </div>
                     {libraryRegistryReview ? (

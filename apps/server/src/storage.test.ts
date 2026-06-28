@@ -679,6 +679,111 @@ describe("FileStorage", () => {
     expect(targetDocument.tokens?.map((token) => token.name)).toEqual(["Brand / Primary"]);
   });
 
+  test("library registry subscriptions report and apply updates without duplicating components", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+    await storage.applyAgentCommands("sample-file", {
+      dryRun: false,
+      commands: [
+        {
+          type: "create_token",
+          token: { id: "color-brand-primary", name: "Brand / Primary", type: "color", value: "#2563eb" }
+        },
+        {
+          type: "create_rectangle",
+          parentId: "frame-1",
+          id: "library-card",
+          name: "Library Card",
+          width: 160,
+          height: 96,
+          fill: "#ffffff"
+        },
+        { type: "set_fill_token", nodeId: "library-card", tokenId: "color-brand-primary" },
+        { type: "create_component", nodeId: "library-card", componentId: "component-card", name: "Card" }
+      ] as any
+    });
+    const firstPublish = await storage.publishLibraryToRegistry("sample-file", {
+      libraryId: "team-kit",
+      name: "Team Kit"
+    });
+    const target = await storage.createProject({
+      projectId: "target-project",
+      name: "대상 프로젝트",
+      documentId: "target-file",
+      documentName: "대상 문서"
+    });
+    const targetFileId = target.currentDocumentId;
+
+    await storage.importLibraryRegistryItem(targetFileId, "team-kit", { idPrefix: "team" });
+
+    expect(await storage.listLibraryRegistryUpdates(targetFileId)).toEqual([]);
+    expect(await storage.listLibraryRegistrySubscriptions(targetFileId)).toEqual([
+      expect.objectContaining({
+        fileId: targetFileId,
+        libraryId: "team-kit",
+        libraryName: "Team Kit",
+        importedRegistryUpdatedAt: firstPublish.updatedAt,
+        componentIdMap: { "component-card": "team-component-card" }
+      })
+    ]);
+
+    await storage.applyAgentCommands("sample-file", {
+      dryRun: false,
+      commands: [
+        {
+          type: "create_rectangle",
+          parentId: "frame-1",
+          id: "library-badge",
+          name: "Library Badge",
+          width: 80,
+          height: 32,
+          fill: "#2563eb"
+        },
+        { type: "create_component", nodeId: "library-badge", componentId: "component-badge", name: "Badge" }
+      ] as any
+    });
+    const secondPublish = await storage.publishLibraryToRegistry("sample-file", {
+      libraryId: "team-kit",
+      name: "Team Kit"
+    });
+    expect(secondPublish.updatedAt > firstPublish.updatedAt).toBe(true);
+
+    const updates = await storage.listLibraryRegistryUpdates(targetFileId);
+    expect(updates).toEqual([
+      expect.objectContaining({
+        fileId: targetFileId,
+        libraryId: "team-kit",
+        libraryName: "Team Kit",
+        importedRegistryUpdatedAt: firstPublish.updatedAt,
+        registryUpdatedAt: secondPublish.updatedAt,
+        componentCount: 2,
+        tokenCount: 1
+      })
+    ]);
+
+    const updated = await storage.updateLibraryRegistryItem(targetFileId, "team-kit");
+    expect(updated).toMatchObject({
+      libraryId: "team-kit",
+      libraryName: "Team Kit",
+      componentCount: 2,
+      tokenCount: 1,
+      componentIdMap: {
+        "component-card": "team-component-card",
+        "component-badge": "team-component-badge"
+      },
+      tokenIdMap: {
+        "color-brand-primary": "color-brand-primary"
+      }
+    });
+    expect(await storage.listLibraryRegistryUpdates(targetFileId)).toEqual([]);
+    const targetDocument = await storage.readFile(targetFileId);
+    expect(targetDocument.components?.map((component) => component.name)).toEqual(["Card", "Badge"]);
+    expect(targetDocument.components?.map((component) => component.id)).toEqual([
+      "team-component-card",
+      "team-component-badge"
+    ]);
+  });
+
   test("comment threads are stored beside the design file and can be resolved", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
     const storage = await storageWithDocument(tempRoot);

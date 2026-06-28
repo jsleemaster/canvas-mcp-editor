@@ -885,6 +885,82 @@ export function createMcpServer(storage = new FileStorage()) {
   );
 
   server.registerTool(
+    "list_library_registry_subscriptions",
+    {
+      description: "List shared library registry subscriptions imported into a Layo document.",
+      annotations: readOnlyToolAnnotations,
+      inputSchema: {
+        fileId: z.string().optional().describe("Optional target design file id returned by list_files")
+      }
+    },
+    async ({ fileId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              subscriptions: await storage.listLibraryRegistrySubscriptions(fileId)
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "list_library_registry_updates",
+    {
+      description: "List shared library registry updates available for subscribed Layo documents.",
+      annotations: readOnlyToolAnnotations,
+      inputSchema: {
+        fileId: z.string().optional().describe("Optional target design file id returned by list_files")
+      }
+    },
+    async ({ fileId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              updates: await storage.listLibraryRegistryUpdates(fileId)
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "update_library_registry_item",
+    {
+      description: "Apply the latest shared registry library version to a subscribed target Layo document.",
+      annotations: writeToolAnnotations,
+      inputSchema: {
+        fileId: z.string().describe("Target design file id returned by list_files"),
+        libraryId: z.string().describe("Shared library id returned by list_library_registry_updates")
+      }
+    },
+    async ({ fileId, libraryId }) => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              imported: await storage.updateLibraryRegistryItem(fileId, libraryId)
+            },
+            null,
+            2
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
     "export_design_tokens",
     {
       description: "Export document-local Layo design tokens as W3C/DTCG JSON.",
