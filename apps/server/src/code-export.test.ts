@@ -114,6 +114,27 @@ describe("code export", () => {
     });
   });
 
+  test("exports effect shadows as CSS and implementation metadata", () => {
+    const fixture = tossFixture() as any;
+    fixture.pages[0].children[0].style.effect_shadow = "0 18px 36px rgba(15, 23, 42, 0.32)";
+
+    const result = exportDesignToCode(fixture);
+    const button = result.elements.find((element) => element.id === "tds-button-primary");
+
+    expect(result.css).toContain("box-shadow: 0 18px 36px rgba(15, 23, 42, 0.32);");
+    expect(button?.structure.style).toMatchObject({
+      effectShadow: "0 18px 36px rgba(15, 23, 42, 0.32)"
+    });
+    expect(button?.structure.annotations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "tds-button-primary-style",
+          value: expect.stringContaining("Shadow")
+        })
+      ])
+    );
+  });
+
   test("exports spacing token bindings as CSS variables and implementation metadata", () => {
     const fixture = tossFixture() as any;
     fixture.tokens = [

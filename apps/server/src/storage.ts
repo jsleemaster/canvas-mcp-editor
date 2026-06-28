@@ -153,6 +153,7 @@ export interface DesignNode {
     stroke: string | null;
     stroke_width: number;
     opacity: number;
+    effect_shadow?: string | null;
   };
   content:
     | { type: "empty" }
@@ -206,14 +207,15 @@ export interface ComponentInstance {
   detached: boolean;
 }
 
-type ComponentInstanceStyleOverrideField = "fill" | "stroke" | "stroke_width" | "opacity";
+type ComponentInstanceStyleOverrideField = "fill" | "stroke" | "stroke_width" | "opacity" | "effect_shadow";
 type ComponentInstanceGeometryOverrideField = "x" | "y" | "width" | "height";
 
 const componentInstanceStyleOverrideFields: ComponentInstanceStyleOverrideField[] = [
   "fill",
   "stroke",
   "stroke_width",
-  "opacity"
+  "opacity",
+  "effect_shadow"
 ];
 const componentInstanceGeometryOverrideFields: ComponentInstanceGeometryOverrideField[] = [
   "x",
@@ -3847,7 +3849,13 @@ function findComponentSourceStyleValue(
     return undefined;
   }
   const node = findInNode(sourceNode, sourceNodeId);
-  return node ? node.style[field] : undefined;
+  if (!node) {
+    return undefined;
+  }
+  if (field === "effect_shadow") {
+    return node.style.effect_shadow ?? null;
+  }
+  return node.style[field];
 }
 
 function findComponentSourceGeometryValue(
@@ -3955,6 +3963,11 @@ function applyComponentInstanceOverrides(instance: DesignNode, sourceRootNodeId:
       if (Number.isFinite(value)) {
         target.style = { ...target.style, [override.field]: value };
       }
+    } else if (override.field === "effect_shadow") {
+      target.style = {
+        ...target.style,
+        effect_shadow: override.value === nullComponentOverrideValue ? null : override.value
+      };
     } else if (override.field === "x" || override.field === "y") {
       const value = Number(override.value);
       if (Number.isFinite(value)) {

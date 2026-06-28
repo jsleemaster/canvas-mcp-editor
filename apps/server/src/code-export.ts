@@ -56,6 +56,7 @@ export interface CodeStructureNode {
     stroke: string | null;
     strokeWidth: number;
     opacity: number;
+    effectShadow?: string;
   };
   annotations: CodeHandoffAnnotation[];
   content:
@@ -412,7 +413,8 @@ function structureFor(
       ...(node.style.fill_style ? { fillStyle: node.style.fill_style } : {}),
       stroke: node.style.stroke,
       strokeWidth: node.style.stroke_width,
-      opacity: node.style.opacity
+      opacity: node.style.opacity,
+      ...(node.style.effect_shadow ? { effectShadow: node.style.effect_shadow } : {})
     },
     annotations: handoffAnnotationsFor(node, tokenMap),
     content: contentFor(node),
@@ -517,7 +519,9 @@ function styleAnnotationFor(node: DesignNode, tokenMap: Map<string, DesignToken>
   return {
     id: `${node.id}-style`,
     label: "스타일",
-    value: `Fill ${fill} · opacity ${formatNumber(node.style.opacity)}`,
+    value: `Fill ${fill} · opacity ${formatNumber(node.style.opacity)}${
+      node.style.effect_shadow ? ` · Shadow ${node.style.effect_shadow}` : ""
+    }`,
     detail:
       token && token.type === "color"
         ? `fill token ${token.id} maps to var(--${cssTokenName(token.id)})`
@@ -800,6 +804,10 @@ function nodeCss(node: DesignNode, tokenMap: Map<string, DesignToken>): string[]
   if (node.transform.rotation !== 0) {
     lines.push(`  transform: rotate(${formatNumber(node.transform.rotation)}deg);`);
   }
+  const effectShadow = cssEffectShadowValue(node);
+  if (effectShadow) {
+    lines.push(`  box-shadow: ${effectShadow};`);
+  }
 
   if (node.kind === "text" && node.content.type === "text") {
     lines.push(`  color: ${cssFillValue(node, tokenMap)};`);
@@ -861,6 +869,14 @@ function cssFillValue(node: DesignNode, tokenMap: Map<string, DesignToken>): str
     return node.style.fill;
   }
   return `var(--${cssTokenName(token.id)}, ${token.value})`;
+}
+
+function cssEffectShadowValue(node: DesignNode): string | null {
+  const value = node.style.effect_shadow?.trim();
+  if (!value || /[;{}\n\r]/.test(value)) {
+    return null;
+  }
+  return value;
 }
 
 function cssLayoutSpacingValue(

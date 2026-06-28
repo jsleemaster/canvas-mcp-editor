@@ -183,7 +183,8 @@ const nodeStyleSchema = z.object({
   fill_style: z.string().nullable().optional().describe("Optional reusable fill style binding"),
   stroke: z.string().nullable().describe("CSS stroke color or null for no stroke"),
   stroke_width: z.number().min(0).describe("Stroke width in pixels"),
-  opacity: z.number().min(0).max(1).describe("Layer opacity from 0 to 1")
+  opacity: z.number().min(0).max(1).describe("Layer opacity from 0 to 1"),
+  effect_shadow: z.string().nullable().optional().describe("Optional CSS box-shadow value")
 });
 
 const agentCommandSchema = z.discriminatedUnion("type", [

@@ -611,6 +611,8 @@ pub struct Style {
     pub stroke: Option<String>,
     pub stroke_width: f64,
     pub opacity: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effect_shadow: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, TS)]
@@ -694,6 +696,7 @@ impl DesignFile {
                             stroke: None,
                             stroke_width: 0.0,
                             opacity: 1.0,
+                            effect_shadow: None,
                         },
                         content: NodeContent::Text {
                             value: "Layo".to_string(),
@@ -720,6 +723,7 @@ impl DesignFile {
                         stroke: Some("#d1d5db".to_string()),
                         stroke_width: 1.0,
                         opacity: 1.0,
+                        effect_shadow: None,
                     },
                     content: NodeContent::Empty,
                 }],

@@ -2224,6 +2224,81 @@ describe("FileStorage", () => {
     );
   });
 
+  test("agent commands preserve component instance effect shadow overrides after switching variants", async () => {
+    tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
+    const storage = await storageWithDocument(tempRoot);
+
+    const component = await storage.createComponent("sample-file", "frame-1", {
+      componentId: "component-1",
+      name: "Card"
+    });
+    const primarySource = structuredClone(component.source_node);
+    primarySource.children[0].style = {
+      ...primarySource.children[0].style,
+      effect_shadow: "0 4px 10px rgba(15, 23, 42, 0.16)"
+    } as any;
+    const secondarySource = structuredClone(component.source_node);
+    secondarySource.children[0].style = {
+      ...secondarySource.children[0].style,
+      effect_shadow: "0 1px 2px rgba(15, 23, 42, 0.08)"
+    } as any;
+    await storage.setComponentVariants(
+      "sample-file",
+      "component-1",
+      [
+        {
+          id: "variant-primary",
+          name: "Primary",
+          properties: [{ name: "surface", value: "raised" }],
+          source_node: primarySource
+        },
+        {
+          id: "variant-secondary",
+          name: "Secondary",
+          properties: [{ name: "surface", value: "flat" }],
+          source_node: secondarySource
+        }
+      ] as any
+    );
+
+    await storage.createComponentInstance("sample-file", {
+      parentId: "page-1",
+      definitionId: "component-1",
+      instanceId: "instance-1",
+      x: 520,
+      y: 140
+    });
+    await storage.applyAgentCommands("sample-file", {
+      dryRun: false,
+      commands: [
+        {
+          type: "set_node_style",
+          nodeId: "instance-1__text-1",
+          style: {
+            ...findNode(await storage.readFile("sample-file"), "instance-1__text-1")!.style,
+            effect_shadow: "0 18px 36px rgba(15, 23, 42, 0.32)"
+          }
+        }
+      ] as any
+    });
+
+    const switched = await storage.setComponentInstanceVariant("sample-file", "instance-1", "variant-secondary");
+    const persisted = await storage.readFile("sample-file");
+
+    expect((findNode(persisted, "instance-1__text-1") as any)?.style.effect_shadow).toBe(
+      "0 18px 36px rgba(15, 23, 42, 0.32)"
+    );
+    expect(switched.component_instance?.overrides).toEqual(
+      expect.arrayContaining([
+        {
+          node_id: "text-1",
+          field: "effect_shadow",
+          value: "0 18px 36px rgba(15, 23, 42, 0.32)"
+        }
+      ])
+    );
+  });
+
   test("inspects and searches canvas nodes for agent workflows", async () => {
     tempRoot = await mkdtemp(path.join(tmpdir(), "layo-"));
     const storage = await storageWithDocument(tempRoot);

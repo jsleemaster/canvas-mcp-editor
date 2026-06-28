@@ -108,6 +108,7 @@ export interface RendererNode {
     stroke: string | null;
     stroke_width: number;
     opacity: number;
+    effect_shadow?: string | null;
   };
   content:
     | { type: "empty" }

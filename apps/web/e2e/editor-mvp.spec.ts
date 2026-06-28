@@ -499,6 +499,80 @@ test("inspector dev panel shows repo code mappings for selected component instan
   expect(clipboard).toContain('<Card title={title} surface="elevated" />');
 });
 
+test("right inspector preserves component instance effect shadow overrides across variants", async ({ page }) => {
+  const { documentId } = await createProjectFromEmptyState(page);
+
+  const component = await page.request.post(`http://127.0.0.1:4317/files/${documentId}/components`, {
+    data: { nodeId: "frame-1", componentId: "component-card", name: "Card" }
+  });
+  expect(component.ok()).toBeTruthy();
+
+  const fileResponse = await page.request.get(`http://127.0.0.1:4317/files/${documentId}`);
+  expect(fileResponse.ok()).toBeTruthy();
+  const filePayload = await fileResponse.json();
+  const sourceNode = filePayload.file.components[0].source_node;
+
+  const flatSource = structuredClone(sourceNode);
+  flatSource.style.effect_shadow = "0 1px 2px rgba(15, 23, 42, 0.08)";
+  const raisedSource = structuredClone(sourceNode);
+  raisedSource.style.effect_shadow = "0 4px 10px rgba(15, 23, 42, 0.16)";
+
+  const variants = await page.request.put(
+    `http://127.0.0.1:4317/files/${documentId}/components/component-card/variants`,
+    {
+      data: {
+        variants: [
+          { id: "card-flat", name: "Flat", properties: [{ name: "surface", value: "flat" }], source_node: flatSource },
+          {
+            id: "card-raised",
+            name: "Raised",
+            properties: [{ name: "surface", value: "raised" }],
+            source_node: raisedSource
+          }
+        ]
+      }
+    }
+  );
+  expect(variants.ok()).toBeTruthy();
+
+  const instance = await page.request.post(`http://127.0.0.1:4317/files/${documentId}/component-instances`, {
+    data: {
+      parentId: "page-1",
+      definitionId: "component-card",
+      instanceId: "instance-card",
+      x: 520,
+      y: 140
+    }
+  });
+  expect(instance.ok()).toBeTruthy();
+
+  await page.reload();
+  await openFilePanel(page);
+  await page.getByRole("button", { name: "Card 인스턴스" }).click();
+
+  await page.getByTestId("inspector-effect-shadow").fill("0 18px 36px rgba(15, 23, 42, 0.32)");
+  await expect(page.getByTestId("inspector-effect-shadow")).toHaveValue("0 18px 36px rgba(15, 23, 42, 0.32)");
+
+  await page.getByTestId("inspector-component-variant-surface").selectOption("raised");
+  await expect(page.getByTestId("inspector-component-variant-surface")).toHaveValue("raised");
+  await expect(page.getByTestId("inspector-effect-shadow")).toHaveValue("0 18px 36px rgba(15, 23, 42, 0.32)");
+
+  const persistedResponse = await page.request.get(`http://127.0.0.1:4317/files/${documentId}`);
+  expect(persistedResponse.ok()).toBeTruthy();
+  const persistedPayload = await persistedResponse.json();
+  const persistedInstance = persistedPayload.file.pages[0].children.find((node: any) => node.id === "instance-card");
+  expect(persistedInstance.style.effect_shadow).toBe("0 18px 36px rgba(15, 23, 42, 0.32)");
+  expect(persistedInstance.component_instance.overrides).toEqual(
+    expect.arrayContaining([
+      {
+        node_id: "frame-1",
+        field: "effect_shadow",
+        value: "0 18px 36px rgba(15, 23, 42, 0.32)"
+      }
+    ])
+  );
+});
+
 test("right inspector authors component variants on selected main components", async ({ page }) => {
   const { documentId } = await createProjectFromEmptyState(page);
 
