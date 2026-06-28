@@ -1424,6 +1424,21 @@ async function persistEffectShadowStyle(fileId: string, nodeId: string, styleId:
   }
 }
 
+async function persistEffectShadows(fileId: string, nodeId: string, shadows: string[]) {
+  const response = await fetch(apiUrl(`/files/${fileId}/agent/commands`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dryRun: false,
+      commands: [{ type: "set_effect_shadows", nodeId, shadows }]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`그림자 레이어 저장 실패: ${response.status} ${response.statusText}`.trim());
+  }
+}
+
 async function persistCreateFillStyle(fileId: string, nodeId: string, style: DesignStyle) {
   const response = await fetch(apiUrl(`/files/${fileId}/agent/commands`), {
     method: "POST",
@@ -5204,6 +5219,7 @@ function Inspector({
   onFillStyleChange,
   onEffectShadowTokenChange,
   onEffectShadowStyleChange,
+  onEffectShadowStackChange,
   onCreateFillStyle,
   onCreateEffectStyle,
   onRenameStyle,
@@ -5281,6 +5297,7 @@ function Inspector({
   onFillStyleChange: (nodeId: string, styleId: string) => void;
   onEffectShadowTokenChange: (nodeId: string, tokenId: string) => void;
   onEffectShadowStyleChange: (nodeId: string, styleId: string) => void;
+  onEffectShadowStackChange: (nodeId: string, shadows: string[]) => void;
   onCreateFillStyle: (nodeId: string, style: DesignStyle) => void;
   onCreateEffectStyle: (nodeId: string, style: DesignStyle) => void;
   onRenameStyle: (styleId: string, name: string) => void;
@@ -5474,9 +5491,26 @@ function Inspector({
     } else {
       delete nextStyle.effect_shadow;
     }
+    nextStyle.effect_shadows = null;
     nextStyle.effect_shadow_token = null;
     nextStyle.effect_shadow_style = null;
     onNodeStyleChange(selectedNode.id, nextStyle);
+  };
+  const updateEffectShadowStack = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const shadows = event.currentTarget.value
+      .split(/\n+/)
+      .map((shadow) => shadow.trim())
+      .filter(Boolean);
+    if (!shadows.length) {
+      const nextStyle = { ...selectedNode.style };
+      delete nextStyle.effect_shadow;
+      nextStyle.effect_shadows = null;
+      nextStyle.effect_shadow_token = null;
+      nextStyle.effect_shadow_style = null;
+      onNodeStyleChange(selectedNode.id, nextStyle);
+      return;
+    }
+    onEffectShadowStackChange(selectedNode.id, shadows);
   };
   const updateEffectShadowToken = (event: React.ChangeEvent<HTMLSelectElement>) => {
     onEffectShadowTokenChange(selectedNode.id, event.currentTarget.value);
@@ -5534,6 +5568,13 @@ function Inspector({
   const effectShadowStyle = selectedNode.style.effect_shadow_style
     ? effectStyles.find((style) => style.id === selectedNode.style.effect_shadow_style) ?? null
     : null;
+  const effectShadowStackText = (
+    selectedNode.style.effect_shadows?.length
+      ? selectedNode.style.effect_shadows
+      : selectedNode.style.effect_shadow
+        ? [selectedNode.style.effect_shadow]
+        : []
+  ).join("\n");
   const selectedTextContent = selectedNode.content.type === "text" ? selectedNode.content : null;
   const typographyStyle =
     selectedTextContent?.typography_style
@@ -6369,6 +6410,16 @@ function Inspector({
           value={selectedNode.style.effect_shadow ?? ""}
           placeholder="0 12px 28px rgba(15, 23, 42, 0.24)"
           onChange={updateEffectShadow}
+        />
+      </label>
+      <label className="stacked-field">
+        그림자 레이어
+        <textarea
+          data-testid="inspector-effect-shadow-stack"
+          value={effectShadowStackText}
+          placeholder={"0 1px 2px rgba(15, 23, 42, 0.18)\n0 18px 36px rgba(15, 23, 42, 0.32)"}
+          rows={3}
+          onChange={updateEffectShadowStack}
         />
       </label>
       <label className="stacked-field">
@@ -9509,6 +9560,37 @@ export function App() {
       })
       .catch((error) => {
         const message = error instanceof Error ? error.message : "효과 스타일을 적용하지 못했습니다";
+        setProjectStatus(message);
+      });
+  };
+
+  const updateEffectShadowStack = (nodeId: string, shadows: string[]) => {
+    if (!shadows.length) {
+      const node = editor ? findNodeById(editor.document, nodeId) : null;
+      if (!node) {
+        return;
+      }
+      updateNodeStyle(nodeId, {
+        ...node.style,
+        effect_shadow: null,
+        effect_shadows: null,
+        effect_shadow_token: null,
+        effect_shadow_style: null
+      });
+      return;
+    }
+
+    dispatch({ type: "set_effect_shadows", nodeId, shadows });
+    if (!currentProject) {
+      return;
+    }
+
+    void persistEffectShadows(currentProject.currentDocumentId, nodeId, shadows)
+      .then(() => {
+        setCodeExportRevision((current) => current + 1);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "그림자 레이어를 저장하지 못했습니다";
         setProjectStatus(message);
       });
   };
@@ -13668,6 +13750,7 @@ export function App() {
         onFillStyleChange={updateFillStyle}
         onEffectShadowTokenChange={updateEffectShadowToken}
         onEffectShadowStyleChange={updateEffectShadowStyle}
+        onEffectShadowStackChange={updateEffectShadowStack}
         onCreateFillStyle={createFillStyle}
         onCreateEffectStyle={createEffectStyle}
         onRenameStyle={renameStyle}

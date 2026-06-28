@@ -109,6 +109,7 @@ export interface RendererNode {
     stroke_width: number;
     opacity: number;
     effect_shadow?: string | null;
+    effect_shadows?: string[] | null;
     effect_shadow_token?: string | null;
     effect_shadow_style?: string | null;
   };

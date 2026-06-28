@@ -3416,6 +3416,37 @@ test("right inspector creates and applies reusable effect styles", async ({ page
   await expect(page.getByTestId("inspector-effect-shadow-style")).toHaveValue("style-effect-effects-card-raised");
 });
 
+test("right inspector edits and persists multi-effect shadow stacks", async ({ page }) => {
+  const { documentId } = await createProjectFromEmptyState(page);
+  const shadows = [
+    "0px 1px 2px 0px rgba(15, 23, 42, 0.18)",
+    "0px 18px 36px 0px rgba(15, 23, 42, 0.32)"
+  ];
+
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await page.getByTestId("inspector-effect-shadow-stack").fill(shadows.join("\n"));
+
+  await expect
+    .poll(async () => {
+      const fileResponse = await page.request.get(`http://127.0.0.1:4317/files/${documentId}`);
+      expect(fileResponse.ok()).toBeTruthy();
+      const filePayload = await fileResponse.json();
+      const textNode = filePayload.file.pages[0].children[0].children.find((node: any) => node.id === "text-1");
+      return textNode?.style;
+    })
+    .toMatchObject({
+      effect_shadow: shadows.join(", "),
+      effect_shadows: shadows,
+      effect_shadow_token: null,
+      effect_shadow_style: null
+    });
+
+  await page.reload();
+  await openFilePanel(page);
+  await page.getByRole("button", { name: "헤드라인" }).click();
+  await expect(page.getByTestId("inspector-effect-shadow-stack")).toHaveValue(shadows.join("\n"));
+});
+
 test("right inspector creates and applies reusable styles", async ({ page }) => {
   const { documentId } = await createProjectFromEmptyState(page);
 

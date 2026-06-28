@@ -183,11 +183,12 @@ const nodeStyleSchema = z.object({
   fill_style: z.string().nullable().optional().describe("Optional reusable fill style binding"),
   stroke: z.string().nullable().describe("CSS stroke color or null for no stroke"),
   stroke_width: z.number().min(0).describe("Stroke width in pixels"),
-  opacity: z.number().min(0).max(1).describe("Layer opacity from 0 to 1"),
-  effect_shadow: z.string().nullable().optional().describe("Optional CSS box-shadow value"),
-  effect_shadow_token: z.string().nullable().optional().describe("Optional shadow token binding"),
-  effect_shadow_style: z.string().nullable().optional().describe("Optional reusable effect style binding")
-});
+	  opacity: z.number().min(0).max(1).describe("Layer opacity from 0 to 1"),
+	  effect_shadow: z.string().nullable().optional().describe("Optional CSS box-shadow value"),
+	  effect_shadows: z.array(z.string()).nullable().optional().describe("Optional ordered CSS box-shadow layers"),
+	  effect_shadow_token: z.string().nullable().optional().describe("Optional shadow token binding"),
+	  effect_shadow_style: z.string().nullable().optional().describe("Optional reusable effect style binding")
+	});
 
 const agentCommandSchema = z.discriminatedUnion("type", [
   z.object({
@@ -275,14 +276,19 @@ const agentCommandSchema = z.discriminatedUnion("type", [
     nodeId: z.string(),
     tokenId: z.string()
   }),
-  z.object({
-    type: z.literal("set_effect_shadow_style"),
-    nodeId: z.string(),
-    styleId: z.string()
-  }),
-  z.object({
-    type: z.literal("set_text_typography_token"),
-    nodeId: z.string(),
+	  z.object({
+	    type: z.literal("set_effect_shadow_style"),
+	    nodeId: z.string(),
+	    styleId: z.string()
+	  }),
+	  z.object({
+	    type: z.literal("set_effect_shadows"),
+	    nodeId: z.string(),
+	    shadows: z.array(z.string()).min(1)
+	  }),
+	  z.object({
+	    type: z.literal("set_text_typography_token"),
+	    nodeId: z.string(),
     tokenId: z.string()
   }),
   z.object({

@@ -116,6 +116,7 @@ export type AgentCommand =
   | { type: "set_fill_style"; nodeId: string; styleId: string }
   | { type: "set_effect_shadow_token"; nodeId: string; tokenId: string }
   | { type: "set_effect_shadow_style"; nodeId: string; styleId: string }
+  | { type: "set_effect_shadows"; nodeId: string; shadows: string[] }
   | { type: "set_text_typography_token"; nodeId: string; tokenId: string }
   | { type: "set_text_typography_style"; nodeId: string; styleId: string }
   | {
@@ -692,6 +693,7 @@ function validateNode(
   validateFillStyleReference(node, path, styleTypes, issues);
   validateEffectShadowTokenReference(node, path, tokenTypes, issues);
   validateEffectShadowStyleReference(node, path, styleTypes, issues);
+  validateEffectShadowStack(node, path, issues);
   validateLayoutSpacingTokenReferences(node, path, tokenTypes, issues);
   validateTextTypographyTokenReference(node, path, tokenTypes, issues);
   validateTextTypographyStyleReference(node, path, styleTypes, issues);
@@ -841,6 +843,21 @@ function validateEffectShadowStyleReference(
     issues.push({
       code: "invalid_effect_shadow_style_type",
       message: `node effect shadow style is not effect: ${styleId}`,
+      nodeId: node.id,
+      path
+    });
+  }
+}
+
+function validateEffectShadowStack(node: DesignNode, path: string[], issues: DocumentValidationIssue[]) {
+  const shadows = node.style.effect_shadows;
+  if (shadows === undefined || shadows === null) {
+    return;
+  }
+  if (!Array.isArray(shadows) || shadows.length === 0 || shadows.some((shadow) => !isSafeShadowValue(shadow))) {
+    issues.push({
+      code: "invalid_effect_shadow_stack",
+      message: `node effect shadow stack is invalid: ${node.id}`,
       nodeId: node.id,
       path
     });
@@ -1266,13 +1283,37 @@ function applyAgentCommand(document: DesignFile, command: AgentCommand): string 
     case "set_effect_shadow_token": {
       const node = requireNode(document, command.nodeId);
       const token = requireShadowToken(document, command.tokenId);
-      node.style = { ...node.style, effect_shadow: token.value, effect_shadow_token: command.tokenId, effect_shadow_style: null };
+      node.style = {
+        ...node.style,
+        effect_shadow: token.value,
+        effect_shadows: [token.value],
+        effect_shadow_token: command.tokenId,
+        effect_shadow_style: null
+      };
       return node.id;
     }
     case "set_effect_shadow_style": {
       const node = requireNode(document, command.nodeId);
       const style = requireEffectStyle(document, command.styleId);
-      node.style = { ...node.style, effect_shadow: style.value, effect_shadow_token: null, effect_shadow_style: command.styleId };
+      node.style = {
+        ...node.style,
+        effect_shadow: style.value,
+        effect_shadows: [style.value],
+        effect_shadow_token: null,
+        effect_shadow_style: command.styleId
+      };
+      return node.id;
+    }
+    case "set_effect_shadows": {
+      const node = requireNode(document, command.nodeId);
+      const shadows = requireEffectShadowStack(command.shadows);
+      node.style = {
+        ...node.style,
+        effect_shadow: effectShadowValueFromStack(shadows),
+        effect_shadows: shadows,
+        effect_shadow_token: null,
+        effect_shadow_style: null
+      };
       return node.id;
     }
     case "set_fill_style": {
@@ -1642,6 +1683,14 @@ function requireShadowToken(document: DesignFile, tokenId: string): DesignToken 
   return token;
 }
 
+function requireEffectShadowStack(shadows: string[]): string[] {
+  const normalized = normalizeEffectShadowStack(shadows);
+  if (!normalized.length) {
+    throw new Error("effect shadow stack requires at least one layer");
+  }
+  return normalized;
+}
+
 function requireTypographyStyle(document: DesignFile, styleId: string): DesignStyle {
   const style = requireStyle(document, styleId);
   if (style.type !== "typography") {
@@ -1679,7 +1728,7 @@ function materializeNodeStyleBindings(node: DesignNode, styleMap: Map<string, De
   if (node.style.effect_shadow_style) {
     const style = styleMap.get(node.style.effect_shadow_style);
     if (style?.type === "effect" && isSafeShadowValue(style.value)) {
-      node.style = { ...node.style, effect_shadow: style.value };
+      node.style = { ...node.style, effect_shadow: style.value, effect_shadows: [style.value] };
     }
   }
 
@@ -1751,7 +1800,7 @@ function materializeNodeTokenBindings(node: DesignNode, tokenMap: Map<string, De
   if (node.style.effect_shadow_token) {
     const token = tokenMap.get(node.style.effect_shadow_token);
     if (token?.type === "shadow" && isSafeShadowValue(token.value)) {
-      node.style = { ...node.style, effect_shadow: token.value };
+      node.style = { ...node.style, effect_shadow: token.value, effect_shadows: [token.value] };
     }
   }
 
@@ -2069,6 +2118,13 @@ function normalizeAgentNodeStyle(style: DesignNode["style"]): DesignNode["style"
   if (!Number.isFinite(style.opacity) || style.opacity < 0 || style.opacity > 1) {
     throw new Error(`opacity must be between 0 and 1`);
   }
+  const hasEffectShadows = Object.prototype.hasOwnProperty.call(style, "effect_shadows");
+  const effectShadows = hasEffectShadows ? normalizeNullableEffectShadowStack(style.effect_shadows) : undefined;
+  const effectShadow = effectShadows
+    ? effectShadowValueFromStack(effectShadows)
+    : typeof style.effect_shadow === "string" && style.effect_shadow.trim()
+      ? style.effect_shadow.trim()
+      : null;
   return {
     fill: style.fill,
     fill_token: style.fill_token ?? null,
@@ -2076,9 +2132,8 @@ function normalizeAgentNodeStyle(style: DesignNode["style"]): DesignNode["style"
     stroke: style.stroke ?? null,
     stroke_width: style.stroke_width,
     opacity: style.opacity,
-    ...(typeof style.effect_shadow === "string" && style.effect_shadow.trim()
-      ? { effect_shadow: style.effect_shadow.trim() }
-      : {}),
+    ...(effectShadow ? { effect_shadow: effectShadow } : {}),
+    ...(hasEffectShadows ? { effect_shadows: effectShadows } : {}),
     effect_shadow_token:
       typeof style.effect_shadow_token === "string" && style.effect_shadow_token.trim()
         ? style.effect_shadow_token.trim()
@@ -2105,6 +2160,11 @@ function syncComponentInstanceOverridesForAgentCommand(document: DesignFile, com
     syncComponentInstanceStyleOverrides(document, command.nodeId, { effect_shadow: node?.style.effect_shadow }, [
       "effect_shadow"
     ]);
+  } else if (command.type === "set_effect_shadows") {
+    const node = findNodeById(document, command.nodeId);
+    syncComponentInstanceStyleOverrides(document, command.nodeId, { effect_shadow: node?.style.effect_shadow }, [
+      "effect_shadow"
+    ]);
   } else if (command.type === "update_geometry") {
     syncComponentInstanceGeometryOverrides(document, command.nodeId, {
       x: command.x,
@@ -2118,6 +2178,28 @@ function syncComponentInstanceOverridesForAgentCommand(document: DesignFile, com
 function isSafeShadowValue(value: string): boolean {
   const trimmed = value.trim();
   return Boolean(trimmed) && !/[;{}\n\r]/.test(trimmed);
+}
+
+function normalizeEffectShadowStack(shadows: string[] | null | undefined): string[] {
+  if (!Array.isArray(shadows)) {
+    return [];
+  }
+  return shadows.map((shadow) => shadow.trim()).filter((shadow) => isSafeShadowValue(shadow)).slice(0, 8);
+}
+
+function normalizeNullableEffectShadowStack(shadows: string[] | null | undefined): string[] | null {
+  if (shadows === undefined || shadows === null) {
+    return null;
+  }
+  const normalized = normalizeEffectShadowStack(shadows);
+  if (normalized.length !== shadows.length || !normalized.length) {
+    throw new Error("effect shadow stack contains invalid layers");
+  }
+  return normalized;
+}
+
+function effectShadowValueFromStack(shadows: string[]): string {
+  return shadows.join(", ");
 }
 
 function syncComponentInstanceStyleOverrides(
