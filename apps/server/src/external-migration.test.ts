@@ -291,6 +291,136 @@ describe("external design migration preflight", () => {
     expect(imported.importedAssets[0].data.equals(pngBytes)).toBe(true);
   });
 
+  test("does not mark Figma ZIP packages without CANVAS pages as importable", () => {
+    const figmaJson = {
+      name: "Empty Figma",
+      document: {
+        id: "0:0",
+        name: "Document",
+        type: "DOCUMENT",
+        children: []
+      }
+    };
+    const archive = createZipArchive([
+      { path: "figma-file.json", data: Buffer.from(JSON.stringify(figmaJson), "utf8") }
+    ]);
+
+    const review = reviewExternalMigrationArchive(archive, { fileName: "empty-figma.zip", sourceHint: "figma" });
+
+    expect(review).toMatchObject({
+      source: "figma",
+      archiveKind: "zip",
+      canImport: false,
+      documentCandidateCount: 1,
+      blockedBy: expect.arrayContaining(["mapping_not_implemented"])
+    });
+    expect(review.documentCandidates[0]).toMatchObject({ pageCount: 0 });
+    expect(() => importExternalMigrationArchive(archive, { fileName: "empty-figma.zip", sourceHint: "figma" })).toThrow(/CANVAS pages/);
+  });
+
+  test("preserves packaged frame image fills as background image nodes", () => {
+    const pngBytes = Buffer.from(pixelPngBase64, "base64");
+    const figmaJson = {
+      name: "Figma frame image landing",
+      document: {
+        id: "0:0",
+        name: "Document",
+        type: "DOCUMENT",
+        children: [
+          {
+            id: "1:1",
+            name: "Page 1",
+            type: "CANVAS",
+            children: [
+              {
+                id: "2:1",
+                name: "Hero frame",
+                type: "FRAME",
+                absoluteBoundingBox: { x: 80, y: 96, width: 320, height: 180 },
+                fills: [{ type: "IMAGE", visible: true, imageRef: "figma-frame-bg", scaleMode: "FILL" }],
+                children: [
+                  {
+                    id: "3:1",
+                    name: "Headline",
+                    type: "TEXT",
+                    characters: "Frame keeps children",
+                    absoluteBoundingBox: { x: 120, y: 136, width: 180, height: 32 }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    };
+    const archive = createZipArchive([
+      { path: "figma-file.json", data: Buffer.from(JSON.stringify(figmaJson), "utf8") },
+      { path: "assets/figma-frame-bg.png", data: pngBytes }
+    ]);
+
+    const imported = importExternalMigrationArchive(archive, {
+      fileName: "figma-frame-image-package.zip",
+      fileId: "figma-frame-image-imported-file"
+    });
+
+    const frame = imported.file.pages[0].children[0];
+    expect(frame).toMatchObject({
+      id: "figma-2-1",
+      kind: "frame",
+      name: "Hero frame",
+      size: { width: 320, height: 180 }
+    });
+    expect(frame.children[0]).toMatchObject({
+      id: "figma-2-1-image-fill",
+      kind: "image",
+      name: "Hero frame image fill",
+      transform: { x: 0, y: 0, rotation: 0 },
+      size: { width: 320, height: 180 },
+      content: {
+        type: "image",
+        asset_id: "figma-asset-figma-frame-bg",
+        natural_width: 1,
+        natural_height: 1,
+        fit_mode: "fill"
+      }
+    });
+    expect(frame.children[1]).toMatchObject({
+      id: "figma-3-1",
+      kind: "text",
+      name: "Headline",
+      transform: { x: 40, y: 40, rotation: 0 }
+    });
+    expect(imported.importedAssets).toHaveLength(1);
+    expect(imported.importedAssets[0].metadata.assetId).toBe("figma-asset-figma-frame-bg");
+  });
+
+  test("ignores asset entries while discovering Figma package documents", () => {
+    const figmaJson = {
+      name: "Asset nested Figma",
+      document: {
+        id: "0:0",
+        name: "Document",
+        type: "DOCUMENT",
+        children: [{ id: "1:1", name: "Page 1", type: "CANVAS", children: [] }]
+      }
+    };
+    const archive = createZipArchive([
+      { path: "assets/figma-file.json", data: Buffer.from(JSON.stringify(figmaJson), "utf8") },
+      { path: "assets/figma-image-hero.png", data: Buffer.from(pixelPngBase64, "base64") }
+    ]);
+
+    const review = reviewExternalMigrationArchive(archive, { fileName: "assets-only.zip", sourceHint: "figma" });
+
+    expect(review).toMatchObject({
+      source: "figma",
+      archiveKind: "zip",
+      canImport: false,
+      documentCandidateCount: 0,
+      assetCount: 2
+    });
+    expect(() => importExternalMigrationArchive(archive, { fileName: "assets-only.zip", sourceHint: "figma" })).toThrow(/Only Figma REST JSON/);
+  });
+
   test("rejects opaque Figma binaries with a concrete REST-export next step", () => {
     const review = reviewExternalMigrationArchive(Buffer.from("opaque fig binary"), { fileName: "draft.fig" });
 
