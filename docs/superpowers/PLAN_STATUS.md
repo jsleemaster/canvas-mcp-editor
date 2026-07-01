@@ -19,7 +19,7 @@ Use this order when entering the repo:
 
 | Plan | Status | Evidence |
 | --- | --- | --- |
-| `2026-07-01-figma-image-asset-import.md` | Blocked | PR #199 remains open after automated review. The initial implementation and gates passed at commit `8b1e663`, but three P2 review comments require RED tests and fixes before merge: require CANVAS pages before ZIP importability, preserve or warn for FRAME image fills, and avoid binary asset JSON parsing during document discovery. Local filesystem access is currently blocked with exit `134`, so tests, e2e, merge, and post-merge cleanup cannot be completed in this session. |
+| `2026-07-01-figma-image-asset-import.md` | Blocked | PR #199 remains open. The three P2 review findings are addressed on branch head `c09d0c0` with regression tests, and review threads have replies. Remote PR checks pass (`Vercel`, `Vercel Preview Comments`, `restore-drill`, `retention`). The plan stays active because GitHub reports `mergeable_state: blocked`, full PR-head local/e2e verification is not trusted while `git status --short --branch` exits `134`, and merge plus post-merge cleanup are not complete. |
 
 ## Completed Plans
 
