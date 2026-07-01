@@ -185,11 +185,11 @@ Expected: all pass before marking the goal complete.
 - Produces: explicit preservation or warning behavior for packaged FRAME image fills.
 - Produces: ZIP document discovery that parses only JSON/document candidates, not binary assets.
 
-- [ ] **Step 1: Add RED tests for review comments**
+- [x] **Step 1: Add RED tests for review comments**
 
 Add focused tests for: a Figma ZIP document with no CANVAS pages remaining non-importable, a FRAME with a packaged IMAGE fill preserving the asset or emitting an explicit warning, and a Figma ZIP package with large/binary image assets avoiding binary JSON parsing during document discovery.
 
-- [ ] **Step 2: Implement minimal review fixes**
+- [x] **Step 2: Implement minimal review fixes**
 
 Apply the smallest mapper/review changes that make the RED tests pass without weakening existing rectangle image-fill import behavior.
 
