@@ -18,6 +18,12 @@
 
 ---
 
+## Current Status
+
+Blocked on PR #199 review follow-up as of 2026-07-01. The initial implementation and repository gates passed at commit `8b1e663`, but automated review found three P2 issues that must be fixed before merge: ZIP review must require CANVAS pages before enabling import, FRAME image fills must be preserved or warned instead of silently dropped, and Figma ZIP document discovery must not decode binary image assets as JSON. Do not mark this plan complete or run post-merge cleanup until those items are fixed with RED/GREEN tests and full verification reruns.
+
+---
+
 ### Task 1: Figma Package Mapper Contract
 
 **Files:**
@@ -166,6 +172,34 @@ git diff --check
 ```
 
 Expected: all pass before marking the goal complete.
+
+### Task 5: PR Review Follow-Up Before Merge
+
+**Files:**
+- Modify: `apps/server/src/external-migration.test.ts`
+- Modify: `apps/server/src/external-migration.ts`
+- Modify if needed: `docs/superpowers/PLAN_STATUS.md`
+
+**Interfaces:**
+- Produces: review importability that matches importer CANVAS-page requirements.
+- Produces: explicit preservation or warning behavior for packaged FRAME image fills.
+- Produces: ZIP document discovery that parses only JSON/document candidates, not binary assets.
+
+- [ ] **Step 1: Add RED tests for review comments**
+
+Add focused tests for: a Figma ZIP document with no CANVAS pages remaining non-importable, a FRAME with a packaged IMAGE fill preserving the asset or emitting an explicit warning, and a Figma ZIP package with large/binary image assets avoiding binary JSON parsing during document discovery.
+
+- [ ] **Step 2: Implement minimal review fixes**
+
+Apply the smallest mapper/review changes that make the RED tests pass without weakening existing rectangle image-fill import behavior.
+
+- [ ] **Step 3: Re-run focused and broad verification**
+
+Run focused server tests, web/API tests if touched, `pnpm typecheck`, `pnpm test`, `pnpm test:e2e`, and `git diff --check`.
+
+- [ ] **Step 4: Push, answer review threads, merge, and clean up**
+
+Push the review-fix commit, reply to the three inline review threads, merge PR #199 only after checks are green, then run `docs/process/post-merge-cleanup.md`.
 
 ## Execution Evidence
 
