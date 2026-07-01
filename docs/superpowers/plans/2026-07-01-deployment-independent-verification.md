@@ -24,7 +24,7 @@ PR #199 could not be completed after review follow-up because the latest PR head
 
 ## Implementation
 
-- Add `.github/workflows/full-verification.yml` with manual, branch-push, and PR triggers.
+- Add `.github/workflows/full-verification.yml` with manual and PR triggers.
 - Install dependencies with `pnpm install --frozen-lockfile` using the repo's `pnpm@10.13.1` convention.
 - Install Chromium for Playwright CLI proof.
 - Run:
@@ -35,6 +35,7 @@ PR #199 could not be completed after review follow-up because the latest PR head
   - `pnpm test`
   - `pnpm test:e2e`
 - Add coverage in `scripts/check-deployment-artifacts.test.mjs` so the workflow cannot silently become a Vercel deployment workflow or drop the e2e gate.
+- Keep the workflow off branch-push triggers to avoid duplicate full-suite runs on open PR branches.
 
 ## Verification Status
 
