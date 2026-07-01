@@ -2,9 +2,6 @@ name: Full Verification
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - "codex/**"
   pull_request:
     paths:
       - ".github/workflows/full-verification.yml"
