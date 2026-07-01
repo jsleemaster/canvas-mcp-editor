@@ -482,6 +482,10 @@ function readFigmaPackage(entries: Map<string, Buffer>): {
   assetsByRef: Map<string, FigmaPackageAsset>;
 } | null {
   const document = [...entries.entries()]
+    .filter(([entryPath]) => {
+      const kind = entryKindForPath(entryPath);
+      return kind === \"document\" || kind === \"manifest\" || kind === \"metadata\";
+    })
     .map(([entryPath, data]) => ({ path: entryPath, json: parseJsonBuffer(data) }))
     .filter((entry): entry is FigmaPackageDocument => entry.json !== undefined && isFigmaJson(entry.json))
     .sort((left, right) => left.path.localeCompare(right.path))[0];
