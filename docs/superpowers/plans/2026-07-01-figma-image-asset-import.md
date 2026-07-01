@@ -20,7 +20,7 @@
 
 ## Current Status
 
-Blocked on PR #199 review follow-up as of 2026-07-01. The initial implementation and repository gates passed at commit `8b1e663`, but automated review found three P2 issues that must be fixed before merge: ZIP review must require CANVAS pages before enabling import, FRAME image fills must be preserved or warned instead of silently dropped, and Figma ZIP document discovery must not decode binary image assets as JSON. Do not mark this plan complete or run post-merge cleanup until those items are fixed with RED/GREEN tests and full verification reruns.
+PR #199 review follow-up is partially complete as of 2026-07-01. The three P2 review findings are addressed on branch head `c09d0c0`: ZIP review importability now requires CANVAS pages, packaged FRAME image fills are preserved as leading background image nodes, and Figma package document discovery filters out asset entries before JSON parsing. Regression tests were added for all three cases and the three review threads were answered. Remote PR checks pass at `c09d0c0` (`Vercel`, `Vercel Preview Comments`, `restore-drill`, `retention`). Do not mark this plan complete or run post-merge cleanup yet: GitHub reports `mergeable_state: blocked`, and local PR-head full verification/e2e could not be trusted because `git status --short --branch` exits `134` and the only successful local `pnpm --filter @layo/server test -- external-migration` run executed the stale local 4-test file, not the updated PR-head regression tests.
 
 ---
 
@@ -202,6 +202,11 @@ Run focused server tests, web/API tests if touched, `pnpm typecheck`, `pnpm test
 Push the review-fix commit, reply to the three inline review threads, merge PR #199 only after checks are green, then run `docs/process/post-merge-cleanup.md`.
 
 ## Execution Evidence
+
+- Review follow-up tests added at `c09d0c0`: `does not mark Figma ZIP packages without CANVAS pages as importable`, `preserves packaged frame image fills as background image nodes`, and `ignores asset entries while discovering Figma package documents`.
+- Review follow-up implementation committed through `c09d0c0`: `reviewZipArchive` gates Figma ZIP importability on `pageCount > 0`, FRAME image fills create a leading image child with imported asset metadata, and `readFigmaPackage` filters document/manifest/metadata entries before JSON parsing.
+- PR checks at `c09d0c0`: `Vercel`, `Vercel Preview Comments`, `restore-drill`, and `retention` passed.
+- Local verification caveat: `git status --short --branch` exits `134`; `pnpm --filter @layo/server test -- external-migration` passed only against the stale local 4-test file, so it is not accepted as PR-head GREEN evidence.
 
 - Baseline GREEN: `pnpm --filter @layo/server exec vitest run src/external-migration.test.ts src/http.test.ts -t "Figma|external"` and `pnpm --dir apps/web exec vitest run src/document-api.test.ts -t "external migration"` passed before behavior changes.
 - RED mapper: `pnpm --filter @layo/server exec vitest run src/external-migration.test.ts -t "Figma JSON packages"` failed because Figma ZIP packages still returned `canImport: false` with `mapping_not_implemented` and `figma_images_required`.
