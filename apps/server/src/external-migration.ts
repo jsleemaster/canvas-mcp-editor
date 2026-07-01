@@ -412,6 +412,8 @@ function mapFigmaNode(
   }
   const imageContent =
     type !== "FRAME" && imagePaint && imageAsset ? imageContentForAsset(imageAsset, imagePaint) : null;
+  const frameImageContent =
+    type === "FRAME" && imagePaint && imageAsset ? imageContentForAsset(imageAsset, imagePaint) : null;
   const mapsAsImage = imageContent !== null;
   const fill = mapsAsImage ? "#f3f4f6" : solidPaintHex(node.fills) ?? defaultFillForFigmaType(type);
   const stroke = solidPaintHex(node.strokes);
