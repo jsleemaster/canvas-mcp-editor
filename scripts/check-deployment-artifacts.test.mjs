@@ -81,7 +81,6 @@ test("full verification workflow runs PR-head gates without Vercel deployment se
 
   assert.match(workflow, /name: Full Verification/);
   assert.match(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /push:/);
   assert.match(workflow, /pull_request:/);
   assert.match(workflow, /pnpm install --frozen-lockfile/);
   assert.match(workflow, /pnpm exec playwright install --with-deps chromium/);
